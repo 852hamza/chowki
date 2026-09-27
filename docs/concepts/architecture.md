@@ -49,23 +49,25 @@ Each request passes these stages in order:
 ```mermaid
 flowchart TD
   A[Parse] --> B[Authenticate] --> C[Policy] --> D[Rate limit] --> E[Redact]
-  E --> F[Exact cache] --> G[Route] --> H[Budget check] --> I[Prompt-cache optimizer]
+  E --> F[Route] --> G[Exact cache] --> H[Token limit and budget] --> I[Prompt-cache optimizer]
   I --> J[Upstream call] --> K[Account] --> L[Persist]
 ```
 
 1. **Parse**: enforce the body size limit and detect the API family from the path.
 2. **Authenticate**: verify the virtual key and reject revoked keys.
 3. **Policy**: check the models and endpoints that the key may use.
-4. **Rate limit**: enforce the key's limits of requests and tokens per minute. The request limit
-   applies before Chowki reads the request body.
+4. **Rate limit**: enforce the key's limit of requests per minute, before Chowki reads the request
+   body.
 5. **Redact**: find secrets and personal data, then mask them, block the request or raise an alert,
    depending on the policy.
-6. **Exact cache**: for a non-streaming request identical to an earlier one, return the stored
-   response. The cache is opt-in.
-7. **Route**: resolve an alias, such as `fast`, to a provider and model.
-8. **Budget check**: reject the request when the key or its project has used up its monthly
-   budget. The check follows routing because it estimates the request's cost from the model's
-   price, and it counts requests in progress at that estimate.
+6. **Route**: resolve an alias, such as `fast`, to a provider and model.
+7. **Exact cache**: for a non-streaming request identical to an earlier one, return the stored
+   response. The cache is opt-in. A cached answer costs nothing, so the next stage doesn't apply to
+   it.
+8. **Token limit and budget**: enforce the key's limit of tokens per minute, and reject the request
+   when the key or its project has used up its monthly budget. Both count a request at its
+   estimated input until the response reports its actual usage; the budget estimate uses the
+   model's price, which is why this stage follows routing.
 9. **Prompt-cache optimizer**: for Anthropic, mark stable prompt prefixes, so that repeated
    prefixes cost less.
 10. **Upstream call**: call the provider with the provider key and a timeout, and relay a streamed

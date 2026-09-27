@@ -40,7 +40,8 @@ revoke one key without touching the others or your provider keys.
 
 To limit what a key can spend each month, add `--budget-usd`; see
 [Set monthly budgets](set-budgets.md). To limit its requests and tokens per minute, add `--rpm` and
-`--tpm`; see [Set rate limits](set-rate-limits.md).
+`--tpm`; see [Set rate limits](set-rate-limits.md). To answer repeated requests from the cache, add
+`--cache exact`; see [Cache responses](cache-responses.md).
 
 Chowki stores only the key's prefix, its first 12 characters, and its SHA-256 hash. If a key is
 lost, revoke it and create a new one.
@@ -60,26 +61,27 @@ chowki key list
 Output:
 
 ```text
-PREFIX        NAME    PROJECT  SPENT 2026-09  BUDGET  RPM   TPM     CREATED               STATUS
-chowki_IRXOs  alice   team-a   $3.00          $50.00  none  none    2026-09-27 06:04 UTC  active
-chowki_z5J3e  ci-bot  team-a   $1.00          none    60    100000  2026-09-27 06:04 UTC  active
+PREFIX        NAME    PROJECT  SPENT 2026-09  BUDGET  RPM   TPM     CACHE    CREATED               STATUS
+chowki_9VRDs  alice   team-a   $3.00          $50.00  none  none    default  2026-09-27 06:31 UTC  active
+chowki_PXQSi  ci-bot  team-a   $1.00          none    60    100000  default  2026-09-27 06:31 UTC  active
 ```
 
 The list shows each key's prefix, never the key itself. It also shows what the key spent this
-month (UTC), its monthly budget, and its limits of requests (`RPM`) and tokens (`TPM`) per minute.
+month (UTC), its monthly budget, its limits of requests (`RPM`) and tokens (`TPM`) per minute, and
+whether it uses the exact cache (`CACHE`).
 
 ## Revoke a key
 
 1. Revoke a key by its prefix:
 
    ```sh
-   chowki key revoke chowki_z5J3e
+   chowki key revoke chowki_PXQSi
    ```
 
    Output:
 
    ```text
-   Revoked virtual key chowki_z5J3e ("ci-bot"). Requests with it now fail.
+   Revoked virtual key chowki_PXQSi ("ci-bot"). Requests with it now fail.
    ```
 
 You can also pass the full key instead of the prefix. Revoking is permanent, and revoking a key

@@ -27,7 +27,7 @@ or agent can't use up your provider's rate limits or crowd out your other keys.
 - Chowki checks the request limit before it reads a request. For the token limit, it estimates a
   request's input tokens from its size, about 4 bytes per token, and holds them until the response
   ends. Then it counts the tokens that the provider reported. A request that fails gives its tokens
-  back.
+  back, and an answer from the [exact cache](cache-responses.md) uses none.
 - A request that needs more tokens than the limit goes through once the key has a full minute's
   worth. The key then waits until the extra tokens have refilled.
 - Chowki keeps rate limits in memory: they start over when Chowki restarts.
@@ -49,25 +49,27 @@ or agent can't use up your provider's rate limits or crowd out your other keys.
 
    Copy it now. Chowki stores only a hash of it and can't show it again.
 
-   Limits:
+   Settings:
      Monthly budget:       none
      Requests per minute:  60
      Tokens per minute:    100000
+     Exact cache:          default
    ```
 
 2. To change the limits of an existing key, pass its prefix, as `chowki key list` shows it:
 
    ```sh
-   chowki key update --rpm 120 chowki_z5J3e
+   chowki key update --rpm 120 chowki_PXQSi
    ```
 
    Output:
 
    ```text
-   Updated the limits of virtual key chowki_z5J3e ("ci-bot"):
+   Updated the settings of virtual key chowki_PXQSi ("ci-bot"):
      Monthly budget:       none
      Requests per minute:  120
      Tokens per minute:    100000
+     Exact cache:          default
    ```
 
 To remove a limit, set it to `0`. You can set rate limits and a budget together; see
@@ -78,9 +80,9 @@ To remove a limit, set it to `0`. You can set rate limits and a budget together;
 `chowki key list` shows each key's limits in the `RPM` and `TPM` columns:
 
 ```text
-PREFIX        NAME    PROJECT  SPENT 2026-09  BUDGET  RPM   TPM     CREATED               STATUS
-chowki_IRXOs  alice   team-a   $3.00          $50.00  none  none    2026-09-27 06:04 UTC  active
-chowki_z5J3e  ci-bot  team-a   $1.00          none    60    100000  2026-09-27 06:04 UTC  active
+PREFIX        NAME    PROJECT  SPENT 2026-09  BUDGET  RPM   TPM     CACHE    CREATED               STATUS
+chowki_9VRDs  alice   team-a   $3.00          $50.00  none  none    default  2026-09-27 06:31 UTC  active
+chowki_PXQSi  ci-bot  team-a   $1.00          none    60    100000  default  2026-09-27 06:31 UTC  active
 ```
 
 When a key reaches a limit, requests fail with HTTP status 429 in the error format of the API that

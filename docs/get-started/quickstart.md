@@ -147,6 +147,7 @@ Output:
 ```text
 HTTP/1.1 200 OK
 Content-Type: application/json
+X-Chowki-Cache: bypass
 X-Chowki-Cost-Usd: 0.00000570
 X-Chowki-Request-Id: req_6fb74b7d836f291f73793b9f
 Date: Sun, 27 Sep 2026 04:42:28 GMT
@@ -154,8 +155,10 @@ Content-Length: 287
 ```
 
 `X-Chowki-Cost-Usd` is the cost of the request in US dollars, computed from the tokens that OpenAI
-reported. Your numbers and some headers differ. The gateway's log in the first terminal has a line
-with `"msg":"request"` for each request, with its token counts and cost.
+reported. `X-Chowki-Cache: bypass` means that the exact cache is off for this key; see
+[Cache responses](../how-to/cache-responses.md). Your numbers and some headers differ. The
+gateway's log in the first terminal has a line with `"msg":"request"` for each request, with its
+token counts and cost.
 
 ## Troubleshooting
 

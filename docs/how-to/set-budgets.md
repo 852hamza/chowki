@@ -51,25 +51,27 @@ can't run up a surprise bill.
 
    Copy it now. Chowki stores only a hash of it and can't show it again.
 
-   Limits:
+   Settings:
      Monthly budget:       $50.00
      Requests per minute:  none
      Tokens per minute:    none
+     Exact cache:          default
    ```
 
 2. To change the budget of an existing key, pass its prefix, as `chowki key list` shows it:
 
    ```sh
-   chowki key update --budget-usd 100 chowki_IRXOs
+   chowki key update --budget-usd 100 chowki_9VRDs
    ```
 
    Output:
 
    ```text
-   Updated the limits of virtual key chowki_IRXOs ("alice"):
+   Updated the settings of virtual key chowki_9VRDs ("alice"):
      Monthly budget:       $100.00
      Requests per minute:  none
      Tokens per minute:    none
+     Exact cache:          default
    ```
 
 To remove a budget, set it to `0`. Chowki records every budget change in its audit log. To limit
@@ -103,9 +105,9 @@ chowki key list
 Output:
 
 ```text
-PREFIX        NAME    PROJECT  SPENT 2026-09  BUDGET  RPM   TPM     CREATED               STATUS
-chowki_IRXOs  alice   team-a   $3.00          $50.00  none  none    2026-09-27 06:04 UTC  active
-chowki_z5J3e  ci-bot  team-a   $1.00          none    60    100000  2026-09-27 06:04 UTC  active
+PREFIX        NAME    PROJECT  SPENT 2026-09  BUDGET  RPM   TPM     CACHE    CREATED               STATUS
+chowki_9VRDs  alice   team-a   $3.00          $50.00  none  none    default  2026-09-27 06:31 UTC  active
+chowki_PXQSi  ci-bot  team-a   $1.00          none    60    100000  default  2026-09-27 06:31 UTC  active
 ```
 
 List the projects with the spend of their keys:
@@ -126,7 +128,7 @@ An amount below one cent shows as `<$0.01`.
 ## Verify
 
 When a budget is used up, requests fail with HTTP status 429 in the error format of the API that
-the client speaks. For example, after `chowki key update --budget-usd 2 chowki_IRXOs` for a key
+the client speaks. For example, after `chowki key update --budget-usd 2 chowki_9VRDs` for a key
 that has spent $3.00 this month, an OpenAI-format request gets:
 
 ```json

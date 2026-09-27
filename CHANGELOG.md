@@ -38,5 +38,10 @@ All notable changes to Chowki are recorded in this file. The format is based on
   (`--tpm`) on `chowki key create` and `chowki key update`. A key over a limit gets HTTP 429 with
   the code `rate_limit_exceeded`, and the headers `Retry-After` and `retry-after-ms` say when to
   retry. Limits are kept in memory. `chowki key update` now prints all of a key's limits.
+- An exact response cache for non-streaming requests, encrypted with AES-256-GCM. Turn it on per
+  key with `--cache exact`, for every key with `defaults.cache`, or per request with the header
+  `x-chowki-cache: on`. The response header `x-chowki-cache` shows `hit`, `miss` or `bypass`; a hit
+  costs $0 and counts the original cost as savings. Responses expire after `defaults.cache_ttl`,
+  and `storage.cache_max_mb` limits the cache's size.
 
 [Unreleased]: https://github.com/852hamza/chowki/commits/main
