@@ -87,5 +87,13 @@ All notable changes to Chowki are recorded in this file. The format is based on
   input, built-in tools or the Flex and Priority tiers stay unpriced.
 - `free_tier: true` for a provider whose requests aren't billed, such as on the Gemini API's free
   tier: their cost is $0.
+- Translation: `/v1/chat/completions` serves Anthropic and Gemini models too. Chowki translates
+  messages, images, tools and tool calls, streams, finish reasons, usage and errors, and answers
+  `400 unsupported_option`, naming the option, for an option that the provider can't honor. It keeps
+  Anthropic's thinking and Gemini's thought signatures for an hour, by tool call, to send them back
+  in the next request of a tool-use loop. Aliases can mix providers of different APIs, and
+  `GET /v1/models` lists their models.
+- The model catalog lists each model's context window, maximum output and capabilities: tools,
+  vision, JSON output, caching and thinking.
 
 [Unreleased]: https://github.com/852hamza/chowki/commits/main

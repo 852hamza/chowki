@@ -32,9 +32,9 @@ Send a virtual key in the header that the client's SDK uses: `Authorization: Bea
 
 | Endpoint | What it does |
 |---|---|
-| `POST /v1/chat/completions` | OpenAI chat completions, streaming or not. |
+| `POST /v1/chat/completions` | OpenAI chat completions, streaming or not, for models of every provider: Chowki translates requests for Anthropic and Gemini models. See [Call Anthropic and Gemini models with OpenAI SDKs](../how-to/call-any-model-with-openai-sdks.md). |
 | `POST /v1/embeddings` | OpenAI embeddings. Redaction reads the `input` text; the exact cache applies. |
-| `GET /v1/models` | The aliases and catalog models that the key may use through the OpenAI-format endpoints. Models that the catalog doesn't list, such as local ones, aren't in it but still work. |
+| `GET /v1/models` | The aliases and catalog models that the key may use through `/v1/chat/completions`, those of Anthropic and Gemini providers included. Models that the catalog doesn't list, such as local ones, aren't in it but still work. |
 | `POST /anthropic/v1/messages` | Anthropic messages, streaming or not. |
 | `POST /anthropic/v1/messages/count_tokens` | Anthropic token counting. Providers don't bill it, so it spends no budget or tokens per minute, and the exact cache doesn't apply. Redaction does. |
 | `POST /gemini/v1beta/models/<MODEL>:generateContent` | Gemini content generation. |
