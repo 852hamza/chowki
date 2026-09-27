@@ -32,6 +32,7 @@ import (
 	"github.com/852hamza/chowki/internal/secretbox"
 	"github.com/852hamza/chowki/internal/server"
 	"github.com/852hamza/chowki/internal/store"
+	"github.com/852hamza/chowki/internal/web"
 )
 
 func runServe(args []string, _, stderr io.Writer) int {
@@ -153,7 +154,8 @@ func serve(ctx context.Context, configPath string, ln net.Listener, logOut io.Wr
 	}
 	logger.Info("chowki started", "version", buildinfo.Version(), "providers", names, "priced_models", cat.Len())
 	api := &admin.API{Store: st, Logger: logger}
-	return server.Run(ctx, ln, server.Routes(gw, api.Handler()), logger)
+	ui := &web.UI{Store: st, Logger: logger}
+	return server.Run(ctx, ln, server.Routes(gw, api.Handler(), ui.Handler()), logger)
 }
 
 func logLevel(name string) slog.Level {

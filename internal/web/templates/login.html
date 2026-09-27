@@ -1,0 +1,20 @@
+{{template "head" "Sign in"}}
+<body class="login-page">
+<main class="login">
+  <p class="brand">{{template "logo"}}<span>Chowki</span></p>
+  <div class="card">
+    <h1>Sign in to the dashboard</h1>
+    <p>Paste an admin token. To create one, run <code>chowki admin create --name &lt;NAME&gt;</code> on the gateway's machine.</p>
+    {{- with .Error}}
+    <p class="alert" role="alert">{{template "status-icon" "critical"}}<span>{{.}}</span></p>
+    {{- end}}
+    <form method="post" action="/ui/login">
+      <input type="hidden" name="csrf" value="{{.CSRF}}">
+      <label for="token">Admin token</label>
+      <input id="token" name="token" type="password" autocomplete="off" spellcheck="false" required autofocus>
+      <button class="button" type="submit">Sign in</button>
+    </form>
+  </div>
+</main>
+</body>
+</html>

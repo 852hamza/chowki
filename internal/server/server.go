@@ -17,10 +17,10 @@ import (
 const ShutdownTimeout = 30 * time.Second
 
 // Routes returns the gateway's HTTP handler: the API endpoints, health
-// checks, metrics, and admin, the admin API, when it isn't nil. Unknown
-// paths get a 404 in the error format of the API family their path
-// belongs to.
-func Routes(gw *pipeline.Gateway, admin http.Handler) http.Handler {
+// checks, metrics, and admin, the admin API, and ui, the dashboard, when
+// they aren't nil. Unknown paths get a 404 in the error format of the API
+// family their path belongs to.
+func Routes(gw *pipeline.Gateway, admin, ui http.Handler) http.Handler {
 	mux := http.NewServeMux()
 	for _, ep := range pipeline.Endpoints {
 		mux.Handle("POST "+ep.Path, gw.Handler(ep))
@@ -31,6 +31,10 @@ func Routes(gw *pipeline.Gateway, admin http.Handler) http.Handler {
 	mux.Handle("GET /metrics", gw.Metrics.Handler())
 	if admin != nil {
 		mux.Handle("/admin/", admin)
+	}
+	if ui != nil {
+		mux.Handle("/ui", ui)
+		mux.Handle("/ui/", ui)
 	}
 	mux.Handle("/anthropic/", gw.NotFound(usage.Anthropic))
 	mux.Handle("/", gw.NotFound(usage.OpenAI))

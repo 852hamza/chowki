@@ -1,0 +1,23 @@
+{{define "head"}}<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{.}} · Chowki</title>
+<link rel="icon" href="/ui/static/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/ui/static/style.css">
+</head>{{end}}
+
+{{define "logo"}}<svg class="logo" viewBox="0 0 24 24" aria-hidden="true"><rect width="24" height="24" rx="6"/><path d="M7.5 17V7m9 10V7m-9 4.5h9"/></svg>{{end}}
+
+{{define "status-icon"}}
+{{- if eq . "critical"}}<svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M5.3 1h5.4L15 5.3v5.4L10.7 15H5.3L1 10.7V5.3z"/><path class="glyph" d="M5.8 5.8l4.4 4.4m0-4.4l-4.4 4.4"/></svg>
+{{- else if eq . "warning"}}<svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.2l7.2 13H.8z"/><path class="glyph" d="M8 6v3.6m0 2.4v.1"/></svg>
+{{- else}}<svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="7"/><path class="glyph" d="M4.9 8.2l2.1 2.1 4.1-4.4"/></svg>
+{{- end}}{{end}}
+
+{{define "bars"}}{{if .}}<ul class="bars">
+{{- range .}}
+<li><div class="label"><span class="name">{{.Label}}</span>{{with .Detail}}<span class="detail">{{.}}</span>{{end}}</div><span class="num">{{.Value}}</span><div class="track"><span class="fill w{{.Width}}"></span></div></li>
+{{- end}}
+</ul>{{else}}<p class="empty">None in this range.</p>{{end}}{{end}}
