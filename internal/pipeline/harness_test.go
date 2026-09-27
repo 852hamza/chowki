@@ -29,6 +29,7 @@ import (
 	"github.com/852hamza/chowki/internal/server"
 	"github.com/852hamza/chowki/internal/store"
 	"github.com/852hamza/chowki/internal/testutil"
+	"github.com/852hamza/chowki/internal/translate"
 )
 
 // Provider keys of the fakes. The fakes reject any other key, which proves
@@ -141,7 +142,7 @@ func newHarness(t testing.TB, oa, an testutil.Config, opts ...option) *harness {
 	h.gw = &pipeline.Gateway{Store: h.st, Metrics: metrics.New(),
 		Redactor: redact.New([]byte("redaction secret"), redact.ModeMask),
 		Cache:    h.openCache(logger), Limits: ratelimit.New(), Budgets: budgets, Catalog: cat, Logger: logger,
-		MaxBody: 1 << 20, Timeout: 10 * time.Second}
+		Memory: translate.NewMemory(), MaxBody: 1 << 20, Timeout: 10 * time.Second}
 	cfgs := []config.Provider{
 		{Name: "openai", Type: config.TypeOpenAI, BaseURL: h.openai.URL + "/v1", APIKeyEnv: "OPENAI_API_KEY", APIKey: openAIKey},
 		{Name: "anthropic", Type: config.TypeAnthropic, BaseURL: h.anthropic.URL, APIKeyEnv: "ANTHROPIC_API_KEY",

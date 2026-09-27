@@ -32,6 +32,7 @@ import (
 	"github.com/852hamza/chowki/internal/secretbox"
 	"github.com/852hamza/chowki/internal/server"
 	"github.com/852hamza/chowki/internal/store"
+	"github.com/852hamza/chowki/internal/translate"
 	"github.com/852hamza/chowki/internal/web"
 )
 
@@ -146,7 +147,7 @@ func serve(ctx context.Context, configPath string, ln net.Listener, logOut io.Wr
 		Store: st, Requests: requests, Router: routes, Metrics: metrics.New(),
 		Redactor: redact.New(redactionKey, cfg.Defaults.Redaction),
 		Cache:    responses, Limits: ratelimit.New(), Budgets: budgets,
-		Providers: ps, Catalog: cat, Logger: logger,
+		Providers: ps, Catalog: cat, Memory: translate.NewMemory(), Logger: logger,
 		MaxBody: int64(cfg.Server.MaxBodyMB) << 20, Timeout: cfg.Server.UpstreamTimeout,
 	}
 	if cfg.Defaults.PromptCache == "auto" {

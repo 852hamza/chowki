@@ -32,11 +32,13 @@ const (
 	codeUpstreamTimeout    = "upstream_timeout"
 	codeInternal           = "internal_error"
 	codeNotFound           = "not_found"
+	codeUnsupportedOption  = "unsupported_option"
 )
 
 // writeError answers in the error format of the API family, so the
-// client's SDK shows the error correctly.
-func writeError(w http.ResponseWriter, f usage.Family, requestID string, e apiError) {
+// client's SDK shows the error correctly. param names the request option at
+// fault, if any, for the OpenAI format.
+func writeError(w http.ResponseWriter, f usage.Family, requestID string, e apiError, param string) {
 	var body any
 	switch f {
 	case usage.Gemini:
@@ -56,8 +58,12 @@ func writeError(w http.ResponseWriter, f usage.Family, requestID string, e apiEr
 		}
 	default:
 		// ErrorResponse in https://github.com/openai/openai-openapi
+		var p any
+		if param != "" {
+			p = param
+		}
 		body = map[string]any{
-			"error": map[string]any{"message": e.Message, "type": openAIType(e.Status), "param": nil, "code": e.Code},
+			"error": map[string]any{"message": e.Message, "type": openAIType(e.Status), "param": p, "code": e.Code},
 		}
 	}
 	w.Header().Set("Content-Type", "application/json")

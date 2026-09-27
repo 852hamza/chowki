@@ -300,8 +300,9 @@ func TestRouting(t *testing.T) {
 	}{
 		{"ambiguous model", "/v1/chat/completions", `{"model":"other","messages":[{}]}`, "unknown_provider",
 			[]option{twoOpenAI}},
-		{"provider of another API", "/v1/chat/completions", `{"model":"anthropic/claude-test","messages":[{}]}`,
-			"wrong_endpoint", nil},
+		{"provider of another API", "/anthropic/v1/messages",
+			`{"model":"openai/gpt-test","max_tokens":8,"messages":[{"role":"user","content":"hi"}]}`,
+			"speaks the openai API", nil}, // the Anthropic format has no code
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			h := newHarness(t, testutil.Config{}, testutil.Config{}, tc.opts...)

@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/852hamza/chowki/internal/config"
 	"github.com/852hamza/chowki/internal/providers"
 	"github.com/852hamza/chowki/internal/usage"
 )
@@ -63,6 +64,15 @@ var (
 // GeminiEndpoints are the Gemini model methods that the gateway relays.
 var GeminiEndpoints = []Endpoint{GeminiGenerate, GeminiStream, GeminiCountTokens, GeminiEmbed, GeminiBatchEmbed}
 
+// accepts returns the API types of the providers that the endpoint
+// reaches: its own, and for OpenAI chat, the others through translation.
+func (ep Endpoint) accepts() []string {
+	if ep == OpenAIChat {
+		return []string{config.TypeOpenAI, config.TypeAnthropic, config.TypeGemini}
+	}
+	return []string{providerType(ep.Family)}
+}
+
 // target returns the provider's path for a request to model.
 func (ep Endpoint) target(model string) string {
 	if ep.Family == usage.Gemini {
@@ -102,15 +112,15 @@ func (g *Gateway) Gemini() http.Handler {
 }
 
 // Models returns the handler of GET /v1/models: the aliases and catalog
-// models that the key may use through the OpenAI-format endpoints, in the
-// OpenAI format.
+// models that the key may use through the OpenAI chat endpoint, those of
+// Anthropic and Gemini providers included, in the OpenAI format.
 func (g *Gateway) Models() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		c := &call{ep: OpenAIChat, family: usage.OpenAI, id: newRequestID(), start: time.Now(),
 			w: &trackingWriter{ResponseWriter: w}}
 		c.w.Header().Set(RequestIDHeader, c.id)
 		if e := g.authenticate(r.Context(), c, r); e != nil {
-			writeError(c.w, usage.OpenAI, c.id, *e)
+			writeError(c.w, usage.OpenAI, c.id, *e, "")
 			g.Logger.Info("request rejected", "request_id", c.id, "path", r.URL.Path, "status", e.Status)
 			return
 		}
@@ -124,7 +134,7 @@ func (g *Gateway) Models() http.Handler {
 			Object string  `json:"object"`
 			Data   []model `json:"data"`
 		}{Object: "list", Data: []model{}}
-		for _, m := range g.Router.Models(providerType(usage.OpenAI)) {
+		for _, m := range g.Router.Models(OpenAIChat.accepts()) {
 			if allowed(c.key.AllowedModels, m.ID) {
 				list.Data = append(list.Data, model{ID: m.ID, Object: "model", OwnedBy: m.Owner})
 			}

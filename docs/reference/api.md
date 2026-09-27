@@ -118,7 +118,8 @@ the `reason` of the `ErrorInfo` detail is the code below in capitals:
 | `request_too_large` | 413 | The body is larger than `server.max_body_mb`. |
 | `model_not_allowed` | 403 | The key may not use the model. |
 | `unknown_provider` | 400 | Chowki can't tell which provider serves the model. |
-| `wrong_endpoint` | 400 | The model's provider speaks another API than the endpoint's. |
+| `wrong_endpoint` | 400 | The model's provider speaks another API than the endpoint's, and the endpoint doesn't translate. |
+| `unsupported_option` | 400 | The request is translated for a provider of another API, which can't honor an option; `param` names it. |
 | `sensitive_data_blocked` | 400 | Redaction in `block` mode found secrets or personal data. |
 | `rate_limit_exceeded` | 429 | The key reached its limit of requests or tokens per minute. |
 | `budget_exceeded` | 429 | The key's or its project's monthly budget is used up. |
