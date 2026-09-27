@@ -13,6 +13,7 @@ import (
 	"mime"
 	"net/http"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -21,6 +22,7 @@ import (
 	"github.com/852hamza/chowki/internal/catalog"
 	"github.com/852hamza/chowki/internal/config"
 	"github.com/852hamza/chowki/internal/providers"
+	"github.com/852hamza/chowki/internal/ratelimit"
 	"github.com/852hamza/chowki/internal/sse"
 	"github.com/852hamza/chowki/internal/store"
 	"github.com/852hamza/chowki/internal/usage"
@@ -37,11 +39,13 @@ const (
 const maxResponse = 64 << 20
 
 // Gateway serves the API endpoints: it authenticates each request with a
-// virtual key, routes it to a provider within the key's budgets, relays the
-// response and records the request's metadata, usage and cost.
+// virtual key, routes it to a provider within the key's rate limits and
+// budgets, relays the response and records the request's metadata, usage
+// and cost.
 type Gateway struct {
 	Store     store.Store
 	Requests  *store.RequestLog
+	Limits    *ratelimit.Limiter
 	Budgets   *budget.Tracker
 	Providers map[string]*providers.Provider
 	Catalog   *catalog.Catalog
@@ -81,7 +85,8 @@ type call struct {
 	stream   bool
 	errType  string
 	report   usage.Report
-	ticket   *budget.Ticket // nil until the budgets admit the request
+	tokens   *ratelimit.Ticket // nil without a limit of tokens per minute
+	ticket   *budget.Ticket    // nil until the budgets admit the request
 }
 
 func (g *Gateway) serve(w http.ResponseWriter, r *http.Request, f usage.Family) {
@@ -101,6 +106,11 @@ func (g *Gateway) handle(ctx context.Context, c *call, r *http.Request) *apiErro
 	// can't make the gateway read large bodies.
 	if e := g.authenticate(ctx, c, r); e != nil {
 		return e
+	}
+	// Count the request before reading its body, too, so that a key over
+	// its limit can't make the gateway read large bodies.
+	if err := g.Limits.AllowRequest(c.key.ID, c.key.RPM, time.Now()); err != nil {
+		return rateLimited(c, err)
 	}
 
 	body, err := io.ReadAll(http.MaxBytesReader(c.w, r.Body, g.MaxBody))
@@ -247,18 +257,30 @@ func readRequest(f usage.Family, o *object) (request, *apiError) {
 	return req, nil
 }
 
-// admit checks the budgets of the key and its project. The request holds
-// its estimated input cost until finish settles the actual cost, so that
-// parallel requests can't all slip under a budget that is nearly used up.
+// admit checks the key's limit of tokens per minute and the budgets of the
+// key and its project. The request holds its estimated input tokens and
+// their cost until finish settles what it actually used, so that parallel
+// requests can't all slip under a limit that is nearly reached.
 func (g *Gateway) admit(c *call, body []byte) *apiError {
+	k := c.key
+	hasBudget := k.BudgetUSD > 0 || k.ProjectBudgetUSD > 0
+	var tokens int64
+	if k.TPM > 0 || hasBudget {
+		tokens = usage.EstimateTokens(body)
+	}
+	tk, err := g.Limits.TakeTokens(k.ID, k.TPM, tokens, time.Now())
+	if err != nil {
+		return rateLimited(c, err)
+	}
+	c.tokens = tk
+
 	var estimate float64
-	if c.key.BudgetUSD > 0 || c.key.ProjectBudgetUSD > 0 {
+	if hasBudget {
 		if m, ok := g.Catalog.Find(c.provider.Name, c.model); ok {
-			tokens := usage.EstimateTokens(body)
 			estimate = float64(tokens) * m.PriceFor(tokens).Input / 1e6
 		}
 	}
-	t, err := g.Budgets.Admit(c.key, estimate, c.start)
+	t, err := g.Budgets.Admit(k, estimate, c.start)
 	if err != nil {
 		// Retrying can't help until the month ends or the budget is raised.
 		// The official OpenAI and Anthropic SDKs obey this header.
@@ -267,6 +289,18 @@ func (g *Gateway) admit(c *call, body []byte) *apiError {
 	}
 	c.ticket = t
 	return nil
+}
+
+// rateLimited answers a request over a rate limit, with the wait in the
+// headers that clients use: Retry-After, and retry-after-ms, which the
+// official OpenAI and Anthropic SDKs prefer for its precision.
+func rateLimited(c *call, err error) *apiError {
+	var e *ratelimit.ExceededError
+	if errors.As(err, &e) {
+		c.w.Header().Set("Retry-After", strconv.FormatInt(int64(e.RetryAfter()/time.Second), 10))
+		c.w.Header().Set("retry-after-ms", strconv.FormatInt(max(e.Wait.Milliseconds(), 1), 10))
+	}
+	return &apiError{http.StatusTooManyRequests, codeRateLimited, err.Error()}
 }
 
 // route picks the provider for a model: "<provider>/<model>" names it;
@@ -458,6 +492,11 @@ func (g *Gateway) finish(c *call) {
 		spent = *cost.USD
 	}
 	g.Budgets.Settle(c.ticket, spent, time.Now())
+	var used int64 // 0 without usage: a failed request returns its tokens
+	if u := c.report.Usage; u != nil {
+		used = u.Input + u.Output
+	}
+	g.Limits.Settle(c.tokens, used, time.Now())
 
 	attrs = append(attrs, "key_id", c.key.ID, "provider", rec.Provider, "model", rec.Model, "stream", c.stream,
 		"ttfb_ms", ttfb.Milliseconds())

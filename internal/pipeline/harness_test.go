@@ -20,6 +20,7 @@ import (
 	"github.com/852hamza/chowki/internal/netguard"
 	"github.com/852hamza/chowki/internal/pipeline"
 	"github.com/852hamza/chowki/internal/providers"
+	"github.com/852hamza/chowki/internal/ratelimit"
 	"github.com/852hamza/chowki/internal/server"
 	"github.com/852hamza/chowki/internal/store"
 	"github.com/852hamza/chowki/internal/testutil"
@@ -108,8 +109,8 @@ func newHarness(t testing.TB, oa, an testutil.Config, opts ...option) *harness {
 	if err != nil {
 		t.Fatal(err)
 	}
-	h.gw = &pipeline.Gateway{Store: h.st, Budgets: budgets, Catalog: cat, Logger: logger, MaxBody: 1 << 20,
-		Timeout: 10 * time.Second}
+	h.gw = &pipeline.Gateway{Store: h.st, Limits: ratelimit.New(), Budgets: budgets, Catalog: cat, Logger: logger,
+		MaxBody: 1 << 20, Timeout: 10 * time.Second}
 	cfgs := []config.Provider{
 		{Name: "openai", Type: config.TypeOpenAI, BaseURL: h.openai.URL + "/v1", APIKeyEnv: "OPENAI_API_KEY", APIKey: openAIKey},
 		{Name: "anthropic", Type: config.TypeAnthropic, BaseURL: h.anthropic.URL, APIKeyEnv: "ANTHROPIC_API_KEY",
@@ -147,6 +148,7 @@ func (h *harness) restart() {
 	h.t.Helper()
 	h.flush()
 	gw := *h.gw
+	gw.Limits = ratelimit.New()
 	var err error
 	if gw.Budgets, err = budget.Load(context.Background(), h.st, time.Now(), gw.Logger); err != nil {
 		h.t.Fatal(err)

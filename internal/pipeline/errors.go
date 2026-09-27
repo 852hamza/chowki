@@ -23,6 +23,7 @@ const (
 	codeInvalidRequest     = "invalid_request"
 	codeTooLarge           = "request_too_large"
 	codeBudgetExceeded     = "budget_exceeded"
+	codeRateLimited        = "rate_limit_exceeded"
 	codeUnknownProvider    = "unknown_provider"
 	codeWrongEndpoint      = "wrong_endpoint"
 	codeProviderKeyMissing = "provider_key_missing"

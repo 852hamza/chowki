@@ -22,6 +22,7 @@ import (
 	"github.com/852hamza/chowki/internal/netguard"
 	"github.com/852hamza/chowki/internal/pipeline"
 	"github.com/852hamza/chowki/internal/providers"
+	"github.com/852hamza/chowki/internal/ratelimit"
 	"github.com/852hamza/chowki/internal/secretbox"
 	"github.com/852hamza/chowki/internal/server"
 	"github.com/852hamza/chowki/internal/store"
@@ -116,7 +117,8 @@ func serve(ctx context.Context, configPath string, ln net.Listener, logOut io.Wr
 	}()
 
 	gw := &pipeline.Gateway{
-		Store: st, Requests: requests, Budgets: budgets, Providers: ps, Catalog: cat, Logger: logger,
+		Store: st, Requests: requests, Limits: ratelimit.New(), Budgets: budgets,
+		Providers: ps, Catalog: cat, Logger: logger,
 		MaxBody: int64(cfg.Server.MaxBodyMB) << 20, Timeout: cfg.Server.UpstreamTimeout,
 	}
 	logger.Info("chowki started", "version", buildinfo.Version(), "providers", names, "priced_models", cat.Len())
