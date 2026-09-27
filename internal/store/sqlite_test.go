@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -48,10 +49,14 @@ func TestOpenSQLite(t *testing.T) {
 			t.Errorf("PRAGMA %s = %q, %v; want %q", pragma, got, err, want)
 		}
 	}
+	files, err := fs.Glob(migrations, "migrations/*.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
 	var versions int
 	if err := s.db.QueryRowContext(t.Context(), "SELECT count(*) FROM schema_migrations").Scan(&versions); err != nil ||
-		versions != 1 {
-		t.Errorf("schema_migrations has %d rows, %v; want 1", versions, err)
+		versions != len(files) {
+		t.Errorf("schema_migrations has %d rows, %v; want %d", versions, err, len(files))
 	}
 	if err := s.Close(); err != nil {
 		t.Fatal(err)
@@ -149,6 +154,105 @@ func TestKeys(t *testing.T) {
 	}
 }
 
+func usd(v float64) *float64 { return &v }
+
+func TestBudgets(t *testing.T) {
+	s := openTest(t)
+	ctx := t.Context()
+	p, err := s.EnsureProject(ctx, "team")
+	if err != nil || p.BudgetUSD != 0 {
+		t.Fatalf("EnsureProject() = %+v, %v; want no budget", p, err)
+	}
+	k, err := s.CreateKey(ctx, Key{ProjectID: p.ID, Name: "alice", Prefix: "chowki_abcde", BudgetUSD: 50,
+		CreatedAt: time.Now()})
+	if err != nil || k.BudgetUSD != 50 || k.ProjectBudgetUSD != 0 {
+		t.Fatalf("CreateKey() = %+v, %v; want a budget of 50", k, err)
+	}
+
+	if p, err := s.UpdateProject(ctx, "team", ProjectUpdate{BudgetUSD: usd(200)}); err != nil || p.BudgetUSD != 200 {
+		t.Errorf("UpdateProject() = %+v, %v; want a budget of 200", p, err)
+	}
+	if k, err := s.UpdateKey(ctx, "chowki_abcde", KeyUpdate{BudgetUSD: usd(75)}); err != nil || k.BudgetUSD != 75 ||
+		k.ProjectBudgetUSD != 200 {
+		t.Errorf("UpdateKey() = %+v, %v; want budgets of 75 and 200", k, err)
+	}
+	if k, err := s.UpdateKey(ctx, "chowki_abcde", KeyUpdate{}); err != nil || k.BudgetUSD != 75 {
+		t.Errorf("UpdateKey() with no changes = %+v, %v; want the budget kept", k, err)
+	}
+	// 0 removes a budget, which is stored as NULL.
+	if k, err := s.UpdateKey(ctx, "chowki_abcde", KeyUpdate{BudgetUSD: usd(0)}); err != nil || k.BudgetUSD != 0 {
+		t.Errorf("UpdateKey() to 0 = %+v, %v; want no budget", k, err)
+	}
+	var null bool
+	if err := s.db.QueryRowContext(ctx, `SELECT monthly_budget_usd IS NULL FROM virtual_keys`).Scan(&null); err != nil || !null {
+		t.Errorf("a removed budget is stored as NULL = %v, %v", null, err)
+	}
+	if _, err := s.UpdateKey(ctx, "chowki_zzzzz", KeyUpdate{BudgetUSD: usd(1)}); !errors.Is(err, ErrNotFound) {
+		t.Errorf("UpdateKey() of an unknown key: error = %v, want ErrNotFound", err)
+	}
+	if _, err := s.UpdateProject(ctx, "nope", ProjectUpdate{BudgetUSD: usd(1)}); !errors.Is(err, ErrNotFound) {
+		t.Errorf("UpdateProject() of an unknown project: error = %v, want ErrNotFound", err)
+	}
+
+	if _, err := s.EnsureProject(ctx, "alpha"); err != nil {
+		t.Fatal(err)
+	}
+	ps, err := s.ListProjects(ctx)
+	if err != nil || len(ps) != 2 || ps[0].Name != "alpha" || ps[1].Name != "team" || ps[1].BudgetUSD != 200 {
+		t.Errorf("ListProjects() = %+v, %v; want alpha, then team with a budget of 200", ps, err)
+	}
+}
+
+func TestSpend(t *testing.T) {
+	s := openTest(t)
+	ctx := t.Context()
+	p, err := s.EnsureProject(ctx, "team")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var ids []int64
+	for _, prefix := range []string{"chowki_aaaaa", "chowki_bbbbb"} {
+		k, err := s.CreateKey(ctx, Key{ProjectID: p.ID, Name: prefix, Prefix: prefix, CreatedAt: time.Now()})
+		if err != nil {
+			t.Fatal(err)
+		}
+		ids = append(ids, k.ID)
+	}
+	// October 1 at 03:00 in UTC+5 is still September in UTC.
+	sept := time.Date(2026, 10, 1, 3, 0, 0, 0, time.FixedZone("UTC+5", 5*60*60))
+	oct := time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC)
+	rs := []Request{
+		{ID: "r1", Time: sept, KeyID: ids[0], ProjectID: p.ID, CostUSD: usd(1.25)},
+		{ID: "r2", Time: sept, KeyID: ids[0], ProjectID: p.ID, CostUSD: usd(0.5)},
+		{ID: "r3", Time: sept, KeyID: ids[1], ProjectID: p.ID}, // unpriced
+		{ID: "r4", Time: oct, KeyID: ids[1], ProjectID: p.ID, CostUSD: usd(2)},
+	}
+	// The second batch adds to the first.
+	for _, batch := range [][]Request{rs[:1], rs[1:]} {
+		if err := s.InsertRequests(ctx, batch); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// A batch that fails adds no spend.
+	if err := s.InsertRequests(ctx, []Request{{ID: "r1", Time: sept, KeyID: ids[0], CostUSD: usd(100)}}); err == nil {
+		t.Fatal("InsertRequests() accepted a duplicate ID")
+	}
+	// Spend outlives the request records.
+	if _, err := s.DeleteRequestsBefore(ctx, oct.AddDate(1, 0, 0)); err != nil {
+		t.Fatal(err)
+	}
+
+	for period, want := range map[string][]KeySpend{
+		"2026-09": {{KeyID: ids[0], ProjectID: p.ID, USD: 1.75}},
+		"2026-10": {{KeyID: ids[1], ProjectID: p.ID, USD: 2}},
+		"2026-11": nil,
+	} {
+		if got, err := s.SpendByKey(ctx, period); err != nil || !reflect.DeepEqual(got, want) {
+			t.Errorf("SpendByKey(%s) = %+v, %v; want %+v", period, got, err, want)
+		}
+	}
+}
+
 func TestRequests(t *testing.T) {
 	s := openTest(t)
 	ctx := t.Context()
@@ -233,7 +337,11 @@ func TestClosedDatabaseErrors(t *testing.T) {
 	_, checks["KeyByPrefix"] = s.KeyByPrefix(ctx, "x")
 	_, checks["ListKeys"] = s.ListKeys(ctx)
 	_, checks["RevokeKey"] = s.RevokeKey(ctx, "x", time.Now())
+	_, checks["UpdateKey"] = s.UpdateKey(ctx, "x", KeyUpdate{BudgetUSD: usd(1)})
+	_, checks["ListProjects"] = s.ListProjects(ctx)
+	_, checks["UpdateProject"] = s.UpdateProject(ctx, "p", ProjectUpdate{BudgetUSD: usd(1)})
 	checks["InsertRequests"] = s.InsertRequests(ctx, []Request{{ID: "x"}})
+	_, checks["SpendByKey"] = s.SpendByKey(ctx, "2026-09")
 	_, checks["DeleteRequestsBefore"] = s.DeleteRequestsBefore(ctx, time.Now())
 	checks["AddAudit"] = s.AddAudit(ctx, AuditEvent{})
 	for name, err := range checks {

@@ -29,8 +29,20 @@ type Store interface {
 	// RevokeKey marks the key with the given prefix as revoked at the given
 	// time, unless it's revoked already, and returns it as stored.
 	RevokeKey(ctx context.Context, prefix string, at time.Time) (Key, error)
-	// InsertRequests saves request records in one transaction.
+	// UpdateKey changes the settings of the key with the given prefix and
+	// returns it as stored, or ErrNotFound.
+	UpdateKey(ctx context.Context, prefix string, u KeyUpdate) (Key, error)
+	// ListProjects returns every project, by name.
+	ListProjects(ctx context.Context) ([]Project, error)
+	// UpdateProject changes the settings of the project with the given name
+	// and returns it as stored, or ErrNotFound.
+	UpdateProject(ctx context.Context, name string, u ProjectUpdate) (Project, error)
+	// InsertRequests saves request records in one transaction, and adds
+	// their cost to the spend of their keys.
 	InsertRequests(ctx context.Context, rs []Request) error
+	// SpendByKey returns the spend of each key in a period, a calendar
+	// month as Period formats it. Keys without spend are left out.
+	SpendByKey(ctx context.Context, period string) ([]KeySpend, error)
 	// DeleteRequestsBefore deletes the records of requests that started
 	// before t, and returns how many it deleted.
 	DeleteRequestsBefore(ctx context.Context, t time.Time) (int64, error)
@@ -42,9 +54,18 @@ type Store interface {
 
 // Project groups virtual keys.
 type Project struct {
-	ID        int64
-	Name      string
+	ID   int64
+	Name string
+	// BudgetUSD is the project's monthly budget; 0 means none.
+	BudgetUSD float64
 	CreatedAt time.Time
+}
+
+// ProjectUpdate lists the settings of a project to change; nil fields stay
+// as they are.
+type ProjectUpdate struct {
+	// BudgetUSD is the new monthly budget; 0 removes it.
+	BudgetUSD *float64
 }
 
 // Key is a stored virtual key. The key itself is never stored, only its
@@ -53,17 +74,39 @@ type Key struct {
 	ID        int64
 	ProjectID int64
 	// Project is the project name. Reads fill it in; CreateKey ignores it.
-	Project   string
-	Name      string
-	Prefix    string
-	Hash      [32]byte
-	CreatedAt time.Time
+	Project string
+	Name    string
+	Prefix  string
+	Hash    [32]byte
+	// BudgetUSD is the key's monthly budget; 0 means none.
+	BudgetUSD float64
+	// ProjectBudgetUSD is the monthly budget of the key's project; 0 means
+	// none. Reads fill it in; CreateKey ignores it.
+	ProjectBudgetUSD float64
+	CreatedAt        time.Time
 	// RevokedAt is zero while the key is active.
 	RevokedAt time.Time
 }
 
 // Revoked reports whether the key is revoked.
 func (k Key) Revoked() bool { return !k.RevokedAt.IsZero() }
+
+// KeyUpdate lists the settings of a key to change; nil fields stay as they
+// are.
+type KeyUpdate struct {
+	// BudgetUSD is the new monthly budget; 0 removes it.
+	BudgetUSD *float64
+}
+
+// KeySpend is what a key spent in a period.
+type KeySpend struct {
+	KeyID, ProjectID int64
+	USD              float64
+}
+
+// Period returns the calendar month in UTC that spend at t counts
+// towards, such as "2026-09".
+func Period(t time.Time) string { return t.UTC().Format("2006-01") }
 
 // Request is the metadata of one gateway request. It never holds prompts,
 // responses or keys.
