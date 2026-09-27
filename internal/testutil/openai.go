@@ -21,6 +21,7 @@ func NewOpenAI(t testing.TB, cfg Config) *Server {
 	t.Helper()
 	return start(t, cfg, func(s *Server, mux *http.ServeMux) {
 		mux.HandleFunc("POST /v1/chat/completions", s.openAIChat)
+		mux.HandleFunc("POST /v1/responses", s.openAIResponses)
 		mux.HandleFunc("POST /v1/embeddings", s.openAIEmbeddings)
 		mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 			openAIError(w, http.StatusNotFound, "", "unknown path "+r.URL.Path)
@@ -193,4 +194,75 @@ func openAIError(w http.ResponseWriter, status int, param, message string) {
 	writeJSON(w, status, map[string]any{
 		"error": map[string]any{"message": message, "type": typ, "param": p, "code": nil},
 	})
+}
+
+// openAIResponses serves the Responses API: a response with a message, or a
+// stream of events that ends with response.completed, which carries the
+// usage. Format: Response and the events of the openai-python SDK,
+// https://github.com/openai/openai-python/tree/main/src/openai/types/responses.
+func (s *Server) openAIResponses(w http.ResponseWriter, r *http.Request) {
+	if !s.authorized(bearer(r)) {
+		openAIError(w, http.StatusUnauthorized, "", "Incorrect API key provided.")
+		return
+	}
+	if s.cfg.FailStatus != 0 {
+		openAIError(w, s.cfg.FailStatus, "", "fake provider failure")
+		return
+	}
+	var req struct {
+		Model  string          `json:"model"`
+		Input  json.RawMessage `json:"input"`
+		Stream bool            `json:"stream"`
+	}
+	switch err := json.NewDecoder(r.Body).Decode(&req); {
+	case err != nil:
+		openAIError(w, http.StatusBadRequest, "", "invalid JSON body: "+err.Error())
+		return
+	case req.Model == "" || len(req.Input) == 0:
+		openAIError(w, http.StatusBadRequest, "input", "model and input are required")
+		return
+	}
+	id, msgID := s.id("resp_fake"), s.id("msg_fake")
+	u := s.cfg.Usage
+	usage := map[string]any{
+		"input_tokens":          u.Input,
+		"input_tokens_details":  map[string]any{"cached_tokens": u.CacheRead, "cache_write_tokens": u.CacheWrite},
+		"output_tokens":         u.Output,
+		"output_tokens_details": map[string]any{"reasoning_tokens": u.Reasoning},
+		"total_tokens":          u.Input + u.Output,
+	}
+	response := func(status string, text string, withUsage bool) map[string]any {
+		out := []any{}
+		if text != "" {
+			out = append(out, map[string]any{"type": "message", "id": msgID, "status": "completed", "role": "assistant",
+				"content": []any{map[string]any{"type": "output_text", "text": text, "annotations": []any{}}}})
+		}
+		resp := map[string]any{"id": id, "object": "response", "created_at": fakeCreated, "status": status,
+			"model": req.Model, "output": out, "usage": nil}
+		if withUsage {
+			resp["usage"] = usage
+		}
+		return resp
+	}
+	if !req.Stream {
+		writeJSON(w, http.StatusOK, response("completed", s.cfg.text(), true))
+		return
+	}
+	sse := newSSE(w, r, s.cfg.ChunkDelay)
+	seq := 0
+	send := func(event string, data map[string]any) bool {
+		data["type"], data["sequence_number"] = event, seq
+		seq++
+		return sse.send(event, data)
+	}
+	if !send("response.created", map[string]any{"response": response("in_progress", "", false)}) {
+		return
+	}
+	for i, piece := range s.cfg.pieces() {
+		if i > 0 && !sse.pause() || !send("response.output_text.delta", map[string]any{"item_id": msgID,
+			"output_index": 0, "content_index": 0, "delta": piece}) {
+			return
+		}
+	}
+	send("response.completed", map[string]any{"response": response("completed", s.cfg.text(), true)})
 }

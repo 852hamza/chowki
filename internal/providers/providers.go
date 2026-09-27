@@ -75,6 +75,7 @@ func New(cfgs []config.Provider, guard netguard.Policy) (map[string]*Provider, e
 // their SDKs.
 const (
 	ChatCompletions = "/chat/completions"
+	Responses       = "/responses"
 	Embeddings      = "/embeddings"
 	Messages        = "/v1/messages"
 	CountTokens     = "/v1/messages/count_tokens" //nolint:gosec // G101: an API path, not a credential

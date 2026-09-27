@@ -229,3 +229,44 @@ func FuzzParseResponse(f *testing.F) {
 		}
 	})
 }
+
+// The Responses API counts like chat completions, in other fields; in a
+// stream, the event that ends the response carries its usage.
+func TestResponsesUsage(t *testing.T) {
+	body := `{"id":"resp_1","object":"response","model":"gpt-6-sol","service_tier":"default","usage":{"input_tokens":100,` +
+		`"input_tokens_details":{"cached_tokens":60,"cache_write_tokens":10},"output_tokens":30,` +
+		`"output_tokens_details":{"reasoning_tokens":20},"total_tokens":130}}`
+	want := Usage{Input: 100, Output: 30, CacheRead: 60, CacheWrite: 10, Reasoning: 20}
+	r, err := ParseResponse(OpenAIResponses, []byte(body))
+	if err != nil || r.Usage == nil || *r.Usage != want || r.Model != "gpt-6-sol" || r.Modifier != "" {
+		t.Errorf("ParseResponse() = %+v (%+v), %v", r, r.Usage, err)
+	}
+	if r, _ := ParseResponse(OpenAIResponses, []byte(`{"model":"m","service_tier":"flex","usage":null}`)); r.Usage != nil ||
+		r.Modifier != "service tier flex" {
+		t.Errorf("a flex response = %+v", r)
+	}
+	s := NewStream(OpenAIResponses)
+	s.Event("response.created", []byte(`{"type":"response.created","response":{"model":"gpt-6-sol","usage":null}}`))
+	s.Event("response.output_text.delta", []byte(`{"type":"response.output_text.delta","delta":"hi"}`))
+	s.Event("response.completed", []byte(`{"type":"response.completed","response":`+body+`}`))
+	if r := s.Report(); r.Usage == nil || *r.Usage != want || r.Model != "gpt-6-sol" {
+		t.Errorf("stream report = %+v (%+v)", r, r.Usage)
+	}
+	oa := testutil.NewOpenAI(t, testutil.Config{Usage: fakeUsage})
+	for _, stream := range []bool{false, true} {
+		got := fetch(t, oa.URL+"/v1/responses", nil, `{"model":"gpt-test","input":"hi","stream":`+
+			map[bool]string{false: "false", true: "true"}[stream]+`}`)
+		var r Report
+		if stream {
+			s := NewStream(OpenAIResponses)
+			feed(s, got)
+			r = s.Report()
+		} else {
+			r, _ = ParseResponse(OpenAIResponses, []byte(got))
+		}
+		if want := (Usage{Input: 1200, Output: 340, CacheRead: 1000, CacheWrite: 150, Reasoning: 120}); r.Usage == nil ||
+			*r.Usage != want {
+			t.Errorf("stream %v: usage %+v, want %+v", stream, r.Usage, want)
+		}
+	}
+}

@@ -95,6 +95,8 @@ All notable changes to Chowki are recorded in this file. The format is based on
   `GET /v1/models` lists their models.
 - The model catalog lists each model's context window, maximum output and capabilities: tools,
   vision, JSON output, caching and thinking.
+- `POST /v1/responses` relays OpenAI's Responses API to OpenAI-compatible providers, with usage,
+  cost, budgets, the exact cache and redaction, for clients such as the Codex CLI.
 - `chowki scan` finds secrets in a repository, `.env` files and MCP configurations: keys of AI
   providers and clouds, private keys, tokens, and passwords assigned to settings, and with
   `--pii`, personal data. It never prints the secrets. Reports come as text, JSON or SARIF 2.1.0,

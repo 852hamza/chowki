@@ -50,7 +50,7 @@ func Compute(f Family, r Report, m *catalog.Model, at time.Time) Cost {
 
 	var writes float64 // cost of the cache writes, in tokens × price
 	switch f {
-	case OpenAI, Gemini:
+	case OpenAI, OpenAIResponses, Gemini:
 		// Without a cache write price, writes cost the input price, as for
 		// OpenAI models before GPT-5.6. Gemini reports no writes: its
 		// implicit cache is free to fill.

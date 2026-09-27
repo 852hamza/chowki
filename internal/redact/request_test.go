@@ -93,6 +93,30 @@ func TestRequestEmbeddings(t *testing.T) {
 	}
 }
 
+func TestRequestResponses(t *testing.T) {
+	r := New([]byte("k"), ModeMask)
+	body := `{"model":"m","instructions":"Mail jane.doe@company.io","input":[` +
+		`{"role":"user","content":"key ` + awsKey + `"},` +
+		`{"role":"user","content":[{"type":"input_text","text":"Call +14155552671"},` +
+		`{"type":"input_image","image_url":"data:image/png;base64,` + awsKey + `"}]},` +
+		`{"type":"function_call","call_id":"c1","name":"f","arguments":"{\"k\":\"` + awsKey + `\"}"},` +
+		`{"type":"function_call_output","call_id":"c1","output":"card 4111 1111 1111 1111"}]}`
+	out, counts, err := r.Request("responses", []byte(body), true)
+	want := map[string]int{TypeEmail: 1, TypeAWSKey: 1, TypePhone: 1, TypeCard: 1}
+	if err != nil || !json.Valid(out) || !maps.Equal(counts, want) {
+		t.Fatalf("Request() = %s, %v, %v; want %v", out, counts, err, want)
+	}
+	for _, kept := range []string{`base64,` + awsKey, `\"k\":\"` + awsKey} {
+		if !strings.Contains(string(out), kept) {
+			t.Errorf("Request() changed %s", kept)
+		}
+	}
+	if out, counts, _ := r.Request("responses", []byte(`{"input":"mail jane.doe@company.io"}`), true); counts[TypeEmail] != 1 ||
+		strings.Contains(string(out), "jane.doe") {
+		t.Errorf("a string input = %s", out)
+	}
+}
+
 func TestRequestGeminiEmbeddings(t *testing.T) {
 	r := New([]byte("k"), ModeMask)
 	for body, want := range map[string]int{
@@ -156,7 +180,7 @@ func FuzzRequest(f *testing.F) {
 		if !json.Valid([]byte(body)) {
 			return
 		}
-		for _, family := range []string{"openai", "anthropic", "embeddings", "gemini", "gemini-embeddings"} {
+		for _, family := range []string{"openai", "anthropic", "responses", "embeddings", "gemini", "gemini-embeddings"} {
 			out, _, err := r.Request(family, []byte(body), true)
 			if err == nil && !json.Valid(out) {
 				t.Fatalf("Request(%s) = %s, which isn't JSON", body, out)

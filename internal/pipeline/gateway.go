@@ -135,7 +135,7 @@ type call struct {
 }
 
 func (g *Gateway) serve(w http.ResponseWriter, r *http.Request, ep Endpoint, pathModel string) {
-	c := &call{ep: ep, family: ep.Family, upstream: ep.Family, pathModel: pathModel, id: newRequestID(),
+	c := &call{ep: ep, family: ep.Family, upstream: ep.usage(), pathModel: pathModel, id: newRequestID(),
 		start: time.Now(), w: &trackingWriter{ResponseWriter: w}}
 	c.w.Header().Set(RequestIDHeader, c.id)
 	if e := g.handle(r.Context(), c, r); e != nil {
@@ -202,7 +202,7 @@ func (g *Gateway) handle(ctx context.Context, c *call, r *http.Request) *apiErro
 	edits := map[string][]byte{}
 	// OpenAI streams report usage only on request. The extra chunk that
 	// carries it is hidden from clients that didn't ask for it.
-	dropUsage := c.family == usage.OpenAI && req.stream && !req.includeUsage
+	dropUsage := c.ep == OpenAIChat && req.stream && !req.includeUsage
 	if dropUsage {
 		req.streamOptions["include_usage"] = json.RawMessage("true")
 		edits["stream_options"], _ = json.Marshal(req.streamOptions) // raw JSON values always marshal
@@ -302,6 +302,7 @@ func (g *Gateway) prepare(c *call, obj *object, edits map[string][]byte, request
 	c.upstream = family(t.Provider.Type)
 	c.translated = c.upstream != c.family
 	if !c.translated {
+		c.upstream = c.ep.usage()
 		return c.ep.target(t.Model), c.upstreamBody(obj, edits, requested, t.Model), r.Header, nil
 	}
 	var err error
