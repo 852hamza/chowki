@@ -107,6 +107,7 @@ func TestKeyErrors(t *testing.T) {
 		{[]string{"key", "update", "--tpm", "-5", "chowki_nope1"}, exitUsage, "--tpm must be 0 or more"},
 		{[]string{"key", "create", "--name", "a", "--cache", "always"}, exitUsage, "--cache must be exact, off or default"},
 		{[]string{"key", "create", "--name", "a", "--redaction", "hide"}, exitUsage, "--redaction must be mask, block"},
+		{[]string{"key", "create", "--name", "a", "--models", "openai/[x"}, exitUsage, `"openai/[x" isn't a valid pattern`},
 		{[]string{"key", "update", "--budget-usd", "5"}, exitUsage, "Usage:"},
 		{[]string{"key", "update", "--budget-usd", "Inf", "chowki_nope1"}, exitUsage, "must be an amount"},
 		{[]string{"key", "update", "--budget-usd", "5", "chowki_nope1"}, exitError,
@@ -214,6 +215,13 @@ func TestKeyCacheMode(t *testing.T) {
 	}
 	if fields := strings.Fields(strings.Split(runOK(t, "key", "list"), "\n")[1]); len(fields) < 9 || fields[8] != "block" {
 		t.Errorf("list row = %q; want the redaction mode block", fields)
+	}
+	if out := runOK(t, "key", "update", "--models", "fast, openai/*", prefix); !strings.Contains(out,
+		"  Models:               fast, openai/*\n") {
+		t.Errorf("update output = %q", out)
+	}
+	if out := runOK(t, "key", "update", "--models", "all", prefix); !strings.Contains(out, "  Models:               all\n") {
+		t.Errorf("update output = %q", out)
 	}
 	// A key without settings doesn't print them.
 	if out := runOK(t, "key", "create", "--name", "plain"); strings.Contains(out, "Settings:") {

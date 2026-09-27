@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"path"
 	"slices"
 	"strconv"
 	"strings"
@@ -35,6 +36,8 @@ SETTINGS are one or more of these:
   --cache <MODE>      exact cache: exact, off, or default to follow chowki.yaml
   --redaction <MODE>  secrets and personal data in prompts: mask, block, alert,
                       off, or default to follow chowki.yaml
+  --models <LIST>     comma-separated models, aliases and patterns such as
+                      openai/* that the key may use; all allows every model
 
 A virtual key is shown once, when you create it. Update or revoke a key by
 its prefix, the first 12 characters, as "chowki key list" shows them.
@@ -73,7 +76,7 @@ func keyCreate(ctx context.Context, args []string, stdout, stderr io.Writer) int
 		now := time.Now().UTC()
 		key, k, err := auth.Create(ctx, st, *project, store.Key{Name: *name, BudgetUSD: *settings.budgetUSD,
 			RPM: *settings.rpm, TPM: *settings.tpm, CacheMode: settings.cacheMode(),
-			RedactionMode: settings.redactionMode()}, now)
+			RedactionMode: settings.redactionMode(), AllowedModels: settings.models()}, now)
 		if err != nil {
 			return err
 		}
@@ -89,7 +92,8 @@ func keyCreate(ctx context.Context, args []string, stdout, stderr io.Writer) int
 		}
 		fmt.Fprintf(stdout, "Created virtual key %q in project %q:\n\n  %s\n\n"+
 			"Copy it now. Chowki stores only a hash of it and can't show it again.\n", k.Name, k.Project, key)
-		if k.BudgetUSD > 0 || k.RPM > 0 || k.TPM > 0 || k.CacheMode != "" || k.RedactionMode != "" {
+		if k.BudgetUSD > 0 || k.RPM > 0 || k.TPM > 0 || k.CacheMode != "" || k.RedactionMode != "" ||
+			len(k.AllowedModels) > 0 {
 			fmt.Fprintln(stdout, "\nSettings:")
 			printSettings(stdout, k)
 		}
@@ -151,7 +155,8 @@ func keyUpdate(ctx context.Context, args []string, stdout, stderr io.Writer) int
 	}
 	u := settings.update(flags)
 	if u == (store.KeyUpdate{}) {
-		fmt.Fprint(stderr, "chowki key update: nothing to change; set --budget-usd, --rpm, --tpm, --cache or --redaction\n")
+		fmt.Fprint(stderr, "chowki key update: nothing to change; set --budget-usd, --rpm, --tpm, --cache, "+
+			"--redaction or --models\n")
 		return exitUsage
 	}
 	if err := settings.check(); err != nil {
@@ -240,9 +245,9 @@ func withStore(ctx context.Context, configPath string, stderr io.Writer, command
 
 // settingFlags are the flags that set a key's limits and modes.
 type settingFlags struct {
-	budgetUSD        *float64
-	rpm, tpm         *int64
-	cache, redaction *string
+	budgetUSD                   *float64
+	rpm, tpm                    *int64
+	cache, redaction, modelList *string
 }
 
 func addSettingFlags(flags *flag.FlagSet) settingFlags {
@@ -252,6 +257,7 @@ func addSettingFlags(flags *flag.FlagSet) settingFlags {
 		tpm:       flags.Int64("tpm", 0, "limit of input and output tokens per minute; 0 means none"),
 		cache:     flags.String("cache", "default", "exact cache: exact, off, or default to follow chowki.yaml"),
 		redaction: flags.String("redaction", "default", "mask, block, alert, off, or default to follow chowki.yaml"),
+		modelList: flags.String("models", "all", "comma-separated models, aliases and patterns that the key may use"),
 	}
 }
 
@@ -272,6 +278,9 @@ func (s settingFlags) update(flags *flag.FlagSet) store.KeyUpdate {
 		case "redaction":
 			mode := s.redactionMode()
 			u.RedactionMode = &mode
+		case "models":
+			models := s.models()
+			u.AllowedModels = &models
 		}
 	})
 	return u
@@ -281,6 +290,20 @@ func (s settingFlags) update(flags *flag.FlagSet) store.KeyUpdate {
 // them: "" follows the configuration.
 func (s settingFlags) cacheMode() string     { return storedMode(*s.cache) }
 func (s settingFlags) redactionMode() string { return storedMode(*s.redaction) }
+
+// models is the key's model allowlist: empty allows every model.
+func (s settingFlags) models() []string {
+	if strings.TrimSpace(*s.modelList) == "all" {
+		return nil
+	}
+	var out []string
+	for _, m := range strings.Split(*s.modelList, ",") {
+		if m = strings.TrimSpace(m); m != "" {
+			out = append(out, m)
+		}
+	}
+	return out
+}
 
 func storedMode(flag string) string {
 	if flag == "default" {
@@ -304,14 +327,24 @@ func (s settingFlags) check() error {
 		*s.redaction):
 		return errors.New("--redaction must be mask, block, alert, off or default")
 	}
+	for _, m := range s.models() {
+		if _, err := path.Match(m, ""); err != nil {
+			return fmt.Errorf("--models: %q isn't a valid pattern", m)
+		}
+	}
 	return nil
 }
 
 // printSettings shows the settings of key k, indented.
 func printSettings(w io.Writer, k store.Key) {
+	models := "all"
+	if len(k.AllowedModels) > 0 {
+		models = strings.Join(k.AllowedModels, ", ")
+	}
 	fmt.Fprintf(w, "  Monthly budget:       %s\n  Requests per minute:  %s\n  Tokens per minute:    %s\n"+
-		"  Exact cache:          %s\n  Redaction:            %s\n", formatBudget(k.BudgetUSD), formatLimit(k.RPM),
-		formatLimit(k.TPM), orDefault(k.CacheMode), orDefault(k.RedactionMode))
+		"  Exact cache:          %s\n  Redaction:            %s\n  Models:               %s\n",
+		formatBudget(k.BudgetUSD), formatLimit(k.RPM), formatLimit(k.TPM), orDefault(k.CacheMode),
+		orDefault(k.RedactionMode), models)
 }
 
 // settingDetails returns the settings of key k for the audit log, exactly;
@@ -319,7 +352,8 @@ func printSettings(w io.Writer, k store.Key) {
 func settingDetails(k store.Key) map[string]string {
 	return map[string]string{"monthly_budget_usd": formatAmount(k.BudgetUSD),
 		"rpm": strconv.FormatInt(k.RPM, 10), "tpm": strconv.FormatInt(k.TPM, 10),
-		"cache": orDefault(k.CacheMode), "redaction": orDefault(k.RedactionMode)}
+		"cache": orDefault(k.CacheMode), "redaction": orDefault(k.RedactionMode),
+		"models": strings.Join(k.AllowedModels, ",")}
 }
 
 // orDefault shows a key's mode, where "" follows the configuration.
