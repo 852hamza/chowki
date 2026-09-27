@@ -213,3 +213,23 @@ func TestGeminiFallback(t *testing.T) {
 		t.Errorf("records = %+v", recs)
 	}
 }
+
+// A provider on its free tier bills nothing: its requests cost $0 and
+// spend no budget, whatever the catalog's prices.
+func TestFreeTier(t *testing.T) {
+	h := newGeminiHarness(t, testutil.Config{Usage: geminiUsage}, func(_ *harness, cfgs *[]config.Provider) {
+		(*cfgs)[len(*cfgs)-1].FreeTier = true
+	})
+	setKeyBudget(t, h, 0.000001)
+	for range 2 {
+		resp := h.post(t.Context(), "/gemini/v1beta/models/gemini-test:generateContent", geminiBody)
+		if readBody(t, resp); resp.StatusCode != http.StatusOK || resp.Header.Get(pipeline.CostHeader) != "0.00000000" {
+			t.Fatalf("status %d, cost header %q", resp.StatusCode, resp.Header.Get(pipeline.CostHeader))
+		}
+	}
+	for _, r := range h.records() {
+		if r.CostUSD == nil || *r.CostUSD != 0 || r.SavingsUSD != 0 || r.Tokens == nil {
+			t.Errorf("record = %+v; want usage at no cost", r)
+		}
+	}
+}

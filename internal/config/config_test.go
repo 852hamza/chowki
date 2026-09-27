@@ -54,6 +54,11 @@ providers:
     type: openai
     base_url: https://api.example.com/v1
     api_key_env: UNSET_KEY
+  - name: gemini
+    type: gemini
+    base_url: https://generativelanguage.googleapis.com
+    api_key_env: GEMINI_API_KEY
+    free_tier: true
 aliases:
   fast: ["missing-key/small", "openai/gpt-x"]
 `
@@ -91,6 +96,8 @@ func TestParseFile(t *testing.T) {
 			{Name: "anthropic", Type: TypeAnthropic, BaseURL: "https://api.anthropic.com", APIKeyEnv: "ANTHROPIC_API_KEY",
 				APIKey: "sk-ant-EXAMPLE"},
 			{Name: "missing-key", Type: TypeOpenAI, BaseURL: "https://api.example.com/v1", APIKeyEnv: "UNSET_KEY"},
+			{Name: "gemini", Type: TypeGemini, BaseURL: "https://generativelanguage.googleapis.com",
+				APIKeyEnv: "GEMINI_API_KEY", FreeTier: true},
 		},
 		Aliases: map[string][]string{"fast": {"missing-key/small", "openai/gpt-x"}},
 	}

@@ -98,6 +98,9 @@ type Provider struct {
 	// APIKeyEnv names the environment variable that holds the provider key.
 	// Empty means the provider needs no key, like a local Ollama server.
 	APIKeyEnv string `yaml:"api_key_env"`
+	// FreeTier means the provider doesn't bill the requests, as on the free
+	// tier of the Gemini API: they cost $0 whatever the catalog's prices.
+	FreeTier bool `yaml:"free_tier"`
 	// APIKey is the provider key, read from APIKeyEnv when the
 	// configuration loads. Keys are never read from the file.
 	APIKey Secret `yaml:"-"`

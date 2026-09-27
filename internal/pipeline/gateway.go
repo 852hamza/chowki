@@ -542,7 +542,7 @@ func (g *Gateway) admit(c *call, body []byte) *apiError {
 	c.tokens = tk
 
 	var estimate float64
-	if hasBudget {
+	if hasBudget && !c.provider.Free {
 		if m, ok := g.Catalog.Find(c.provider.Name, c.model); ok {
 			estimate = float64(tokens) * m.PriceFor(tokens, c.start).Input / 1e6
 		}
@@ -665,6 +665,10 @@ func copyHeaders(dst, src http.Header) {
 }
 
 func (g *Gateway) cost(c *call) usage.Cost {
+	if c.provider != nil && c.provider.Free && c.report.Usage != nil {
+		free := 0.0
+		return usage.Cost{USD: &free}
+	}
 	var m *catalog.Model
 	if c.provider != nil {
 		var ok bool

@@ -20,6 +20,8 @@ type Provider struct {
 	// Name and Type come from the configuration.
 	Name string
 	Type string
+	// Free means the provider doesn't bill the requests: its free tier.
+	Free bool
 
 	base   *url.URL
 	key    config.Secret
@@ -62,7 +64,8 @@ func New(cfgs []config.Provider, guard netguard.Policy) (map[string]*Provider, e
 		if err != nil {
 			return nil, fmt.Errorf("provider %s: %w", c.Name, err)
 		}
-		ps[c.Name] = &Provider{Name: c.Name, Type: c.Type, base: base, key: c.APIKey, keyEnv: c.APIKeyEnv, client: client}
+		ps[c.Name] = &Provider{Name: c.Name, Type: c.Type, Free: c.FreeTier, base: base, key: c.APIKey,
+			keyEnv: c.APIKeyEnv, client: client}
 	}
 	return ps, nil
 }
