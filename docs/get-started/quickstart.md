@@ -162,6 +162,10 @@ token counts and cost.
 
 ## Troubleshooting
 
+When something doesn't work, run `chowki doctor` in the Chowki folder: it checks the configuration,
+the keys, the database and the port, and says what to fix. See
+[Check your setup](../how-to/check-your-setup.md).
+
 | Symptom | Cause | Fix |
 |---|---|---|
 | `chowki serve` fails with `address already in use` | Another program uses port 8080. | Start with `CHOWKI_SERVER_LISTEN=:8081 chowki serve`, and send requests to port 8081. |

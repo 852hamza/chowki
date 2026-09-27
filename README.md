@@ -67,6 +67,8 @@ make build
   Chowki with two environment variables.
 - [Use local models with Ollama](docs/how-to/use-local-models-with-ollama.md): reach local models
   with virtual keys.
+- [Check your setup](docs/how-to/check-your-setup.md): find what stops the gateway from starting
+  or working, with `chowki doctor`.
 - [API reference](docs/reference/api.md): endpoints, headers and error codes.
 - [Admin API reference](docs/reference/admin-api.md): reports, and managing keys and projects.
 - [Configuration reference](docs/reference/configuration.md): every setting and its environment
