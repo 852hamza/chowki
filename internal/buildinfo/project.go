@@ -9,7 +9,7 @@ var (
 	owner   = "852hamza"
 	repo    = "chowki"
 	website = ""
-	docs    = ""
+	docs    = "https://github.com/852hamza/chowki/tree/main/docs"
 )
 
 // Project returns the identity this binary was built with.
