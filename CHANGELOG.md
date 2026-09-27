@@ -22,5 +22,7 @@ All notable changes to Chowki are recorded in this file. The format is based on
   It never replaces an existing file.
 - `chowki key create`, `list` and `revoke` manage virtual keys. A key is shown once; Chowki stores
   only its prefix and SHA-256 hash, and every change goes to the audit log.
+- A model catalog, `catalog/models.json`, with the official prices of current OpenAI and Anthropic
+  models, including cache writes, 1-hour cache writes and long-context prices.
 
 [Unreleased]: https://github.com/852hamza/chowki/commits/main
