@@ -102,6 +102,9 @@ func TestKeyErrors(t *testing.T) {
 		{[]string{"key", "create", "--name", "a", "--budget-usd", "NaN"}, exitUsage, "must be an amount of 0 or more"},
 		{[]string{"key", "create", "--name", "a", "--budget-usd", "ten"}, exitUsage, "invalid value"},
 		{[]string{"key", "update", "chowki_nope1"}, exitUsage, "nothing to change"},
+		{[]string{"key", "create", "--name", "a", "--rpm", "-1"}, exitUsage, "--rpm must be 0 or more"},
+		{[]string{"key", "create", "--name", "a", "--tpm", "1.5"}, exitUsage, "invalid value"},
+		{[]string{"key", "update", "--tpm", "-5", "chowki_nope1"}, exitUsage, "--tpm must be 0 or more"},
 		{[]string{"key", "update", "--budget-usd", "5"}, exitUsage, "Usage:"},
 		{[]string{"key", "update", "--budget-usd", "Inf", "chowki_nope1"}, exitUsage, "must be an amount"},
 		{[]string{"key", "update", "--budget-usd", "5", "chowki_nope1"}, exitError,
@@ -126,7 +129,7 @@ func TestKeyBudgets(t *testing.T) {
 	initDir(t)
 	out := runOK(t, "key", "create", "--name", "alice", "--budget-usd", "50")
 	m := printedKeyRE.FindStringSubmatch(out)
-	if m == nil || !strings.Contains(out, "with a monthly budget of $50.00:") {
+	if m == nil || !strings.Contains(out, "\nLimits:\n  Monthly budget:       $50.00\n") {
 		t.Fatalf("create output = %q", out)
 	}
 	prefix := m[1][:auth.PrefixLen]
@@ -153,10 +156,11 @@ func TestKeyBudgets(t *testing.T) {
 	}
 
 	if out := runOK(t, "key", "update", "--budget-usd", "75.5", m[1]); !strings.Contains(out,
-		"Virtual key "+prefix+` ("alice") now has a monthly budget of $75.50.`) {
+		"Updated the limits of virtual key "+prefix+` ("alice"):`+"\n  Monthly budget:       $75.50\n") {
 		t.Errorf("update output = %q", out)
 	}
-	if out := runOK(t, "key", "update", "--budget-usd", "0", prefix); !strings.Contains(out, "now has no monthly budget") {
+	if out := runOK(t, "key", "update", "--budget-usd", "0", prefix); !strings.Contains(out,
+		"Monthly budget:       none") {
 		t.Errorf("update to 0 output = %q", out)
 	}
 	if list := runOK(t, "key", "list"); !strings.Contains(list, "none") {
@@ -164,6 +168,26 @@ func TestKeyBudgets(t *testing.T) {
 	}
 	if n := countAudit(t, "key.update", prefix); n != 2 {
 		t.Errorf("audit log has %d key.update entries, want 2", n)
+	}
+}
+
+func TestKeyRateLimits(t *testing.T) {
+	initDir(t)
+	out := runOK(t, "key", "create", "--name", "ci-bot", "--rpm", "60", "--tpm", "100000")
+	m := printedKeyRE.FindStringSubmatch(out)
+	if m == nil || !strings.Contains(out, "  Monthly budget:       none\n  Requests per minute:  60\n"+
+		"  Tokens per minute:    100000\n") {
+		t.Fatalf("create output = %q", out)
+	}
+	prefix := m[1][:auth.PrefixLen]
+	list := runOK(t, "key", "list")
+	if fields := strings.Fields(strings.Split(list, "\n")[1]); len(fields) < 7 || fields[5] != "60" ||
+		fields[6] != "100000" || !strings.Contains(list, "RPM") {
+		t.Errorf("list doesn't show 60 RPM and 100000 TPM:\n%s", list)
+	}
+	if out := runOK(t, "key", "update", "--rpm", "0", "--tpm", "5000", prefix); !strings.Contains(out,
+		"  Requests per minute:  none\n  Tokens per minute:    5000\n") {
+		t.Errorf("update output = %q", out)
 	}
 }
 

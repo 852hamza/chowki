@@ -20,14 +20,18 @@ import (
 )
 
 const keyUsage = `Usage:
-  chowki key create --name <NAME> [--project <PROJECT>] [--budget-usd <USD>] [--config <FILE>]
+  chowki key create --name <NAME> [--project <PROJECT>] [LIMITS] [--config <FILE>]
   chowki key list [--config <FILE>]
-  chowki key update [--config <FILE>] --budget-usd <USD> <PREFIX>
+  chowki key update [--config <FILE>] LIMITS <PREFIX>
   chowki key revoke [--config <FILE>] <PREFIX>
+
+LIMITS are one or more of these; 0 means no limit:
+  --budget-usd <USD>  monthly budget in US dollars
+  --rpm <N>           requests per minute
+  --tpm <N>           tokens per minute, input and output together
 
 A virtual key is shown once, when you create it. Update or revoke a key by
 its prefix, the first 12 characters, as "chowki key list" shows them.
---budget-usd sets a monthly budget in US dollars; 0 means no budget.
 `
 
 func runKey(args []string, stdout, stderr io.Writer) int {
@@ -45,7 +49,7 @@ func keyCreate(ctx context.Context, args []string, stdout, stderr io.Writer) int
 	configPath := flags.String("config", defaultConfig, "configuration file")
 	name := flags.String("name", "", "who or what uses the key, such as alice or ci-bot (required)")
 	project := flags.String("project", "default", "project that the key belongs to")
-	budgetUSD := flags.Float64("budget-usd", 0, "monthly budget in US dollars; 0 means none")
+	limits := addLimitFlags(flags)
 	if err := flags.Parse(args); err != nil || flags.NArg() > 0 {
 		return exitUsage
 	}
@@ -55,28 +59,33 @@ func keyCreate(ctx context.Context, args []string, stdout, stderr io.Writer) int
 			return exitUsage
 		}
 	}
-	if err := checkBudget(*budgetUSD); err != nil {
+	if err := limits.check(); err != nil {
 		fmt.Fprintf(stderr, "chowki key create: %v\n", err)
 		return exitUsage
 	}
 	return withStore(ctx, *configPath, stderr, "chowki key create", func(st store.Store) error {
 		now := time.Now().UTC()
-		key, k, err := auth.Create(ctx, st, *project, store.Key{Name: *name, BudgetUSD: *budgetUSD}, now)
+		key, k, err := auth.Create(ctx, st, *project, store.Key{Name: *name, BudgetUSD: *limits.budgetUSD,
+			RPM: *limits.rpm, TPM: *limits.tpm}, now)
 		if err != nil {
 			return err
 		}
 		details := map[string]string{"name": k.Name, "project": k.Project}
-		withBudget := ""
-		if k.BudgetUSD > 0 {
-			details["monthly_budget_usd"] = formatAmount(k.BudgetUSD)
-			withBudget = " with a monthly budget of " + budget.FormatUSD(k.BudgetUSD)
+		for name, v := range limitDetails(k) {
+			if v != "0" { // limits that a new key doesn't have aren't news
+				details[name] = v
+			}
 		}
 		if err := st.AddAudit(ctx, store.AuditEvent{Time: now, Actor: "cli", Action: "key.create", Target: k.Prefix,
 			Details: details}); err != nil {
 			return err
 		}
-		fmt.Fprintf(stdout, "Created virtual key %q in project %q%s:\n\n  %s\n\n"+
-			"Copy it now. Chowki stores only a hash of it and can't show it again.\n", k.Name, k.Project, withBudget, key)
+		fmt.Fprintf(stdout, "Created virtual key %q in project %q:\n\n  %s\n\n"+
+			"Copy it now. Chowki stores only a hash of it and can't show it again.\n", k.Name, k.Project, key)
+		if k.BudgetUSD > 0 || k.RPM > 0 || k.TPM > 0 {
+			fmt.Fprintln(stdout, "\nLimits:")
+			printLimits(stdout, k)
+		}
 		return nil
 	})
 }
@@ -107,14 +116,15 @@ func keyList(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 			spent[s.KeyID] = s.USD
 		}
 		tw := tabwriter.NewWriter(stdout, 0, 0, 2, ' ', 0)
-		fmt.Fprintf(tw, "PREFIX\tNAME\tPROJECT\tSPENT %s\tBUDGET\tCREATED\tSTATUS\n", period)
+		fmt.Fprintf(tw, "PREFIX\tNAME\tPROJECT\tSPENT %s\tBUDGET\tRPM\tTPM\tCREATED\tSTATUS\n", period)
 		for _, k := range keys {
 			status := "active"
 			if k.Revoked() {
 				status = "revoked " + formatTime(k.RevokedAt)
 			}
-			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\n", k.Prefix, k.Name, k.Project,
-				budget.FormatUSD(spent[k.ID]), formatBudget(k.BudgetUSD), formatTime(k.CreatedAt), status)
+			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n", k.Prefix, k.Name, k.Project,
+				budget.FormatUSD(spent[k.ID]), formatBudget(k.BudgetUSD), formatLimit(k.RPM), formatLimit(k.TPM),
+				formatTime(k.CreatedAt), status)
 		}
 		return tw.Flush()
 	})
@@ -124,24 +134,19 @@ func keyUpdate(ctx context.Context, args []string, stdout, stderr io.Writer) int
 	flags := flag.NewFlagSet("chowki key update", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	configPath := flags.String("config", defaultConfig, "configuration file")
-	budgetUSD := flags.Float64("budget-usd", 0, "monthly budget in US dollars; 0 removes it")
+	limits := addLimitFlags(flags)
 	if err := flags.Parse(args); err != nil || flags.NArg() != 1 {
 		if err == nil {
 			fmt.Fprint(stderr, keyUsage)
 		}
 		return exitUsage
 	}
-	var u store.KeyUpdate
-	flags.Visit(func(f *flag.Flag) {
-		if f.Name == "budget-usd" {
-			u.BudgetUSD = budgetUSD
-		}
-	})
-	if u.BudgetUSD == nil {
-		fmt.Fprint(stderr, "chowki key update: nothing to change; set --budget-usd\n")
+	u := limits.update(flags)
+	if u == (store.KeyUpdate{}) {
+		fmt.Fprint(stderr, "chowki key update: nothing to change; set --budget-usd, --rpm or --tpm\n")
 		return exitUsage
 	}
-	if err := checkBudget(*u.BudgetUSD); err != nil {
+	if err := limits.check(); err != nil {
 		fmt.Fprintf(stderr, "chowki key update: %v\n", err)
 		return exitUsage
 	}
@@ -154,17 +159,14 @@ func keyUpdate(ctx context.Context, args []string, stdout, stderr io.Writer) int
 		if err != nil {
 			return err
 		}
+		details := limitDetails(k)
+		details["name"], details["project"] = k.Name, k.Project
 		if err := st.AddAudit(ctx, store.AuditEvent{Time: time.Now().UTC(), Actor: "cli", Action: "key.update",
-			Target: k.Prefix, Details: map[string]string{"name": k.Name, "project": k.Project,
-				"monthly_budget_usd": formatAmount(k.BudgetUSD)}}); err != nil {
+			Target: k.Prefix, Details: details}); err != nil {
 			return err
 		}
-		if k.BudgetUSD == 0 {
-			fmt.Fprintf(stdout, "Virtual key %s (%q) now has no monthly budget.\n", k.Prefix, k.Name)
-		} else {
-			fmt.Fprintf(stdout, "Virtual key %s (%q) now has a monthly budget of %s.\n", k.Prefix, k.Name,
-				budget.FormatUSD(k.BudgetUSD))
-		}
+		fmt.Fprintf(stdout, "Updated the limits of virtual key %s (%q):\n", k.Prefix, k.Name)
+		printLimits(stdout, k)
 		return nil
 	})
 }
@@ -226,6 +228,70 @@ func withStore(ctx context.Context, configPath string, stderr io.Writer, command
 		return exitError
 	}
 	return exitOK
+}
+
+// limitFlags are the flags that set a key's limits.
+type limitFlags struct {
+	budgetUSD *float64
+	rpm, tpm  *int64
+}
+
+func addLimitFlags(flags *flag.FlagSet) limitFlags {
+	return limitFlags{
+		budgetUSD: flags.Float64("budget-usd", 0, "monthly budget in US dollars; 0 means none"),
+		rpm:       flags.Int64("rpm", 0, "limit of requests per minute; 0 means none"),
+		tpm:       flags.Int64("tpm", 0, "limit of input and output tokens per minute; 0 means none"),
+	}
+}
+
+// update returns the limits that flags set, and leaves the others out.
+func (l limitFlags) update(flags *flag.FlagSet) store.KeyUpdate {
+	var u store.KeyUpdate
+	flags.Visit(func(f *flag.Flag) {
+		switch f.Name {
+		case "budget-usd":
+			u.BudgetUSD = l.budgetUSD
+		case "rpm":
+			u.RPM = l.rpm
+		case "tpm":
+			u.TPM = l.tpm
+		}
+	})
+	return u
+}
+
+func (l limitFlags) check() error {
+	if err := checkBudget(*l.budgetUSD); err != nil {
+		return err
+	}
+	if *l.rpm < 0 {
+		return errors.New("--rpm must be 0 or more")
+	}
+	if *l.tpm < 0 {
+		return errors.New("--tpm must be 0 or more")
+	}
+	return nil
+}
+
+// printLimits shows the limits of key k, indented.
+func printLimits(w io.Writer, k store.Key) {
+	fmt.Fprintf(w, "  Monthly budget:       %s\n  Requests per minute:  %s\n  Tokens per minute:    %s\n",
+		formatBudget(k.BudgetUSD), formatLimit(k.RPM), formatLimit(k.TPM))
+}
+
+// limitDetails returns the limits of key k for the audit log, exactly; "0"
+// means no limit.
+func limitDetails(k store.Key) map[string]string {
+	return map[string]string{"monthly_budget_usd": formatAmount(k.BudgetUSD),
+		"rpm": strconv.FormatInt(k.RPM, 10), "tpm": strconv.FormatInt(k.TPM, 10)}
+}
+
+// formatLimit shows a limit per minute, where 0 means none.
+func formatLimit(n int64) string {
+	if n == 0 {
+		return "none"
+	}
+	return strconv.FormatInt(n, 10)
 }
 
 // checkBudget validates a --budget-usd value.
