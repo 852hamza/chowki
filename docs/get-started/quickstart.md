@@ -181,6 +181,11 @@ Point an SDK or tool at Chowki by changing two settings:
 Name the provider in the model, such as `openai/gpt-6-luna`, unless your configuration has only one
 provider for that API.
 
+`chowki setup <TOOL>` prints the settings for Claude Code, the Codex CLI, the Gemini CLI, the
+official SDKs and Ollama; run `chowki setup` for the list. See
+[Connect Claude Code](../how-to/connect-claude-code.md) and
+[Connect the SDKs](../how-to/connect-sdks.md).
+
 ## Clean up
 
 1. Stop the gateway with Ctrl+C in its terminal.

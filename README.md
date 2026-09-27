@@ -60,6 +60,13 @@ make build
   budgets in a browser.
 - [Scan for secrets](docs/how-to/scan-for-secrets.md): find keys and passwords in repositories,
   locally and in GitHub Actions.
+- [Connect Claude Code](docs/how-to/connect-claude-code.md),
+  [the Codex CLI](docs/how-to/connect-codex.md) and
+  [the Gemini CLI](docs/how-to/connect-gemini-cli.md): route coding agents through Chowki.
+- [Connect the OpenAI, Anthropic and Gemini SDKs](docs/how-to/connect-sdks.md): point apps at
+  Chowki with two environment variables.
+- [Use local models with Ollama](docs/how-to/use-local-models-with-ollama.md): reach local models
+  with virtual keys.
 - [API reference](docs/reference/api.md): endpoints, headers and error codes.
 - [Admin API reference](docs/reference/admin-api.md): reports, and managing keys and projects.
 - [Configuration reference](docs/reference/configuration.md): every setting and its environment
