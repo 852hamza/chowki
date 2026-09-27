@@ -49,6 +49,7 @@ make build
   repeated prompt prefixes for Anthropic's cache.
 - [Redact secrets and personal data](docs/how-to/redact-sensitive-data.md): mask, block or report
   keys and personal data in prompts.
+- [API reference](docs/reference/api.md): endpoints, headers and error codes.
 - [Configuration reference](docs/reference/configuration.md): every setting and its environment
   variable.
 - [Route requests with aliases and fallback](docs/how-to/routing-and-fallback.md): give a list of

@@ -79,7 +79,8 @@ flowchart TD
     metrics.
 
 When Chowki rejects a request, it answers in the error format of the API family that you called,
-so your SDK shows the error correctly.
+so your SDK shows the error correctly. The [API reference](../reference/api.md) lists every
+endpoint and error code.
 
 ## Key terms
 

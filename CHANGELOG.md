@@ -64,5 +64,9 @@ All notable changes to Chowki are recorded in this file. The format is based on
   row is skipped for 30 seconds.
 - Model allowlists per virtual key: `chowki key create|update --models "fast,openai/*"`. Other
   models get 403 `model_not_allowed`. The key settings now show the models.
+- More endpoints: `POST /v1/embeddings` (with redaction of the input and the exact cache),
+  `GET /v1/models` (the aliases and catalog models that a key may use), and
+  `POST /anthropic/v1/messages/count_tokens` (free: no budget or token limit).
+- An API reference with the endpoints, Chowki's headers and every error code.
 
 [Unreleased]: https://github.com/852hamza/chowki/commits/main
