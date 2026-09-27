@@ -1,0 +1,63 @@
+# A GitHub Action that finds secrets with chowki scan and reports them to
+# GitHub code scanning. See docs/how-to/scan-for-secrets.md.
+name: Chowki secret scan
+description: Find secrets, such as API keys and private keys, in a repository, its .env files and MCP configurations.
+branding:
+  icon: shield
+  color: blue
+inputs:
+  path:
+    description: The file or directory to scan, relative to the workspace.
+    default: "."
+  version:
+    description: The Chowki version to install, such as v0.1.0, or latest.
+    default: latest
+  upload-sarif:
+    description: Upload the findings to GitHub code scanning. The job needs the security-events write permission.
+    default: "true"
+  fail-on-findings:
+    description: Fail the step when the scan finds secrets.
+    default: "true"
+outputs:
+  found:
+    description: true when the scan found secrets.
+    value: ${{ steps.scan.outputs.found }}
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      with:
+        go-version: stable
+        cache: false
+    # TODO(M6): download the release binary, once releases exist, instead of building it.
+    - name: Install Chowki
+      shell: bash
+      env:
+        VERSION: ${{ inputs.version }}
+      run: go install "github.com/852hamza/chowki/cmd/chowki@${VERSION}"
+    - name: Scan
+      id: scan
+      shell: bash
+      env:
+        SCAN_PATH: ${{ inputs.path }}
+      run: |
+        chowki scan --format sarif --output "$RUNNER_TEMP/chowki.sarif" --exit-zero "$SCAN_PATH"
+        status=0
+        chowki scan "$SCAN_PATH" || status=$?
+        case "$status" in
+          0) echo "found=false" >> "$GITHUB_OUTPUT" ;;
+          1) echo "found=true" >> "$GITHUB_OUTPUT" ;;
+          *) exit "$status" ;;
+        esac
+    - name: Upload to code scanning
+      if: inputs.upload-sarif == 'true'
+      uses: github/codeql-action/upload-sarif@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4.38.2
+      with:
+        sarif_file: ${{ runner.temp }}/chowki.sarif
+        category: chowki
+    - name: Fail on findings
+      if: inputs.fail-on-findings == 'true' && steps.scan.outputs.found == 'true'
+      shell: bash
+      run: |
+        echo "::error::chowki scan found secrets; the Scan step lists where."
+        exit 1
