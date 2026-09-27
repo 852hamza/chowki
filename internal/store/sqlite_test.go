@@ -413,6 +413,13 @@ func TestClosedDatabaseErrors(t *testing.T) {
 	_, checks["DeleteRequestsBefore"] = s.DeleteRequestsBefore(ctx, time.Now())
 	checks["AddAudit"] = s.AddAudit(ctx, AuditEvent{})
 	checks["Ping"] = s.Ping(ctx)
+	_, checks["CreateAdminToken"] = s.CreateAdminToken(ctx, AdminToken{})
+	_, checks["AdminTokenByPrefix"] = s.AdminTokenByPrefix(ctx, "x")
+	_, checks["ListAdminTokens"] = s.ListAdminTokens(ctx)
+	_, checks["RevokeAdminToken"] = s.RevokeAdminToken(ctx, "x", time.Now())
+	_, checks["Totals"] = s.Totals(ctx, time.Now(), time.Now())
+	_, checks["Breakdown"] = s.Breakdown(ctx, ByKey, time.Now(), time.Now())
+	_, checks["RecentRequests"] = s.RecentRequests(ctx, time.Now(), 1)
 	for name, err := range checks {
 		if err == nil {
 			t.Errorf("%s() on a closed database succeeded", name)

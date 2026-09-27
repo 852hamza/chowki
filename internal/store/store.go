@@ -3,7 +3,13 @@ package store
 import (
 	"context"
 	"errors"
+	"fmt"
+	"math"
+	"path"
+	"slices"
+	"strings"
 	"time"
+	"unicode"
 )
 
 var (
@@ -66,6 +72,26 @@ type Store interface {
 	AddAudit(ctx context.Context, e AuditEvent) error
 	// Ping checks that the database answers.
 	Ping(ctx context.Context) error
+	// CreateAdminToken saves a new admin token and returns it with its ID,
+	// or ErrExists when a token with the same prefix exists.
+	CreateAdminToken(ctx context.Context, t AdminToken) (AdminToken, error)
+	// AdminTokenByPrefix returns the admin token with the given prefix, or
+	// ErrNotFound.
+	AdminTokenByPrefix(ctx context.Context, prefix string) (AdminToken, error)
+	// ListAdminTokens returns every admin token, oldest first.
+	ListAdminTokens(ctx context.Context) ([]AdminToken, error)
+	// RevokeAdminToken marks the admin token with the given prefix as
+	// revoked at the given time, unless it's revoked already, and returns
+	// it as stored.
+	RevokeAdminToken(ctx context.Context, prefix string, at time.Time) (AdminToken, error)
+	// Totals sums the requests that started in [from, to).
+	Totals(ctx context.Context, from, to time.Time) (Totals, error)
+	// Breakdown groups the requests that started in [from, to) by "key",
+	// "model" or "day", with the highest cost first, or by date for days.
+	Breakdown(ctx context.Context, by string, from, to time.Time) ([]Group, error)
+	// RecentRequests returns up to limit records of requests that started
+	// before t, newest first.
+	RecentRequests(ctx context.Context, before time.Time, limit int) ([]Request, error)
 	// Close closes the database.
 	Close() error
 }
@@ -131,6 +157,45 @@ type KeyUpdate struct {
 	AllowedModels *[]string
 }
 
+// CheckName validates the name of a key, project or admin token, which
+// appears in lists and logs.
+func CheckName(s string) error {
+	switch {
+	case s == "":
+		return errors.New("is required")
+	case len(s) > 64:
+		return errors.New("must be at most 64 characters")
+	case strings.IndexFunc(s, func(r rune) bool { return !unicode.IsPrint(r) }) >= 0:
+		return errors.New("must contain only printable characters")
+	}
+	return nil
+}
+
+// Validate reports the first setting of u that isn't valid, in words
+// that the admin API and the CLI can show.
+func (u KeyUpdate) Validate() error {
+	switch {
+	case u.BudgetUSD != nil && (math.IsNaN(*u.BudgetUSD) || math.IsInf(*u.BudgetUSD, 0) || *u.BudgetUSD < 0):
+		return errors.New("the monthly budget must be an amount of 0 or more, such as 50 or 12.5")
+	case u.RPM != nil && *u.RPM < 0:
+		return errors.New("the limit of requests per minute must be 0 or more")
+	case u.TPM != nil && *u.TPM < 0:
+		return errors.New("the limit of tokens per minute must be 0 or more")
+	case u.CacheMode != nil && !slices.Contains([]string{"", "exact", "off"}, *u.CacheMode):
+		return errors.New("the cache mode must be exact, off or default")
+	case u.RedactionMode != nil && !slices.Contains([]string{"", "mask", "block", "alert", "off"}, *u.RedactionMode):
+		return errors.New("the redaction mode must be mask, block, alert, off or default")
+	}
+	if u.AllowedModels != nil {
+		for _, m := range *u.AllowedModels {
+			if _, err := path.Match(m, ""); err != nil || m == "" {
+				return fmt.Errorf("%q isn't a valid model or pattern", m)
+			}
+		}
+	}
+	return nil
+}
+
 // KeySpend is what a key spent in a period.
 type KeySpend struct {
 	KeyID, ProjectID int64
@@ -194,6 +259,52 @@ func (e CacheEntry) Size() int64 { return int64(len(e.Ciphertext)) }
 type Tokens struct {
 	Input, Output, CacheRead, CacheWrite, Reasoning int64
 }
+
+// AdminToken is a stored admin token. As for virtual keys, only its prefix
+// and SHA-256 hash are stored.
+type AdminToken struct {
+	ID        int64
+	Name      string
+	Prefix    string
+	Hash      [32]byte
+	CreatedAt time.Time
+	// RevokedAt is zero while the token is active.
+	RevokedAt time.Time
+}
+
+// Revoked reports whether the token is revoked.
+func (t AdminToken) Revoked() bool { return !t.RevokedAt.IsZero() }
+
+// Totals are sums over requests.
+type Totals struct {
+	Requests int64
+	// Errors are the requests that got a status of 400 or more.
+	Errors  int64
+	CostUSD float64
+	// SavingsUSD are the net savings by method.
+	SavingsUSD             map[string]float64
+	Tokens                 Tokens
+	CacheHits, CacheMisses int64
+	// Redactions count the findings of redaction by type.
+	Redactions map[string]int64
+}
+
+// Group is one row of a breakdown.
+type Group struct {
+	// ID is a key's prefix, a provider/model, or a day as YYYY-MM-DD;
+	// Label is the key's name, and empty otherwise.
+	ID, Label                 string
+	Requests                  int64
+	CostUSD, SavingsUSD       float64
+	InputTokens, OutputTokens int64
+}
+
+// Breakdown groupings.
+const (
+	ByKey   = "key"
+	ByModel = "model"
+	ByDay   = "day"
+)
 
 // AuditEvent is an administrative action, such as creating a key.
 type AuditEvent struct {
