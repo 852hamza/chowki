@@ -68,8 +68,9 @@ flowchart TD
    when the key or its project has used up its monthly budget. Both count a request at its
    estimated input until the response reports its actual usage; the budget estimate uses the
    model's price, which is why this stage follows routing.
-9. **Prompt-cache optimizer**: for Anthropic, mark stable prompt prefixes, so that repeated
-   prefixes cost less.
+9. **Prompt-cache optimizer**: for Anthropic, mark a prompt prefix that repeats, so that the
+   provider caches it and repeated prefixes cost less. Requests that set their own `cache_control`
+   stay as they are.
 10. **Upstream call**: call the provider with the provider key and a timeout, and relay a streamed
     answer chunk by chunk.
 11. **Account**: read the token usage that the provider reported, and compute cost and savings.

@@ -43,5 +43,10 @@ All notable changes to Chowki are recorded in this file. The format is based on
   `x-chowki-cache: on`. The response header `x-chowki-cache` shows `hit`, `miss` or `bypass`; a hit
   costs $0 and counts the original cost as savings. Responses expire after `defaults.cache_ttl`,
   and `storage.cache_max_mb` limits the cache's size.
+- An Anthropic prompt-cache optimizer. When the same tools and system prompt repeat within five
+  minutes and are long enough to cache, Chowki adds one `cache_control` breakpoint at the end of
+  the system prompt, or of the tools. It never changes requests that set `cache_control`
+  themselves. `defaults.prompt_cache: off` turns it off. The catalog now lists the minimum
+  cacheable prompt of each Anthropic model.
 
 [Unreleased]: https://github.com/852hamza/chowki/commits/main
