@@ -9,8 +9,7 @@ All notable changes to Chowki are recorded in this file. The format is based on
 ### Added
 
 - The `chowki` command. `chowki version` prints the version, commit, build date and repository
-  URL. The `provider`, `usage`, `scan`, `setup` and `doctor` commands exist but aren't
-  implemented yet.
+  URL. The `provider`, `usage` and `doctor` commands exist but aren't implemented yet.
 - Project identity in `project.env`. `make sync` applies it to the whole repository, and
   `make sync-check` finds leftovers of an earlier identity and hard-coded URLs in Go code.
 - Fake OpenAI-compatible, Anthropic and Gemini providers for tests, with JSON and streaming
@@ -105,5 +104,7 @@ All notable changes to Chowki are recorded in this file. The format is based on
 - A guide to DeepSeek, xAI, Mistral, Groq and OpenRouter as providers, with their base URLs.
   Usage from xAI, whose completion tokens exclude reasoning, now counts the reasoning as output,
   and Groq's usage in `x_groq` counts in streams.
+- `chowki setup <TOOL>` prints the settings that point Claude Code, the Codex CLI, the Gemini CLI,
+  the OpenAI, Anthropic and Google Gen AI SDKs, or Ollama at the gateway, with guides for each.
 
 [Unreleased]: https://github.com/852hamza/chowki/commits/main
