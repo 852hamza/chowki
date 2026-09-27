@@ -108,6 +108,9 @@ endpoint and error code.
   provider reports no usage, Chowki records the tokens as unknown instead of guessing.
 - **Low overhead.** The target for Chowki's own overhead, without the provider's time, is under
   5 ms at the median and under 25 ms at the 99th percentile.
+- **Reports from daily sums.** With each batch of request records, Chowki updates sums by day, key
+  and model. Reports read these sums, so they stay fast as requests pile up, count whole days in
+  UTC, and outlive the retention of request records.
 
 ## Limits
 

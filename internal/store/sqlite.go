@@ -400,6 +400,7 @@ func (s *SQLite) InsertRequests(ctx context.Context, rs []Request) error {
 			spend[month{r.KeyID, Period(r.Time)}] += *r.CostUSD
 		}
 	}
+	d := sumDaily(rs)
 	err := s.inTx(ctx, func(tx *sql.Tx) error {
 		for m, usd := range spend {
 			if _, err := tx.ExecContext(ctx, `INSERT INTO spend (key_id, period, spent_usd) VALUES (?, ?, ?)
@@ -407,6 +408,9 @@ func (s *SQLite) InsertRequests(ctx context.Context, rs []Request) error {
 				m.key, m.period, usd); err != nil {
 				return err
 			}
+		}
+		if err := d.save(ctx, tx); err != nil {
+			return err
 		}
 		stmt, err := tx.PrepareContext(ctx, `INSERT INTO requests (id, ts, key_id, project_id, api_family,
 			endpoint, provider, model, stream, status, error_type, latency_ms, ttfb_ms, input_tokens,

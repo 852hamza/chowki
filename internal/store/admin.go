@@ -92,37 +92,44 @@ func (s *SQLite) RevokeAdminToken(ctx context.Context, prefix string, at time.Ti
 	return s.AdminTokenByPrefix(ctx, prefix)
 }
 
+// reportDays returns the dates of the first day in UTC that [from, to)
+// touches and of the day after the last one.
+func reportDays(from, to time.Time) (first, end string) {
+	day := func(t time.Time) time.Time { return time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, time.UTC) }
+	stop := day(to.UTC())
+	if stop.Before(to) {
+		stop = stop.AddDate(0, 0, 1)
+	}
+	return day(from.UTC()).Format(time.DateOnly), stop.Format(time.DateOnly)
+}
+
 // Totals implements Store.
 func (s *SQLite) Totals(ctx context.Context, from, to time.Time) (Totals, error) {
 	t := Totals{SavingsUSD: map[string]float64{}, Redactions: map[string]int64{}}
-	lo, hi := from.UnixMilli(), to.UnixMilli()
-	err := s.db.QueryRowContext(ctx, `SELECT count(*), coalesce(sum(status >= 400), 0), coalesce(sum(cost_usd), 0),
-		coalesce(sum(input_tokens), 0), coalesce(sum(output_tokens), 0), coalesce(sum(cache_read_tokens), 0),
-		coalesce(sum(cache_write_tokens), 0), coalesce(sum(reasoning_tokens), 0),
-		coalesce(sum(cache_status = 'hit'), 0), coalesce(sum(cache_status = 'miss'), 0)
-		FROM requests WHERE ts >= ? AND ts < ?`, lo, hi).
-		Scan(&t.Requests, &t.Errors, &t.CostUSD, &t.Tokens.Input, &t.Tokens.Output, &t.Tokens.CacheRead,
+	first, end := reportDays(from, to)
+	err := s.db.QueryRowContext(ctx, `SELECT coalesce(sum(requests), 0), coalesce(sum(errors), 0),
+		coalesce(sum(unpriced), 0), coalesce(sum(cost_usd), 0), coalesce(sum(input_tokens), 0),
+		coalesce(sum(output_tokens), 0), coalesce(sum(cache_read_tokens), 0), coalesce(sum(cache_write_tokens), 0),
+		coalesce(sum(reasoning_tokens), 0), coalesce(sum(cache_hits), 0), coalesce(sum(cache_misses), 0)
+		FROM usage_daily WHERE day >= ? AND day < ?`, first, end).
+		Scan(&t.Requests, &t.Errors, &t.Unpriced, &t.CostUSD, &t.Tokens.Input, &t.Tokens.Output, &t.Tokens.CacheRead,
 			&t.Tokens.CacheWrite, &t.Tokens.Reasoning, &t.CacheHits, &t.CacheMisses)
 	if err != nil {
 		return Totals{}, fmt.Errorf("sum requests: %w", err)
 	}
-	if err := s.sumByName(ctx, `SELECT savings_method, sum(savings_usd) FROM requests
-		WHERE ts >= ? AND ts < ? AND savings_method != '' GROUP BY savings_method`, lo, hi,
-		func(name string, v float64) { t.SavingsUSD[name] = v }); err != nil {
+	if err := s.sumByName(ctx, `SELECT method, sum(usd) FROM savings_daily WHERE day >= ? AND day < ?
+		GROUP BY method`, first, end, func(name string, v float64) { t.SavingsUSD[name] = v }); err != nil {
 		return Totals{}, err
 	}
-	// Redactions hold JSON counts by type, or '' when there were none.
-	if err := s.sumByName(ctx, `SELECT j.key, sum(j.value) FROM requests,
-		json_each(CASE WHEN requests.redactions = '' THEN '{}' ELSE requests.redactions END) AS j
-		WHERE requests.ts >= ? AND requests.ts < ? GROUP BY j.key`, lo, hi,
-		func(name string, v float64) { t.Redactions[name] = int64(v) }); err != nil {
+	if err := s.sumByName(ctx, `SELECT type, sum(count) FROM redactions_daily WHERE day >= ? AND day < ?
+		GROUP BY type`, first, end, func(name string, v float64) { t.Redactions[name] = int64(v) }); err != nil {
 		return Totals{}, err
 	}
 	return t, nil
 }
 
-func (s *SQLite) sumByName(ctx context.Context, query string, lo, hi int64, add func(string, float64)) error {
-	rows, err := s.db.QueryContext(ctx, query, lo, hi)
+func (s *SQLite) sumByName(ctx context.Context, query, first, end string, add func(string, float64)) error {
+	rows, err := s.db.QueryContext(ctx, query, first, end)
 	if err != nil {
 		return fmt.Errorf("sum requests: %w", err)
 	}
@@ -144,13 +151,12 @@ func (s *SQLite) sumByName(ctx context.Context, query string, lo, hi int64, add 
 // breakdowns are the queries of Breakdown: the ID and label of each group,
 // the grouping and the order.
 var breakdowns = map[string]string{
-	ByKey: `SELECT coalesce(k.prefix, ''), coalesce(k.name, ''), %s FROM requests r
-		LEFT JOIN virtual_keys k ON k.id = r.key_id WHERE r.ts >= ? AND r.ts < ?
-		GROUP BY r.key_id ORDER BY 4 DESC, 1`,
-	ByModel: `SELECT CASE WHEN r.provider = '' THEN '' ELSE r.provider || '/' || r.model END, '', %s FROM requests r
-		WHERE r.ts >= ? AND r.ts < ? GROUP BY 1 ORDER BY 4 DESC, 1`,
-	ByDay: `SELECT date(r.ts / 1000, 'unixepoch'), '', %s FROM requests r WHERE r.ts >= ? AND r.ts < ?
-		GROUP BY 1 ORDER BY 1`,
+	ByKey: `SELECT coalesce(k.prefix, ''), coalesce(k.name, ''), %s FROM usage_daily u
+		LEFT JOIN virtual_keys k ON k.id = u.key_id WHERE u.day >= ? AND u.day < ?
+		GROUP BY u.key_id ORDER BY 4 DESC, 1`,
+	ByModel: `SELECT CASE WHEN u.provider = '' THEN '' ELSE u.provider || '/' || u.model END, '', %s
+		FROM usage_daily u WHERE u.day >= ? AND u.day < ? GROUP BY 1 ORDER BY 4 DESC, 1`,
+	ByDay: `SELECT u.day, '', %s FROM usage_daily u WHERE u.day >= ? AND u.day < ? GROUP BY 1 ORDER BY 1`,
 }
 
 // Breakdown implements Store.
@@ -159,9 +165,9 @@ func (s *SQLite) Breakdown(ctx context.Context, by string, from, to time.Time) (
 	if !ok {
 		return nil, fmt.Errorf("break down requests: unknown grouping %q", by)
 	}
-	sums := `count(*), coalesce(sum(r.cost_usd), 0), coalesce(sum(r.savings_usd), 0),
-		coalesce(sum(r.input_tokens), 0), coalesce(sum(r.output_tokens), 0)`
-	rows, err := s.db.QueryContext(ctx, fmt.Sprintf(query, sums), from.UnixMilli(), to.UnixMilli())
+	first, end := reportDays(from, to)
+	sums := `sum(u.requests), sum(u.cost_usd), sum(u.savings_usd), sum(u.input_tokens), sum(u.output_tokens)`
+	rows, err := s.db.QueryContext(ctx, fmt.Sprintf(query, sums), first, end)
 	if err != nil {
 		return nil, fmt.Errorf("break down requests: %w", err)
 	}

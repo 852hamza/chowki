@@ -84,10 +84,12 @@ type Store interface {
 	// revoked at the given time, unless it's revoked already, and returns
 	// it as stored.
 	RevokeAdminToken(ctx context.Context, prefix string, at time.Time) (AdminToken, error)
-	// Totals sums the requests that started in [from, to).
+	// Totals sums the requests of whole days: the days in UTC that
+	// [from, to) touches.
 	Totals(ctx context.Context, from, to time.Time) (Totals, error)
-	// Breakdown groups the requests that started in [from, to) by "key",
-	// "model" or "day", with the highest cost first, or by date for days.
+	// Breakdown groups the requests of the days in UTC that [from, to)
+	// touches by "key", "model" or "day", with the highest cost first, or
+	// by date for days.
 	Breakdown(ctx context.Context, by string, from, to time.Time) ([]Group, error)
 	// RecentRequests returns up to limit records of requests that started
 	// before t, newest first.
@@ -279,8 +281,10 @@ func (t AdminToken) Revoked() bool { return !t.RevokedAt.IsZero() }
 type Totals struct {
 	Requests int64
 	// Errors are the requests that got a status of 400 or more.
-	Errors  int64
-	CostUSD float64
+	Errors int64
+	// Unpriced are the requests with usage but no price, which count as $0.
+	Unpriced int64
+	CostUSD  float64
 	// SavingsUSD are the net savings by method.
 	SavingsUSD             map[string]float64
 	Tokens                 Tokens

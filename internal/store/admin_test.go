@@ -2,6 +2,8 @@ package store
 
 import (
 	"errors"
+	"fmt"
+	"path/filepath"
 	"reflect"
 	"testing"
 	"time"
@@ -95,5 +97,103 @@ func TestReports(t *testing.T) {
 	if r3.Tokens == nil || r3.Tokens.CacheRead != 40 || r3.CostUSD == nil || *r3.CostUSD != 3 ||
 		!reflect.DeepEqual(r3.Redactions, map[string]int{"email": 1, "phone": 1}) || r3.SavingsMethod != "prompt_cache" {
 		t.Errorf("RecentRequests() read r3 as %+v", r3)
+	}
+}
+
+// TestDailyBackfill checks that migration 0008 sums the requests saved
+// before it just as InsertRequests sums new ones.
+func TestDailyBackfill(t *testing.T) {
+	ctx := t.Context()
+	dsn := "file:" + filepath.Join(t.TempDir(), "chowki.db")
+	s, err := OpenSQLite(ctx, dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p, _ := s.EnsureProject(ctx, "team")
+	k, err := s.CreateKey(ctx, Key{ProjectID: p.ID, Name: "alice", Prefix: "chowki_alice", CreatedAt: time.Now()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	start := time.Date(2026, 9, 1, 23, 30, 0, 0, time.UTC)
+	var rs []Request
+	var unpriced int64
+	for i := range 50 {
+		r := Request{ID: fmt.Sprint(i), Time: start.Add(time.Duration(i) * 7 * time.Minute), KeyID: k.ID,
+			Provider: "openai", Model: []string{"a", "b"}[i%2], Status: []int{200, 200, 429}[i%3],
+			CacheStatus: []string{"", "hit", "miss"}[i%3]}
+		if i%4 != 0 {
+			r.Tokens = &Tokens{Input: int64(i), Output: 2, CacheRead: 1, CacheWrite: 1, Reasoning: 1}
+		}
+		if i%5 != 0 {
+			r.CostUSD = usd(float64(i) / 4)
+		} else if r.Tokens != nil {
+			unpriced++
+		}
+		if i%6 == 0 {
+			r.SavingsUSD, r.SavingsMethod = 0.5, "exact_cache"
+		}
+		if i%7 == 0 {
+			r.Redactions = map[string]int{"email": 1, "phone": 2}
+		}
+		rs = append(rs, r)
+	}
+	for _, batch := range [][]Request{rs[:20], rs[20:]} {
+		if err := s.InsertRequests(ctx, batch); err != nil {
+			t.Fatal(err)
+		}
+	}
+	from, to := start.AddDate(0, 0, -1), start.AddDate(0, 0, 2)
+	reports := func(s *SQLite) (Totals, map[string][]Group) {
+		t.Helper()
+		totals, err := s.Totals(ctx, from, to)
+		if err != nil {
+			t.Fatal(err)
+		}
+		groups := map[string][]Group{}
+		for _, by := range []string{ByKey, ByModel, ByDay} {
+			if groups[by], err = s.Breakdown(ctx, by, from, to); err != nil {
+				t.Fatal(err)
+			}
+		}
+		return totals, groups
+	}
+	wantTotals, wantGroups := reports(s)
+	if wantTotals.Requests != 50 || wantTotals.Unpriced != unpriced || len(wantGroups[ByDay]) != 2 {
+		t.Fatalf("Totals() = %+v, days %+v", wantTotals, wantGroups[ByDay])
+	}
+
+	// Take the database back to before migration 0008, and open it again.
+	for _, q := range []string{`DROP TABLE usage_daily`, `DROP TABLE savings_daily`, `DROP TABLE redactions_daily`,
+		`DELETE FROM schema_migrations WHERE version = 8`} {
+		if _, err := s.db.ExecContext(ctx, q); err != nil {
+			t.Fatal(err)
+		}
+	}
+	_ = s.Close()
+	s, err = OpenSQLite(ctx, dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = s.Close() }()
+	if gotTotals, gotGroups := reports(s); !reflect.DeepEqual(gotTotals, wantTotals) ||
+		!reflect.DeepEqual(gotGroups, wantGroups) {
+		t.Errorf("after the migration:\n%+v\n%+v\nwant\n%+v\n%+v", gotTotals, gotGroups, wantTotals, wantGroups)
+	}
+}
+
+func TestReportDays(t *testing.T) {
+	day := func(d int, h int) time.Time { return time.Date(2026, 9, d, h, 0, 0, 0, time.UTC) }
+	for _, tc := range []struct {
+		from, to   time.Time
+		first, end string
+	}{
+		{day(1, 0), day(2, 0), "2026-09-01", "2026-09-02"},
+		{day(1, 12), day(2, 12), "2026-09-01", "2026-09-03"},
+		{day(1, 0), day(30, 23), "2026-09-01", "2026-10-01"},
+		{day(1, 0).In(time.FixedZone("PKT", 5*3600)), day(1, 1), "2026-09-01", "2026-09-02"},
+	} {
+		if first, end := reportDays(tc.from, tc.to); first != tc.first || end != tc.end {
+			t.Errorf("reportDays(%v, %v) = %s, %s; want %s, %s", tc.from, tc.to, first, end, tc.first, tc.end)
+		}
 	}
 }
