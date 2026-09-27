@@ -43,6 +43,22 @@ type Store interface {
 	// SpendByKey returns the spend of each key in a period, a calendar
 	// month as Period formats it. Keys without spend are left out.
 	SpendByKey(ctx context.Context, period string) ([]KeySpend, error)
+	// CacheEntry returns the cache entry with the given hash unless it
+	// expired by now, or ErrNotFound.
+	CacheEntry(ctx context.Context, hash []byte, now time.Time) (CacheEntry, error)
+	// PutCacheEntry saves a cache entry, replacing one with the same hash,
+	// and returns the size of the entry it replaced, or 0.
+	PutCacheEntry(ctx context.Context, e CacheEntry) (replaced int64, err error)
+	// TouchCacheEntry counts a hit on the cache entry with the given hash.
+	TouchCacheEntry(ctx context.Context, hash []byte, now time.Time) error
+	// DeleteExpiredCacheEntries deletes the cache entries that expired by
+	// now, and returns the size it freed.
+	DeleteExpiredCacheEntries(ctx context.Context, now time.Time) (freed int64, err error)
+	// EvictCacheEntries deletes the least recently used cache entries until
+	// it has freed at least size bytes, and returns the size it freed.
+	EvictCacheEntries(ctx context.Context, size int64) (freed int64, err error)
+	// CacheSize returns the total size of the cache entries.
+	CacheSize(ctx context.Context) (int64, error)
 	// DeleteRequestsBefore deletes the records of requests that started
 	// before t, and returns how many it deleted.
 	DeleteRequestsBefore(ctx context.Context, t time.Time) (int64, error)
@@ -85,7 +101,9 @@ type Key struct {
 	ProjectBudgetUSD float64
 	// RPM and TPM limit the key's requests and tokens per minute; 0 means
 	// no limit.
-	RPM, TPM  int64
+	RPM, TPM int64
+	// CacheMode is exact or off; empty follows the configuration.
+	CacheMode string
 	CreatedAt time.Time
 	// RevokedAt is zero while the key is active.
 	RevokedAt time.Time
@@ -99,6 +117,8 @@ func (k Key) Revoked() bool { return !k.RevokedAt.IsZero() }
 type KeyUpdate struct {
 	BudgetUSD *float64
 	RPM, TPM  *int64
+	// CacheMode "" follows the configuration.
+	CacheMode *string
 }
 
 // KeySpend is what a key spent in a period.
@@ -134,7 +154,28 @@ type Request struct {
 	CostUSD       *float64
 	SavingsUSD    float64
 	SavingsMethod string // empty when there are no savings
+	// CacheStatus is hit, miss or bypass; empty when the request was
+	// rejected before the exact cache.
+	CacheStatus string
 }
+
+// CacheEntry is a response in the exact cache.
+type CacheEntry struct {
+	// Hash identifies the request that the response answers.
+	Hash []byte
+	// Ciphertext is the response body, sealed so that only the gateway can
+	// read it.
+	Ciphertext  []byte
+	ContentType string
+	// CostUSD is the cost of the request that got the response; nil when
+	// the model was unpriced.
+	CostUSD   *float64
+	CreatedAt time.Time
+	ExpiresAt time.Time
+}
+
+// Size is the size of the entry that counts towards the cache's limit.
+func (e CacheEntry) Size() int64 { return int64(len(e.Ciphertext)) }
 
 // Tokens is the token usage of a request. Input counts every prompt token,
 // including CacheRead and CacheWrite; Output includes Reasoning.

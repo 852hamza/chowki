@@ -225,6 +225,14 @@ func TestKeyRateLimits(t *testing.T) {
 		k.BudgetUSD != 9 {
 		t.Errorf("UpdateKey() of TPM only = %+v, %v", k, err)
 	}
+	mode := func(v string) *string { return &v }
+	if k, err := s.UpdateKey(ctx, "chowki_abcde", KeyUpdate{CacheMode: mode("exact")}); err != nil ||
+		k.CacheMode != "exact" || k.TPM != 5000 {
+		t.Errorf("UpdateKey() of the cache mode = %+v, %v", k, err)
+	}
+	if k, err := s.UpdateKey(ctx, "chowki_abcde", KeyUpdate{CacheMode: mode("")}); err != nil || k.CacheMode != "" {
+		t.Errorf("UpdateKey() back to the default cache mode = %+v, %v", k, err)
+	}
 }
 
 func TestSpend(t *testing.T) {
@@ -366,6 +374,12 @@ func TestClosedDatabaseErrors(t *testing.T) {
 	_, checks["UpdateProject"] = s.UpdateProject(ctx, "p", ProjectUpdate{BudgetUSD: usd(1)})
 	checks["InsertRequests"] = s.InsertRequests(ctx, []Request{{ID: "x"}})
 	_, checks["SpendByKey"] = s.SpendByKey(ctx, "2026-09")
+	_, checks["CacheEntry"] = s.CacheEntry(ctx, []byte("h"), time.Now())
+	_, checks["PutCacheEntry"] = s.PutCacheEntry(ctx, CacheEntry{Hash: []byte("h")})
+	checks["TouchCacheEntry"] = s.TouchCacheEntry(ctx, []byte("h"), time.Now())
+	_, checks["DeleteExpiredCacheEntries"] = s.DeleteExpiredCacheEntries(ctx, time.Now())
+	_, checks["EvictCacheEntries"] = s.EvictCacheEntries(ctx, 1)
+	_, checks["CacheSize"] = s.CacheSize(ctx)
 	_, checks["DeleteRequestsBefore"] = s.DeleteRequestsBefore(ctx, time.Now())
 	checks["AddAudit"] = s.AddAudit(ctx, AuditEvent{})
 	for name, err := range checks {
