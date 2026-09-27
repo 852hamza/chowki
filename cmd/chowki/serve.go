@@ -15,6 +15,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/852hamza/chowki/internal/admin"
 	"github.com/852hamza/chowki/internal/budget"
 	"github.com/852hamza/chowki/internal/buildinfo"
 	"github.com/852hamza/chowki/internal/cache"
@@ -151,7 +152,8 @@ func serve(ctx context.Context, configPath string, ln net.Listener, logOut io.Wr
 		gw.PromptCache = promptcache.New()
 	}
 	logger.Info("chowki started", "version", buildinfo.Version(), "providers", names, "priced_models", cat.Len())
-	return server.Run(ctx, ln, server.Routes(gw), logger)
+	api := &admin.API{Store: st, Logger: logger}
+	return server.Run(ctx, ln, server.Routes(gw, api.Handler()), logger)
 }
 
 func logLevel(name string) slog.Level {

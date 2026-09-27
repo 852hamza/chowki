@@ -7,19 +7,14 @@ import (
 	"fmt"
 	"io"
 	"math"
-	"path"
-	"slices"
 	"strconv"
 	"strings"
 	"text/tabwriter"
 	"time"
-	"unicode"
 
 	"github.com/852hamza/chowki/internal/auth"
 	"github.com/852hamza/chowki/internal/budget"
-	"github.com/852hamza/chowki/internal/cache"
 	"github.com/852hamza/chowki/internal/config"
-	"github.com/852hamza/chowki/internal/redact"
 	"github.com/852hamza/chowki/internal/store"
 )
 
@@ -63,12 +58,12 @@ func keyCreate(ctx context.Context, args []string, stdout, stderr io.Writer) int
 		return exitUsage
 	}
 	for label, v := range map[string]string{"--name": *name, "--project": *project} {
-		if err := checkLabel(v); err != nil {
+		if err := store.CheckName(v); err != nil {
 			fmt.Fprintf(stderr, "chowki key create: %s %v\n", label, err)
 			return exitUsage
 		}
 	}
-	if err := settings.check(); err != nil {
+	if err := settings.all().Validate(); err != nil {
 		fmt.Fprintf(stderr, "chowki key create: %v\n", err)
 		return exitUsage
 	}
@@ -159,7 +154,7 @@ func keyUpdate(ctx context.Context, args []string, stdout, stderr io.Writer) int
 			"--redaction or --models\n")
 		return exitUsage
 	}
-	if err := settings.check(); err != nil {
+	if err := u.Validate(); err != nil {
 		fmt.Fprintf(stderr, "chowki key update: %v\n", err)
 		return exitUsage
 	}
@@ -312,27 +307,11 @@ func storedMode(flag string) string {
 	return flag
 }
 
-func (s settingFlags) check() error {
-	if err := checkBudget(*s.budgetUSD); err != nil {
-		return err
-	}
-	switch {
-	case *s.rpm < 0:
-		return errors.New("--rpm must be 0 or more")
-	case *s.tpm < 0:
-		return errors.New("--tpm must be 0 or more")
-	case *s.cache != cache.ModeExact && *s.cache != cache.ModeOff && *s.cache != "default":
-		return errors.New("--cache must be exact, off or default")
-	case !slices.Contains([]string{redact.ModeMask, redact.ModeBlock, redact.ModeAlert, redact.ModeOff, "default"},
-		*s.redaction):
-		return errors.New("--redaction must be mask, block, alert, off or default")
-	}
-	for _, m := range s.models() {
-		if _, err := path.Match(m, ""); err != nil {
-			return fmt.Errorf("--models: %q isn't a valid pattern", m)
-		}
-	}
-	return nil
+// all returns every setting of the flags, for a new key.
+func (s settingFlags) all() store.KeyUpdate {
+	cacheMode, redactionMode, models := s.cacheMode(), s.redactionMode(), s.models()
+	return store.KeyUpdate{BudgetUSD: s.budgetUSD, RPM: s.rpm, TPM: s.tpm, CacheMode: &cacheMode,
+		RedactionMode: &redactionMode, AllowedModels: &models}
 }
 
 // printSettings shows the settings of key k, indented.
@@ -390,19 +369,5 @@ func formatBudget(usd float64) string {
 
 // formatAmount writes an amount for the audit log, exactly.
 func formatAmount(usd float64) string { return strconv.FormatFloat(usd, 'f', -1, 64) }
-
-// checkLabel validates a key or project name, which appear in lists and
-// logs.
-func checkLabel(s string) error {
-	switch {
-	case s == "":
-		return errors.New("is required")
-	case len(s) > 64:
-		return errors.New("must be at most 64 characters")
-	case strings.IndexFunc(s, func(r rune) bool { return !unicode.IsPrint(r) }) >= 0:
-		return errors.New("must contain only printable characters")
-	}
-	return nil
-}
 
 func formatTime(t time.Time) string { return t.UTC().Format("2006-01-02 15:04 UTC") }

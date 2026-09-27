@@ -140,7 +140,7 @@ func newHarness(t testing.TB, oa, an testutil.Config, opts ...option) *harness {
 		t.Fatal(err)
 	}
 	h.gw.Requests = store.NewRequestLog(h.st, logger)
-	srv := httptest.NewServer(server.Routes(h.gw))
+	srv := httptest.NewServer(server.Routes(h.gw, nil))
 	h.url = srv.URL
 	t.Cleanup(func() {
 		srv.Close()
@@ -190,7 +190,7 @@ func (h *harness) restart() {
 	}
 	gw.Requests = store.NewRequestLog(h.st, gw.Logger)
 	h.gw, h.closed = &gw, false
-	srv := httptest.NewServer(server.Routes(h.gw))
+	srv := httptest.NewServer(server.Routes(h.gw, nil))
 	h.t.Cleanup(srv.Close)
 	h.url = srv.URL
 }
