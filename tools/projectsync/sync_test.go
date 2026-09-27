@@ -175,6 +175,35 @@ func TestSyncRenameBack(t *testing.T) {
 	}
 }
 
+func TestSyncRejectsStaleOverride(t *testing.T) {
+	requireTool(t, "go")
+	withDocs := acme
+	withDocs.Docs = "https://github.com/acme/widget/tree/main/docs"
+	root := newRepo(t, withDocs, fixture)
+
+	// A new owner, but DOCS_URL still points at the old repository.
+	stale := zeta
+	stale.Docs = withDocs.Docs
+	writeFile(t, root, envFile, envContent(stale))
+	err := syncRepo(t.Context(), root, io.Discard)
+	if err == nil || !strings.Contains(err.Error(), `DOCS_URL still contains "https://github.com/acme/widget"`) {
+		t.Fatalf("syncRepo() error = %v, want a stale DOCS_URL error", err)
+	}
+	if got := readFile(t, root, "README.md"); got != readmeBefore {
+		t.Errorf("README.md changed although sync failed:\n%s", got)
+	}
+
+	fixed := zeta
+	fixed.Docs = "https://github.com/zeta/widget/tree/main/docs"
+	writeFile(t, root, envFile, envContent(fixed))
+	if err := syncRepo(t.Context(), root, io.Discard); err != nil {
+		t.Fatalf("syncRepo() with an updated DOCS_URL error = %v", err)
+	}
+	if err := checkRepo(t.Context(), root, io.Discard); err != nil {
+		t.Errorf("checkRepo() error = %v", err)
+	}
+}
+
 func TestSyncUnchanged(t *testing.T) {
 	root := newRepo(t, acme, fixture)
 	var out bytes.Buffer

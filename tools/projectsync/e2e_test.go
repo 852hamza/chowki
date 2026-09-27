@@ -45,9 +45,23 @@ func TestRenameEndToEnd(t *testing.T) {
 	renamed := old
 	renamed.Owner = "renamed-owner"
 	renamed.Domain = "renamed-" + strings.ReplaceAll(old.Domain, ".", "-") + ".example"
+	// Like a person renaming the project, also update the URL overrides that
+	// name the old owner or domain; make sync refuses stale ones.
+	m, err := replacements(old, renamed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	renamed.Website, _ = m.replace(old.Website)
+	renamed.Docs, _ = m.replace(old.Docs)
 	env := readFile(t, dst, envFile)
-	env = strings.Replace(env, "\nGITHUB_OWNER="+old.Owner+"\n", "\nGITHUB_OWNER="+renamed.Owner+"\n", 1)
-	env = strings.Replace(env, "\nPROJECT_DOMAIN="+old.Domain+"\n", "\nPROJECT_DOMAIN="+renamed.Domain+"\n", 1)
+	for _, kv := range [][3]string{
+		{"GITHUB_OWNER", old.Owner, renamed.Owner},
+		{"PROJECT_DOMAIN", old.Domain, renamed.Domain},
+		{"WEBSITE_URL", old.Website, renamed.Website},
+		{"DOCS_URL", old.Docs, renamed.Docs},
+	} {
+		env = strings.Replace(env, "\n"+kv[0]+"="+kv[1]+"\n", "\n"+kv[0]+"="+kv[2]+"\n", 1)
+	}
 	writeFile(t, dst, envFile, env)
 	if id, err := readIdentity(dst); err != nil || id != renamed {
 		t.Fatalf("edited %s = %+v, %v; want %+v", envFile, id, err, renamed)

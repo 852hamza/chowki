@@ -64,6 +64,14 @@ func syncRepo(ctx context.Context, root string, out io.Writer) error {
 		if err != nil {
 			return err
 		}
+		// project.env is never rewritten, so an override that still names the
+		// old owner or domain would keep an old value alive unnoticed.
+		for _, kv := range [][2]string{{"WEBSITE_URL", cur.Website}, {"DOCS_URL", cur.Docs}} {
+			if pos, i := m.find(kv[1], 0); pos >= 0 {
+				return fmt.Errorf("%s: %s still contains %q, which this sync replaces; update it first",
+					envFile, kv[0], m.olds[i])
+			}
+		}
 		if updated, err = rewriteFiles(ctx, root, m); err != nil {
 			return err
 		}
