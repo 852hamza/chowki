@@ -73,5 +73,9 @@ All notable changes to Chowki are recorded in this file. The format is based on
   `chowki admin create|list|revoke` manage; redaction finds them too. Reports count whole days in
   UTC, from sums that Chowki keeps for each day, so they stay fast as requests pile up and outlive
   the retention of request records. The summary counts unpriced requests.
+- A dashboard at `/ui/`, for admin tokens: spend, requests, tokens, failures, net savings, the
+  exact-cache hit rate and redactions over a range of days, a chart by day with a table view, the
+  top keys and models, and the state of every budget. It needs no external scripts, fonts or
+  styles, and it has a dark mode.
 
 [Unreleased]: https://github.com/852hamza/chowki/commits/main

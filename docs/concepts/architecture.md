@@ -27,7 +27,8 @@ flowchart LR
 ```
 
 Clients authenticate to Chowki with virtual keys. Only Chowki holds the provider keys, encrypted,
-and it stores request metadata in SQLite.
+and it stores request metadata in SQLite. Administrators see what flows through Chowki in its
+dashboard, or read it from the admin API, with admin tokens.
 
 ### API families
 
@@ -109,8 +110,11 @@ endpoint and error code.
 - **Low overhead.** The target for Chowki's own overhead, without the provider's time, is under
   5 ms at the median and under 25 ms at the 99th percentile.
 - **Reports from daily sums.** With each batch of request records, Chowki updates sums by day, key
-  and model. Reports read these sums, so they stay fast as requests pile up, count whole days in
-  UTC, and outlive the retention of request records.
+  and model. The dashboard and the admin API read these sums, so reports stay fast as requests
+  pile up, count whole days in UTC, and outlive the retention of request records.
+- **A dashboard without a front-end build.** The dashboard is HTML that the gateway renders, with a
+  small script for tooltips. It loads nothing from other sites, and its strict Content Security
+  Policy allows no inline scripts or styles.
 
 ## Limits
 

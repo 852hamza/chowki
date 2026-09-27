@@ -7,8 +7,9 @@ edition: community
 last_reviewed: 2026-09-27
 ---
 
-The admin API reports what flows through Chowki and manages its keys and projects, for scripts
-and for the dashboard. It's served under `/admin/v1/` on the gateway's address.
+The admin API reports what flows through Chowki and manages its keys and projects, for scripts.
+It's served under `/admin/v1/` on the gateway's address. To see the same reports in a browser, see
+[Use the dashboard](../how-to/use-the-dashboard.md).
 
 ## Authentication
 

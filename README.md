@@ -19,9 +19,9 @@ a single Go binary that stores its data in SQLite.
 
 > **Status:** early development. Chowki relays OpenAI and Anthropic requests with virtual keys,
 > records their cost, enforces budgets and rate limits, caches repeated answers, marks repeated
-> Anthropic prompts for caching, redacts secrets and personal data, and falls back between
-> providers. The dashboard, Gemini and the secret scanner aren't built yet, so don't use it in
-> production. Follow the [changelog](CHANGELOG.md) to see what has landed.
+> Anthropic prompts for caching, redacts secrets and personal data, falls back between providers,
+> and shows it all in a dashboard. Gemini and the secret scanner aren't built yet, so don't use it
+> in production. Follow the [changelog](CHANGELOG.md) to see what has landed.
 
 ## Quickstart
 
@@ -49,6 +49,8 @@ make build
   repeated prompt prefixes for Anthropic's cache.
 - [Redact secrets and personal data](docs/how-to/redact-sensitive-data.md): mask, block or report
   keys and personal data in prompts.
+- [Use the dashboard](docs/how-to/use-the-dashboard.md): see spend, savings, redactions and
+  budgets in a browser.
 - [API reference](docs/reference/api.md): endpoints, headers and error codes.
 - [Admin API reference](docs/reference/admin-api.md): reports, and managing keys and projects.
 - [Configuration reference](docs/reference/configuration.md): every setting and its environment
