@@ -90,39 +90,41 @@ func (a *API) audit(r *http.Request, action, target string, details map[string]s
 		Target: target, Details: details})
 }
 
-// timeRange reads the from and to query parameters: RFC 3339 times, or
-// dates as YYYY-MM-DD, where a date for to includes that whole day. They
-// default to the start of the current month in UTC, and now.
-func (a *API) timeRange(r *http.Request) (from, to time.Time, err error) {
+// dayRange reads the from and to query parameters: dates such as
+// 2026-09-01, where to includes its day. Reports count whole days in UTC.
+// The range defaults to the current month to date. It returns the range as
+// [from, to).
+func (a *API) dayRange(r *http.Request) (from, to time.Time, err error) {
 	now := a.now().UTC()
 	from = time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.UTC)
-	to = now
-	parse := func(name string, t *time.Time, endOfDay bool) {
+	to = time.Date(now.Year(), now.Month(), now.Day()+1, 0, 0, 0, 0, time.UTC)
+	for name, t := range map[string]*time.Time{"from": &from, "to": &to} {
 		v := r.URL.Query().Get(name)
-		if v == "" || err != nil {
-			return
+		if v == "" {
+			continue
 		}
-		if d, e := time.Parse(time.DateOnly, v); e == nil {
-			if endOfDay {
-				d = d.AddDate(0, 0, 1)
-			}
-			*t = d
-			return
+		d, e := time.Parse(time.DateOnly, v)
+		if e != nil {
+			return from, to, fmt.Errorf("%s must be a date such as 2026-09-01", name)
 		}
-		if *t, err = time.Parse(time.RFC3339, v); err != nil {
-			err = fmt.Errorf("%s must be a date such as 2026-09-01, or a time such as 2026-09-01T10:00:00Z", name)
+		if name == "to" {
+			d = d.AddDate(0, 0, 1)
 		}
+		*t = d
 	}
-	parse("from", &from, false)
-	parse("to", &to, true)
-	if err == nil && !from.Before(to) {
-		err = errors.New("from must be before to")
+	if !from.Before(to) {
+		return from, to, errors.New("from must be on or before to")
 	}
-	return from, to, err
+	return from, to, nil
+}
+
+// days formats [from, to) as the dates of its first and last days.
+func days(from, to time.Time) (string, string) {
+	return from.Format(time.DateOnly), to.AddDate(0, 0, -1).Format(time.DateOnly)
 }
 
 func (a *API) summary(w http.ResponseWriter, r *http.Request) {
-	from, to, err := a.timeRange(r)
+	from, to, err := a.dayRange(r)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid_request", err.Error())
 		return
@@ -136,9 +138,10 @@ func (a *API) summary(w http.ResponseWriter, r *http.Request) {
 	if n := t.CacheHits + t.CacheMisses; n > 0 {
 		hitRate = float64(t.CacheHits) / float64(n)
 	}
+	first, last := days(from, to)
 	writeJSON(w, http.StatusOK, map[string]any{
-		"from": from, "to": to, "requests": t.Requests, "errors": t.Errors, "cost_usd": t.CostUSD,
-		"savings_usd": t.SavingsUSD, "redactions": t.Redactions,
+		"from": first, "to": last, "requests": t.Requests, "errors": t.Errors, "unpriced": t.Unpriced,
+		"cost_usd": t.CostUSD, "savings_usd": t.SavingsUSD, "redactions": t.Redactions,
 		"tokens": map[string]int64{"input": t.Tokens.Input, "output": t.Tokens.Output, "cache_read": t.Tokens.CacheRead,
 			"cache_write": t.Tokens.CacheWrite, "reasoning": t.Tokens.Reasoning},
 		"cache": map[string]any{"hits": t.CacheHits, "misses": t.CacheMisses, "hit_rate": hitRate},
@@ -156,7 +159,7 @@ type group struct {
 }
 
 func (a *API) breakdown(w http.ResponseWriter, r *http.Request) {
-	from, to, err := a.timeRange(r)
+	from, to, err := a.dayRange(r)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid_request", err.Error())
 		return
@@ -179,7 +182,8 @@ func (a *API) breakdown(w http.ResponseWriter, r *http.Request) {
 		out = append(out, group{ID: g.ID, Label: g.Label, Requests: g.Requests, CostUSD: g.CostUSD,
 			SavingsUSD: g.SavingsUSD, InputTokens: g.InputTokens, OutputTokens: g.OutputTokens})
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"by": by, "from": from, "to": to, "groups": out})
+	first, last := days(from, to)
+	writeJSON(w, http.StatusOK, map[string]any{"by": by, "from": first, "to": last, "groups": out})
 }
 
 // key is a virtual key as the admin API shows it: never the key itself.

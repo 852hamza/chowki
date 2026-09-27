@@ -43,19 +43,21 @@ curl -sS http://localhost:8080/admin/v1/summary -H "Authorization: Bearer $ADMIN
 
 ## Time ranges
 
-Reports take `from` and `to` query parameters: dates such as `2026-09-01`, where a date for `to`
-includes that whole day, or times such as `2026-09-01T10:00:00Z`. They default to the start of
-the current month in UTC, and now.
+Reports count whole days in UTC. They take `from` and `to` query parameters: dates such as
+`2026-09-01`, where `to` includes its day. They default to the current month in UTC, from its first
+day to today. Chowki keeps the sums of each day when it deletes request records older than
+`retention_days`, so reports reach further back than `/admin/v1/requests`.
 
 ## Reports
 
 ### `GET /admin/v1/summary`
 
-Totals over a time range: requests, errors (status 400 or more), cost, net savings by method,
-tokens, exact-cache hits and misses, and redactions by type.
+Totals over a range of days: requests, errors (status 400 or more), unpriced requests (usage
+but no price in the catalog, counted as $0), cost, net savings by method, tokens, exact-cache hits
+and misses, and redactions by type.
 
 ```json
-{"cache":{"hit_rate":0,"hits":0,"misses":0},"cost_usd":2,"errors":0,"from":"2026-09-01T00:00:00Z","redactions":{},"requests":2,"savings_usd":{},"to":"2026-09-27T10:23:06.666995635Z","tokens":{"cache_read":0,"cache_write":0,"input":500000,"output":100000,"reasoning":0}}
+{"cache":{"hit_rate":0,"hits":0,"misses":0},"cost_usd":2,"errors":0,"from":"2026-09-01","redactions":{},"requests":2,"savings_usd":{},"to":"2026-09-27","tokens":{"cache_read":0,"cache_write":0,"input":500000,"output":100000,"reasoning":0},"unpriced":0}
 ```
 
 ### `GET /admin/v1/breakdown?by=<GROUP>`
@@ -64,7 +66,7 @@ The same sums, grouped by `key` (the default, with each key's prefix and name), 
 (in UTC). Keys and models come with the highest cost first; days in order.
 
 ```json
-{"by":"model","from":"2026-09-01T00:00:00Z","groups":[{"id":"openai/gpt-6-sol","requests":2,"cost_usd":2,"savings_usd":0,"input_tokens":500000,"output_tokens":100000}],"to":"2026-09-27T10:23:06.68725231Z"}
+{"by":"model","from":"2026-09-01","groups":[{"id":"openai/gpt-6-sol","requests":2,"cost_usd":2,"savings_usd":0,"input_tokens":500000,"output_tokens":100000}],"to":"2026-09-27"}
 ```
 
 ### `GET /admin/v1/requests?limit=<N>&before=<TIME>`

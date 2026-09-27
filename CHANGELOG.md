@@ -70,6 +70,8 @@ All notable changes to Chowki are recorded in this file. The format is based on
 - An API reference with the endpoints, Chowki's headers and every error code.
 - An admin JSON API under `/admin/v1/`: a summary, breakdowns by key, model or day, request
   records, and managing keys and projects. It takes admin tokens (`chowki_admin_…`), which
-  `chowki admin create|list|revoke` manage; redaction finds them too.
+  `chowki admin create|list|revoke` manage; redaction finds them too. Reports count whole days in
+  UTC, from sums that Chowki keeps for each day, so they stay fast as requests pile up and outlive
+  the retention of request records. The summary counts unpriced requests.
 
 [Unreleased]: https://github.com/852hamza/chowki/commits/main

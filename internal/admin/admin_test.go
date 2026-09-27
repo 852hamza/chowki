@@ -227,11 +227,15 @@ func TestReports(t *testing.T) {
 	status, body := h.do(http.MethodGet, "/admin/v1/summary", "")
 	cache, _ := body["cache"].(map[string]any)
 	if status != http.StatusOK || body["requests"] != 2.0 || body["cost_usd"] != 2.0 || cache["hit_rate"] != 0.5 ||
-		body["from"] != "2026-09-01T00:00:00Z" {
+		body["from"] != "2026-09-01" || body["to"] != "2026-09-27" || body["unpriced"] != 0.0 {
 		t.Errorf("summary = %d %v", status, body)
 	}
-	if _, body := h.do(http.MethodGet, "/admin/v1/summary?from=2026-08-01&to=2026-09-26", ""); body["requests"] != 1.0 {
+	if _, body := h.do(http.MethodGet, "/admin/v1/summary?from=2026-08-01&to=2026-09-26", ""); body["requests"] != 1.0 ||
+		body["to"] != "2026-09-26" {
 		t.Errorf("summary of August = %v", body)
+	}
+	if _, body := h.do(http.MethodGet, "/admin/v1/summary?from=2026-09-27&to=2026-09-27", ""); body["requests"] != 2.0 {
+		t.Errorf("summary of one day = %v", body)
 	}
 	status, body = h.do(http.MethodGet, "/admin/v1/breakdown?by=model", "")
 	groups, _ := body["groups"].([]any)
@@ -246,7 +250,8 @@ func TestReports(t *testing.T) {
 		t.Errorf("requests = %d %v", status, body)
 	}
 	for _, path := range []string{"/admin/v1/breakdown?by=project", "/admin/v1/summary?from=yesterday",
-		"/admin/v1/summary?from=2026-09-27&to=2026-09-01", "/admin/v1/requests?limit=0", "/admin/v1/requests?before=x"} {
+		"/admin/v1/summary?from=2026-09-27&to=2026-09-01", "/admin/v1/summary?to=2026-09-27T10:00:00Z",
+		"/admin/v1/requests?limit=0", "/admin/v1/requests?before=x"} {
 		if status, body := h.do(http.MethodGet, path, ""); status != http.StatusBadRequest {
 			t.Errorf("GET %s = %d %v; want 400", path, status, body)
 		}
