@@ -1,0 +1,38 @@
+# golangci-lint v2 configuration. Run with `make lint`.
+version: "2"
+
+linters:
+  # standard = errcheck, govet, ineffassign, staticcheck, unused
+  default: standard
+  enable:
+    - bodyclose
+    - errorlint
+    - gosec
+    - misspell
+    - nilerr
+    - noctx
+    - revive # includes the rule that exported identifiers have doc comments
+    - unconvert
+    - usestdlibvars
+  settings:
+    misspell:
+      locale: US
+  exclusions:
+    presets:
+      - common-false-positives
+      - std-error-handling
+    rules:
+      # File, credential and subprocess rules protect the gateway's own data.
+      # Tests and dev tools create source files, fixtures and fake keys, and
+      # run git and go with arguments (never through a shell).
+      - path: (_test\.go$|^tools/)
+        linters: [gosec]
+        text: "G101|G204|G301|G304|G306|G702|G703"
+      # Test helpers close response bodies in t.Cleanup, which bodyclose can't see.
+      - path: _test\.go$
+        linters: [bodyclose]
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
