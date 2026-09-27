@@ -51,6 +51,7 @@ make build
   keys and personal data in prompts.
 - [Configuration reference](docs/reference/configuration.md): every setting and its environment
   variable.
+- [Monitor Chowki](docs/operations/monitoring.md): health checks and Prometheus metrics.
 - [Architecture](docs/concepts/architecture.md): how a request flows through Chowki.
 - [Set up a development environment](docs/contributing/development-setup.md): build and test
   Chowki.

@@ -55,5 +55,8 @@ All notable changes to Chowki are recorded in this file. The format is based on
   all keys with `defaults.redaction`. Placeholders are deterministic, such as
   `[REDACTED:email:b443e741]`; the `x-chowki-redactions` header, logs and records count findings by
   type and never hold the values.
+- Health checks and metrics: `GET /healthz` (liveness), `GET /readyz` (the database answers) and
+  `GET /metrics` in the Prometheus text format, with requests, tokens, cost, savings, redactions,
+  and histograms of provider latency and the gateway's own overhead.
 
 [Unreleased]: https://github.com/852hamza/chowki/commits/main
