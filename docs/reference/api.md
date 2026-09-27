@@ -37,6 +37,7 @@ Send a virtual key in the header that the client's SDK uses: `Authorization: Bea
 | `POST /anthropic/v1/messages` | Anthropic messages, streaming or not. |
 | `POST /anthropic/v1/messages/count_tokens` | Anthropic token counting. Providers don't bill it, so it spends no budget or tokens per minute, and the exact cache doesn't apply. Redaction does. |
 | `GET /healthz`, `GET /readyz`, `GET /metrics` | Health checks and metrics, without a key. See the [metrics reference](metrics.md). |
+| `/admin/v1/…` | The admin API, with an admin token instead of a virtual key. See the [admin API reference](admin-api.md). |
 
 For example, `GET /v1/models` answers:
 

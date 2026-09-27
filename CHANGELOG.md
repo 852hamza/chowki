@@ -68,5 +68,8 @@ All notable changes to Chowki are recorded in this file. The format is based on
   `GET /v1/models` (the aliases and catalog models that a key may use), and
   `POST /anthropic/v1/messages/count_tokens` (free: no budget or token limit).
 - An API reference with the endpoints, Chowki's headers and every error code.
+- An admin JSON API under `/admin/v1/`: a summary, breakdowns by key, model or day, request
+  records, and managing keys and projects. It takes admin tokens (`chowki_admin_…`), which
+  `chowki admin create|list|revoke` manage; redaction finds them too.
 
 [Unreleased]: https://github.com/852hamza/chowki/commits/main
