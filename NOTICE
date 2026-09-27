@@ -8,3 +8,11 @@ This product includes the following third-party software:
 go.yaml.in/yaml/v3
   Copyright 2011-2016 Canonical Ltd. Licensed under the Apache License, Version 2.0.
   Files ported from libyaml: Copyright (c) 2006-2011 Kirill Simonov. MIT License.
+
+modernc.org/sqlite, modernc.org/libc, modernc.org/mathutil, modernc.org/memory
+  Copyright (c) The modernc.org authors. BSD 3-Clause License.
+  SQLite itself is in the public domain.
+
+github.com/google/uuid (BSD 3-Clause License), github.com/remyoudompheng/bigfft
+(BSD 3-Clause License), golang.org/x/sys (BSD 3-Clause License),
+github.com/dustin/go-humanize (MIT License)

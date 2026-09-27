@@ -1,0 +1,332 @@
+package store
+
+import (
+	"context"
+	"database/sql"
+	"embed"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io/fs"
+	"net/url"
+	"os"
+	"path/filepath"
+	"slices"
+	"strconv"
+	"strings"
+	"time"
+
+	"modernc.org/sqlite"
+	sqlite3 "modernc.org/sqlite/lib"
+)
+
+//go:embed migrations/*.sql
+var migrations embed.FS
+
+// SQLite is the SQLite implementation of Store.
+type SQLite struct {
+	db *sql.DB
+}
+
+var _ Store = (*SQLite)(nil)
+
+// OpenSQLite opens the SQLite database at dsn, such as
+// "file:data/chowki.db", creating it if needed, and applies pending
+// migrations. A new database file and its folder are readable only by the
+// current user.
+func OpenSQLite(ctx context.Context, dsn string) (*SQLite, error) {
+	full, path, err := prepareDSN(dsn)
+	if err != nil {
+		return nil, err
+	}
+	if path != "" {
+		if err := createPrivateFile(path); err != nil {
+			return nil, err
+		}
+	}
+	db, err := sql.Open("sqlite", full)
+	if err != nil {
+		return nil, fmt.Errorf("open database: %w", err)
+	}
+	s := &SQLite{db: db}
+	if err := db.PingContext(ctx); err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("open database: %w", err)
+	}
+	if err := s.migrate(ctx); err != nil {
+		_ = db.Close()
+		return nil, err
+	}
+	return s, nil
+}
+
+// prepareDSN adds the connection settings Chowki relies on, unless the DSN
+// sets them, and returns the database file path, or "" for an in-memory
+// database.
+func prepareDSN(dsn string) (full, path string, err error) {
+	name, rawQuery, _ := strings.Cut(dsn, "?")
+	q, err := url.ParseQuery(rawQuery)
+	if err != nil {
+		return "", "", fmt.Errorf("storage.dsn: %w", err)
+	}
+	for key, value := range map[string]string{
+		"_busy_timeout": "5000",   // wait for the single writer instead of failing
+		"_journal_mode": "WAL",    // readers don't block the writer
+		"_synchronous":  "NORMAL", // safe with WAL, and much faster than FULL
+		"_foreign_keys": "on",
+	} {
+		if !q.Has(key) {
+			q.Set(key, value)
+		}
+	}
+	path = strings.TrimPrefix(name, "file:")
+	path = strings.TrimPrefix(path, "//")
+	if path == "" || path == ":memory:" || strings.HasPrefix(path, ":memory:") || q.Get("mode") == "memory" {
+		path = ""
+	}
+	return name + "?" + q.Encode(), path, nil
+}
+
+// createPrivateFile creates the database file with mode 0600, and its
+// folder with mode 0700, so that SQLite doesn't create a world-readable
+// file.
+func createPrivateFile(path string) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return fmt.Errorf("create database folder: %w", err)
+	}
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
+	if errors.Is(err, fs.ErrExist) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("create database file: %w", err)
+	}
+	return f.Close()
+}
+
+func (s *SQLite) migrate(ctx context.Context) error {
+	if _, err := s.db.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS schema_migrations (
+		version INTEGER PRIMARY KEY, applied_at INTEGER NOT NULL)`); err != nil {
+		return fmt.Errorf("migrate: %w", err)
+	}
+	var current int
+	if err := s.db.QueryRowContext(ctx, `SELECT coalesce(max(version), 0) FROM schema_migrations`).Scan(&current); err != nil {
+		return fmt.Errorf("migrate: %w", err)
+	}
+	names, err := fs.Glob(migrations, "migrations/*.sql")
+	if err != nil {
+		return fmt.Errorf("migrate: %w", err)
+	}
+	slices.Sort(names)
+	latest := 0
+	for _, name := range names {
+		version, err := strconv.Atoi(strings.SplitN(filepath.Base(name), "_", 2)[0])
+		if err != nil {
+			return fmt.Errorf("migrate: bad migration name %s", name)
+		}
+		latest = version
+		if version <= current {
+			continue
+		}
+		body, err := migrations.ReadFile(name)
+		if err != nil {
+			return fmt.Errorf("migrate: %w", err)
+		}
+		if err := s.inTx(ctx, func(tx *sql.Tx) error {
+			if _, err := tx.ExecContext(ctx, string(body)); err != nil {
+				return err
+			}
+			_, err := tx.ExecContext(ctx, `INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)`,
+				version, time.Now().UnixMilli())
+			return err
+		}); err != nil {
+			return fmt.Errorf("migrate to version %d: %w", version, err)
+		}
+	}
+	if current > latest {
+		return fmt.Errorf("migrate: the database has schema version %d, but this Chowki knows only up to %d; "+
+			"use a newer Chowki", current, latest)
+	}
+	return nil
+}
+
+func (s *SQLite) inTx(ctx context.Context, fn func(*sql.Tx) error) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	if err := fn(tx); err != nil {
+		_ = tx.Rollback() // the transaction failed; its error is the one to report
+		return err
+	}
+	return tx.Commit()
+}
+
+// EnsureProject implements Store.
+func (s *SQLite) EnsureProject(ctx context.Context, name string) (Project, error) {
+	if _, err := s.db.ExecContext(ctx, `INSERT INTO projects (name, created_at) VALUES (?, ?)
+		ON CONFLICT (name) DO NOTHING`, name, time.Now().UnixMilli()); err != nil {
+		return Project{}, fmt.Errorf("create project: %w", err)
+	}
+	var p Project
+	var created int64
+	err := s.db.QueryRowContext(ctx, `SELECT id, name, created_at FROM projects WHERE name = ?`, name).
+		Scan(&p.ID, &p.Name, &created)
+	if err != nil {
+		return Project{}, fmt.Errorf("read project: %w", err)
+	}
+	p.CreatedAt = time.UnixMilli(created).UTC()
+	return p, nil
+}
+
+// CreateKey implements Store.
+func (s *SQLite) CreateKey(ctx context.Context, k Key) (Key, error) {
+	res, err := s.db.ExecContext(ctx, `INSERT INTO virtual_keys (project_id, name, prefix, key_hash, created_at)
+		VALUES (?, ?, ?, ?, ?)`, k.ProjectID, k.Name, k.Prefix, k.Hash[:], k.CreatedAt.UnixMilli())
+	var se *sqlite.Error
+	if errors.As(err, &se) && se.Code() == sqlite3.SQLITE_CONSTRAINT_UNIQUE {
+		return Key{}, fmt.Errorf("create key: prefix %s: %w", k.Prefix, ErrExists)
+	}
+	if err != nil {
+		return Key{}, fmt.Errorf("create key: %w", err)
+	}
+	id, err := res.LastInsertId()
+	if err != nil {
+		return Key{}, fmt.Errorf("create key: %w", err)
+	}
+	return s.keyWhere(ctx, "k.id = ?", id)
+}
+
+// KeyByPrefix implements Store.
+func (s *SQLite) KeyByPrefix(ctx context.Context, prefix string) (Key, error) {
+	return s.keyWhere(ctx, "k.prefix = ?", prefix)
+}
+
+const keyColumns = `SELECT k.id, k.project_id, p.name, k.name, k.prefix, k.key_hash, k.created_at, k.revoked_at
+	FROM virtual_keys k JOIN projects p ON p.id = k.project_id`
+
+func (s *SQLite) keyWhere(ctx context.Context, where string, arg any) (Key, error) {
+	k, err := scanKey(s.db.QueryRowContext(ctx, keyColumns+" WHERE "+where, arg))
+	if errors.Is(err, sql.ErrNoRows) {
+		return Key{}, ErrNotFound
+	}
+	if err != nil {
+		return Key{}, fmt.Errorf("read key: %w", err)
+	}
+	return k, nil
+}
+
+// ListKeys implements Store.
+func (s *SQLite) ListKeys(ctx context.Context) ([]Key, error) {
+	rows, err := s.db.QueryContext(ctx, keyColumns+" ORDER BY k.created_at, k.id")
+	if err != nil {
+		return nil, fmt.Errorf("list keys: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	var keys []Key
+	for rows.Next() {
+		k, err := scanKey(rows)
+		if err != nil {
+			return nil, fmt.Errorf("list keys: %w", err)
+		}
+		keys = append(keys, k)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("list keys: %w", err)
+	}
+	return keys, nil
+}
+
+func scanKey(row interface{ Scan(...any) error }) (Key, error) {
+	var k Key
+	var hash []byte
+	var created int64
+	var revoked sql.NullInt64
+	if err := row.Scan(&k.ID, &k.ProjectID, &k.Project, &k.Name, &k.Prefix, &hash, &created, &revoked); err != nil {
+		return Key{}, err
+	}
+	if len(hash) != len(k.Hash) {
+		return Key{}, fmt.Errorf("key %s has a %d-byte hash", k.Prefix, len(hash))
+	}
+	copy(k.Hash[:], hash)
+	k.CreatedAt = time.UnixMilli(created).UTC()
+	if revoked.Valid {
+		k.RevokedAt = time.UnixMilli(revoked.Int64).UTC()
+	}
+	return k, nil
+}
+
+// RevokeKey implements Store.
+func (s *SQLite) RevokeKey(ctx context.Context, prefix string, at time.Time) (Key, error) {
+	if _, err := s.db.ExecContext(ctx, `UPDATE virtual_keys SET revoked_at = ?
+		WHERE prefix = ? AND revoked_at IS NULL`, at.UnixMilli(), prefix); err != nil {
+		return Key{}, fmt.Errorf("revoke key: %w", err)
+	}
+	return s.KeyByPrefix(ctx, prefix)
+}
+
+// InsertRequests implements Store.
+func (s *SQLite) InsertRequests(ctx context.Context, rs []Request) error {
+	err := s.inTx(ctx, func(tx *sql.Tx) error {
+		stmt, err := tx.PrepareContext(ctx, `INSERT INTO requests (id, ts, key_id, project_id, api_family,
+			endpoint, provider, model, stream, status, error_type, latency_ms, ttfb_ms, input_tokens,
+			output_tokens, cache_read_tokens, cache_write_tokens, reasoning_tokens, cost_usd, savings_usd,
+			savings_method) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+		if err != nil {
+			return err
+		}
+		defer func() { _ = stmt.Close() }()
+		for _, r := range rs {
+			var ttfb, cost any
+			if r.TTFB > 0 {
+				ttfb = r.TTFB.Milliseconds()
+			}
+			if r.CostUSD != nil {
+				cost = *r.CostUSD
+			}
+			tokens := [5]any{}
+			if t := r.Tokens; t != nil {
+				tokens = [5]any{t.Input, t.Output, t.CacheRead, t.CacheWrite, t.Reasoning}
+			}
+			if _, err := stmt.ExecContext(ctx, r.ID, r.Time.UnixMilli(), r.KeyID, r.ProjectID, r.APIFamily,
+				r.Endpoint, r.Provider, r.Model, r.Stream, r.Status, r.ErrorType, r.Latency.Milliseconds(), ttfb,
+				tokens[0], tokens[1], tokens[2], tokens[3], tokens[4], cost, r.SavingsUSD, r.SavingsMethod); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return fmt.Errorf("save requests: %w", err)
+	}
+	return nil
+}
+
+// DeleteRequestsBefore implements Store.
+func (s *SQLite) DeleteRequestsBefore(ctx context.Context, t time.Time) (int64, error) {
+	res, err := s.db.ExecContext(ctx, `DELETE FROM requests WHERE ts < ?`, t.UnixMilli())
+	if err != nil {
+		return 0, fmt.Errorf("delete old requests: %w", err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return 0, fmt.Errorf("delete old requests: %w", err)
+	}
+	return n, nil
+}
+
+// AddAudit implements Store.
+func (s *SQLite) AddAudit(ctx context.Context, e AuditEvent) error {
+	details, err := json.Marshal(e.Details)
+	if err != nil {
+		return fmt.Errorf("audit: %w", err)
+	}
+	if _, err := s.db.ExecContext(ctx, `INSERT INTO audit_log (ts, actor, action, target, details)
+		VALUES (?, ?, ?, ?, ?)`, e.Time.UnixMilli(), e.Actor, e.Action, e.Target, string(details)); err != nil {
+		return fmt.Errorf("audit: %w", err)
+	}
+	return nil
+}
+
+// Close implements Store.
+func (s *SQLite) Close() error { return s.db.Close() }
