@@ -2,3 +2,9 @@ Chowki
 Copyright 2026 The Chowki Authors
 
 Licensed under the Apache License, Version 2.0 (see LICENSE).
+
+This product includes the following third-party software:
+
+go.yaml.in/yaml/v3
+  Copyright 2011-2016 Canonical Ltd. Licensed under the Apache License, Version 2.0.
+  Files ported from libyaml: Copyright (c) 2006-2011 Kirill Simonov. MIT License.

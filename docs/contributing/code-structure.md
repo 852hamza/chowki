@@ -57,6 +57,7 @@ packages in order, calls the provider through an adapter, and records the usage.
 | `internal/web/` | Dashboard |
 | `internal/metrics/` | Prometheus metrics endpoint |
 | `internal/config/` | Configuration loading and validation |
+| `internal/netguard/` | Which network addresses the gateway may connect to (SSRF protection) |
 | `internal/buildinfo/` | Version and project identity of the build |
 | `internal/testutil/` | Test helpers, including the fake providers |
 | `pkg/plugin/` | Public, stable interfaces for extensions |
