@@ -22,6 +22,7 @@ const (
 	codeRevokedKey         = "revoked_api_key"
 	codeInvalidRequest     = "invalid_request"
 	codeTooLarge           = "request_too_large"
+	codeBudgetExceeded     = "budget_exceeded"
 	codeUnknownProvider    = "unknown_provider"
 	codeWrongEndpoint      = "wrong_endpoint"
 	codeProviderKeyMissing = "provider_key_missing"
@@ -58,6 +59,8 @@ func openAIType(status int) string {
 	switch {
 	case status == http.StatusUnauthorized:
 		return "authentication_error"
+	case status == http.StatusTooManyRequests:
+		return "rate_limit_error"
 	case status >= 500:
 		return "server_error"
 	default:

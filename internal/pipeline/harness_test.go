@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/852hamza/chowki/internal/auth"
+	"github.com/852hamza/chowki/internal/budget"
 	"github.com/852hamza/chowki/internal/catalog"
 	"github.com/852hamza/chowki/internal/config"
 	"github.com/852hamza/chowki/internal/netguard"
@@ -103,7 +104,12 @@ func newHarness(t testing.TB, oa, an testutil.Config, opts ...option) *harness {
 		t.Fatal(err)
 	}
 	logger := slog.New(slog.NewJSONHandler(h.logs, nil))
-	h.gw = &pipeline.Gateway{Store: h.st, Catalog: cat, Logger: logger, MaxBody: 1 << 20, Timeout: 10 * time.Second}
+	budgets, err := budget.Load(t.Context(), sq, time.Now(), logger)
+	if err != nil {
+		t.Fatal(err)
+	}
+	h.gw = &pipeline.Gateway{Store: h.st, Budgets: budgets, Catalog: cat, Logger: logger, MaxBody: 1 << 20,
+		Timeout: 10 * time.Second}
 	cfgs := []config.Provider{
 		{Name: "openai", Type: config.TypeOpenAI, BaseURL: h.openai.URL + "/v1", APIKeyEnv: "OPENAI_API_KEY", APIKey: openAIKey},
 		{Name: "anthropic", Type: config.TypeAnthropic, BaseURL: h.anthropic.URL, APIKeyEnv: "ANTHROPIC_API_KEY",
@@ -133,6 +139,23 @@ func (h *harness) flush() {
 		h.closed = true
 		h.gw.Requests.Close()
 	}
+}
+
+// restart replaces the gateway with a new one on the same database, as a
+// restart of the process would.
+func (h *harness) restart() {
+	h.t.Helper()
+	h.flush()
+	gw := *h.gw
+	var err error
+	if gw.Budgets, err = budget.Load(context.Background(), h.st, time.Now(), gw.Logger); err != nil {
+		h.t.Fatal(err)
+	}
+	gw.Requests = store.NewRequestLog(h.st, gw.Logger)
+	h.gw, h.closed = &gw, false
+	srv := httptest.NewServer(server.Routes(h.gw))
+	h.t.Cleanup(srv.Close)
+	h.url = srv.URL
 }
 
 // records returns the saved request records.

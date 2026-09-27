@@ -15,6 +15,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/852hamza/chowki/internal/budget"
 	"github.com/852hamza/chowki/internal/buildinfo"
 	"github.com/852hamza/chowki/internal/catalog"
 	"github.com/852hamza/chowki/internal/config"
@@ -94,6 +95,11 @@ func serve(ctx context.Context, configPath string, ln net.Listener, logOut io.Wr
 	if err != nil {
 		return err
 	}
+	budgets, err := budget.Load(ctx, st, time.Now(), logger)
+	if err != nil {
+		_ = st.Close() // the load error is the one to report
+		return err
+	}
 	requests := store.NewRequestLog(st, logger)
 	retentionCtx, stopRetention := context.WithCancel(context.Background())
 	var wg sync.WaitGroup
@@ -110,7 +116,7 @@ func serve(ctx context.Context, configPath string, ln net.Listener, logOut io.Wr
 	}()
 
 	gw := &pipeline.Gateway{
-		Store: st, Requests: requests, Providers: ps, Catalog: cat, Logger: logger,
+		Store: st, Requests: requests, Budgets: budgets, Providers: ps, Catalog: cat, Logger: logger,
 		MaxBody: int64(cfg.Server.MaxBodyMB) << 20, Timeout: cfg.Server.UpstreamTimeout,
 	}
 	logger.Info("chowki started", "version", buildinfo.Version(), "providers", names, "priced_models", cat.Len())

@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/852hamza/chowki/internal/auth"
+	"github.com/852hamza/chowki/internal/budget"
 	"github.com/852hamza/chowki/internal/catalog"
 	"github.com/852hamza/chowki/internal/config"
 	"github.com/852hamza/chowki/internal/providers"
@@ -36,11 +37,12 @@ const (
 const maxResponse = 64 << 20
 
 // Gateway serves the API endpoints: it authenticates each request with a
-// virtual key, routes it to a provider, relays the response and records
-// the request's metadata, usage and cost.
+// virtual key, routes it to a provider within the key's budgets, relays the
+// response and records the request's metadata, usage and cost.
 type Gateway struct {
 	Store     store.Store
 	Requests  *store.RequestLog
+	Budgets   *budget.Tracker
 	Providers map[string]*providers.Provider
 	Catalog   *catalog.Catalog
 	Logger    *slog.Logger
@@ -79,6 +81,7 @@ type call struct {
 	stream   bool
 	errType  string
 	report   usage.Report
+	ticket   *budget.Ticket // nil until the budgets admit the request
 }
 
 func (g *Gateway) serve(w http.ResponseWriter, r *http.Request, f usage.Family) {
@@ -144,6 +147,10 @@ func (g *Gateway) handle(ctx context.Context, c *call, r *http.Request) *apiErro
 	}
 	if len(edits) > 0 {
 		body = obj.with(edits)
+	}
+
+	if e := g.admit(c, body); e != nil {
+		return e
 	}
 
 	upstreamCtx, cancel := context.WithTimeout(ctx, g.Timeout)
@@ -238,6 +245,28 @@ func readRequest(f usage.Family, o *object) (request, *apiError) {
 		}
 	}
 	return req, nil
+}
+
+// admit checks the budgets of the key and its project. The request holds
+// its estimated input cost until finish settles the actual cost, so that
+// parallel requests can't all slip under a budget that is nearly used up.
+func (g *Gateway) admit(c *call, body []byte) *apiError {
+	var estimate float64
+	if c.key.BudgetUSD > 0 || c.key.ProjectBudgetUSD > 0 {
+		if m, ok := g.Catalog.Find(c.provider.Name, c.model); ok {
+			tokens := usage.EstimateTokens(body)
+			estimate = float64(tokens) * m.PriceFor(tokens).Input / 1e6
+		}
+	}
+	t, err := g.Budgets.Admit(c.key, estimate, c.start)
+	if err != nil {
+		// Retrying can't help until the month ends or the budget is raised.
+		// The official OpenAI and Anthropic SDKs obey this header.
+		c.w.Header().Set("x-should-retry", "false")
+		return &apiError{http.StatusTooManyRequests, codeBudgetExceeded, err.Error()}
+	}
+	c.ticket = t
+	return nil
 }
 
 // route picks the provider for a model: "<provider>/<model>" names it;
@@ -424,6 +453,11 @@ func (g *Gateway) finish(c *call) {
 	cost := g.cost(c)
 	rec.CostUSD, rec.SavingsUSD, rec.SavingsMethod = cost.USD, cost.SavingsUSD, cost.SavingsMethod
 	g.Requests.Add(rec)
+	var spent float64 // an unpriced request counts as free: its cost is unknown
+	if cost.USD != nil {
+		spent = *cost.USD
+	}
+	g.Budgets.Settle(c.ticket, spent, time.Now())
 
 	attrs = append(attrs, "key_id", c.key.ID, "provider", rec.Provider, "model", rec.Model, "stream", c.stream,
 		"ttfb_ms", ttfb.Milliseconds())
