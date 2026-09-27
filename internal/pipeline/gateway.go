@@ -501,7 +501,7 @@ func (g *Gateway) admit(c *call, body []byte) *apiError {
 	var estimate float64
 	if hasBudget {
 		if m, ok := g.Catalog.Find(c.provider.Name, c.model); ok {
-			estimate = float64(tokens) * m.PriceFor(tokens).Input / 1e6
+			estimate = float64(tokens) * m.PriceFor(tokens, c.start).Input / 1e6
 		}
 	}
 	t, err := g.Budgets.Admit(k, estimate, c.start)
@@ -629,7 +629,7 @@ func (g *Gateway) cost(c *call) usage.Cost {
 			m, _ = g.Catalog.Find(c.provider.Name, c.report.Model)
 		}
 	}
-	return usage.Compute(c.family, c.report, m)
+	return usage.Compute(c.family, c.report, m, c.start)
 }
 
 // finish records the request's metadata: never its content or keys.

@@ -4,6 +4,7 @@ import (
 	"math"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/852hamza/chowki/internal/catalog"
 )
@@ -22,7 +23,16 @@ var (
 		Price: catalog.Price{Input: 4, Output: 20, CacheRead: ptr(0.2), CacheWrite: ptr(5), CacheWrite1h: ptr(8)},
 	}
 	anthropicNo1h = &catalog.Model{Price: catalog.Price{Input: 4, Output: 20, CacheRead: ptr(0.2), CacheWrite: ptr(5)}}
+	// The prices of gemini-2.5-pro, with a price change like Gemini 3.7
+	// Flash's.
+	geminiModel = &catalog.Model{
+		Price:   catalog.Price{Input: 1.25, Output: 10, CacheRead: ptr(0.125)},
+		Tiers:   []catalog.Tier{{AboveInputTokens: 200000, Price: catalog.Price{Input: 2.5, Output: 15, CacheRead: ptr(0.25)}}},
+		Changes: []catalog.Change{{From: "2027-01-01", Price: catalog.Price{Input: 3, Output: 30, CacheRead: ptr(0.3)}}},
+	}
 )
+
+var now = time.Date(2026, 9, 27, 12, 0, 0, 0, time.UTC)
 
 func TestCompute(t *testing.T) {
 	tests := []struct {
@@ -62,6 +72,15 @@ func TestCompute(t *testing.T) {
 		{"anthropic writes only: negative savings", Anthropic, &Usage{Input: 2000, CacheWrite: 2000}, "", anthropicModel,
 			2000 * 5 / 1e6, -(2000*5 - 2000*4) / 1e6, SavingsPromptCache, ""},
 
+		// Gemini: (prompt − cached) × input + cached × cache_read + (candidates + thoughts) × output. The
+		// parser adds the thoughts to Output; the tier depends on the whole prompt, cached tokens included.
+		{"gemini plain", Gemini, &Usage{Input: 1000, Output: 500, Reasoning: 200}, "", geminiModel,
+			(1000*1.25 + 500*10) / 1e6, 0, "", ""},
+		{"gemini implicit cache", Gemini, &Usage{Input: 1000, CacheRead: 400, Output: 100}, "", geminiModel,
+			(600*1.25 + 400*0.125 + 100*10) / 1e6, 400 * (1.25 - 0.125) / 1e6, SavingsPromptCache, ""},
+		{"gemini long context", Gemini, &Usage{Input: 250000, CacheRead: 100000, Output: 1000}, "", geminiModel,
+			(150000*2.5 + 100000*0.25 + 1000*15) / 1e6, 100000 * (2.5 - 0.25) / 1e6, SavingsPromptCache, ""},
+
 		{"no usage", OpenAI, nil, "", openAIModel, 0, 0, "", "reported no usage"},
 		{"unknown model", OpenAI, &Usage{Input: 1}, "", nil, 0, 0, "", "isn't in the catalog"},
 		{"modifier", Anthropic, &Usage{Input: 1}, "fast mode", anthropicModel, 0, 0, "", "fast mode isn't priced yet"},
@@ -71,11 +90,11 @@ func TestCompute(t *testing.T) {
 		{"no cache read price", OpenAI, &Usage{Input: 10, CacheRead: 5}, "", &catalog.Model{}, 0, 0, "", "no cache read price"},
 		{"no 1-hour write price", Anthropic, &Usage{Input: 10, CacheWrite: 5, CacheWrite1h: 5}, "", anthropicNo1h,
 			0, 0, "", "no cache write price"},
-		{"unknown family", "gemini", &Usage{Input: 10}, "", openAIModel, 0, 0, "", "unknown API family"},
+		{"unknown family", "cohere", &Usage{Input: 10}, "", openAIModel, 0, 0, "", "unknown API family"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			c := Compute(tt.family, Report{Usage: tt.usage, Modifier: tt.modifier}, tt.model)
+			c := Compute(tt.family, Report{Usage: tt.usage, Modifier: tt.modifier}, tt.model, now)
 			if tt.reason != "" {
 				if c.USD != nil || !strings.Contains(c.Reason, tt.reason) {
 					t.Errorf("Compute() = %+v, want no cost because %q", c, tt.reason)
@@ -94,3 +113,15 @@ func TestCompute(t *testing.T) {
 }
 
 func near(a, b float64) bool { return math.Abs(a-b) < 1e-12 }
+
+func TestComputePriceChange(t *testing.T) {
+	r := Report{Usage: &Usage{Input: 1000, Output: 100}}
+	for at, want := range map[time.Time]float64{
+		now: (1000*1.25 + 100*10) / 1e6,
+		time.Date(2027, 1, 1, 0, 0, 0, 0, time.UTC): (1000*3 + 100*30) / 1e6,
+	} {
+		if c := Compute(Gemini, r, geminiModel, at); c.USD == nil || !near(*c.USD, want) {
+			t.Errorf("Compute() at %v = %+v, want %v", at, c, want)
+		}
+	}
+}

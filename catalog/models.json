@@ -56,6 +56,96 @@
       "price": {"input": 1, "output": 5, "cache_read": 0.1, "cache_write": 1.25, "cache_write_1h": 2},
       "source": "https://platform.claude.com/docs/en/about-claude/pricing",
       "updated": "2026-09-27"
+    },
+    {
+      "provider": "gemini",
+      "model": "gemini-3.8-flash",
+      "price": {"input": 0.75, "output": 3.75, "cache_read": 0.075},
+      "changes": [{"from": "2027-01-01", "price": {"input": 1.5, "output": 7.5, "cache_read": 0.15}}],
+      "source": "https://ai.google.dev/gemini-api/docs/pricing",
+      "updated": "2026-09-27"
+    },
+    {
+      "provider": "gemini",
+      "model": "gemini-3.7-flash",
+      "price": {"input": 0.75, "output": 3.75, "cache_read": 0.075},
+      "changes": [{"from": "2027-01-01", "price": {"input": 1.5, "output": 7.5, "cache_read": 0.15}}],
+      "source": "https://ai.google.dev/gemini-api/docs/pricing",
+      "updated": "2026-09-27"
+    },
+    {
+      "provider": "gemini",
+      "model": "gemini-3.6-flash",
+      "price": {"input": 0.75, "output": 3.75, "cache_read": 0.075},
+      "changes": [{"from": "2027-01-01", "price": {"input": 1.5, "output": 7.5, "cache_read": 0.15}}],
+      "source": "https://ai.google.dev/gemini-api/docs/pricing",
+      "updated": "2026-09-27"
+    },
+    {
+      "provider": "gemini",
+      "model": "gemini-3.5-flash",
+      "price": {"input": 1.5, "output": 9, "cache_read": 0.15},
+      "source": "https://ai.google.dev/gemini-api/docs/pricing",
+      "updated": "2026-09-27"
+    },
+    {
+      "provider": "gemini",
+      "model": "gemini-3.5-flash-lite",
+      "price": {"input": 0.3, "output": 2.5, "cache_read": 0.03},
+      "source": "https://ai.google.dev/gemini-api/docs/pricing",
+      "updated": "2026-09-27"
+    },
+    {
+      "provider": "gemini",
+      "model": "gemini-3.1-flash-lite",
+      "price": {"input": 0.25, "output": 1.5, "cache_read": 0.025},
+      "source": "https://ai.google.dev/gemini-api/docs/pricing",
+      "updated": "2026-09-27"
+    },
+    {
+      "provider": "gemini",
+      "model": "gemini-3.1-pro-preview",
+      "aliases": ["gemini-3.1-pro-preview-customtools"],
+      "price": {"input": 2, "output": 12, "cache_read": 0.2},
+      "tiers": [{"above_input_tokens": 200000, "input": 4, "output": 18, "cache_read": 0.4}],
+      "source": "https://ai.google.dev/gemini-api/docs/pricing",
+      "updated": "2026-09-27"
+    },
+    {
+      "provider": "gemini",
+      "model": "gemini-3-flash-preview",
+      "price": {"input": 0.5, "output": 3, "cache_read": 0.05},
+      "source": "https://ai.google.dev/gemini-api/docs/pricing",
+      "updated": "2026-09-27"
+    },
+    {
+      "provider": "gemini",
+      "model": "gemini-2.5-pro",
+      "price": {"input": 1.25, "output": 10, "cache_read": 0.125},
+      "tiers": [{"above_input_tokens": 200000, "input": 2.5, "output": 15, "cache_read": 0.25}],
+      "source": "https://ai.google.dev/gemini-api/docs/pricing",
+      "updated": "2026-09-27"
+    },
+    {
+      "provider": "gemini",
+      "model": "gemini-2.5-flash",
+      "price": {"input": 0.3, "output": 2.5, "cache_read": 0.03},
+      "source": "https://ai.google.dev/gemini-api/docs/pricing",
+      "updated": "2026-09-27"
+    },
+    {
+      "provider": "gemini",
+      "model": "gemini-2.5-flash-lite",
+      "price": {"input": 0.1, "output": 0.4, "cache_read": 0.01},
+      "source": "https://ai.google.dev/gemini-api/docs/pricing",
+      "updated": "2026-09-27"
+    },
+    {
+      "provider": "gemini",
+      "model": "gemini-embedding-2",
+      "price": {"input": 0.2, "output": 0},
+      "source": "https://ai.google.dev/gemini-api/docs/pricing",
+      "updated": "2026-09-27"
     }
   ]
 }

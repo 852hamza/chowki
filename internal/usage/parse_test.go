@@ -59,6 +59,12 @@ func TestParseFromFakeProviders(t *testing.T) {
 	// Anthropic's input_tokens excludes cached tokens, so the total adds them.
 	anthropicWant := Usage{Input: 1200 + 1000 + 150, Output: 340, CacheRead: 1000, CacheWrite: 150, Reasoning: 120}
 	version := map[string]string{"anthropic-version": "2023-06-01"}
+	// Gemini reports no cache writes, and counts thoughts apart from the
+	// candidates: the total output adds them.
+	gm := testutil.NewGemini(t, testutil.Config{Usage: testutil.Usage{Input: 1200, Output: 340, CacheRead: 1000,
+		Reasoning: 120}})
+	geminiWant := Usage{Input: 1200, Output: 340 + 120, CacheRead: 1000, Reasoning: 120}
+	contents := `{"contents":[{"role":"user","parts":[{"text":"hi"}]}]}`
 
 	tests := []struct {
 		name   string
@@ -77,6 +83,10 @@ func TestParseFromFakeProviders(t *testing.T) {
 			`{"model":"claude-test","max_tokens":10,"messages":[{}]}`, anthropicWant},
 		{"anthropic stream", Anthropic, true, an.URL + "/v1/messages", version,
 			`{"model":"claude-test","max_tokens":10,"messages":[{}],"stream":true}`, anthropicWant},
+		{"gemini json", Gemini, false, gm.URL + "/v1beta/models/gemini-test:generateContent", nil, contents,
+			geminiWant},
+		{"gemini stream", Gemini, true, gm.URL + "/v1beta/models/gemini-test:streamGenerateContent?alt=sse", nil,
+			contents, geminiWant},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -133,6 +143,20 @@ func TestParseResponseDetails(t *testing.T) {
 			Report{Model: "c", Usage: &Usage{Input: 1, Output: 1}, Modifier: "US-only inference"}},
 		{"anthropic global inference", Anthropic, `{"model":"c","usage":{"input_tokens":1,"output_tokens":1,
 			"inference_geo":"global","speed":"standard"}}`, Report{Model: "c", Usage: &Usage{Input: 1, Output: 1}}},
+		{"gemini standard tier", Gemini, `{"modelVersion":"g","usageMetadata":{"promptTokenCount":5,
+			"candidatesTokenCount":2,"serviceTier":"standard"}}`, Report{Model: "g", Usage: &Usage{Input: 5, Output: 2}}},
+		{"gemini flex tier", Gemini, `{"modelVersion":"g","usageMetadata":{"promptTokenCount":5,
+			"candidatesTokenCount":2,"serviceTier":"flex"}}`,
+			Report{Model: "g", Usage: &Usage{Input: 5, Output: 2}, Modifier: "service tier flex"}},
+		{"gemini audio", Gemini, `{"modelVersion":"g","usageMetadata":{"promptTokenCount":5,"candidatesTokenCount":2,
+			"promptTokensDetails":[{"modality":"TEXT","tokenCount":2},{"modality":"AUDIO","tokenCount":3}]}}`,
+			Report{Model: "g", Usage: &Usage{Input: 5, Output: 2}, Modifier: "audio input"}},
+		{"gemini built-in tools", Gemini, `{"modelVersion":"g","usageMetadata":{"promptTokenCount":5,
+			"candidatesTokenCount":2,"toolUsePromptTokenCount":40}}`,
+			Report{Model: "g", Usage: &Usage{Input: 5, Output: 2}, Modifier: "built-in tool use"}},
+		{"gemini embeddings", Gemini, `{"embedding":{"values":[0.5]},"usageMetadata":{"promptTokenCount":7,
+			"promptTokenDetails":[{"modality":"TEXT","tokenCount":7}]}}`, Report{Usage: &Usage{Input: 7}}},
+		{"gemini no usage", Gemini, `{"candidates":[]}`, Report{}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -177,11 +201,25 @@ func TestAnthropicStreamCumulativeCounts(t *testing.T) {
 	}
 }
 
+func TestGeminiStreamLastUsageWins(t *testing.T) {
+	s := NewStream(Gemini)
+	s.Event("", []byte(`{"candidates":[{"content":{"parts":[{"text":"a"}]}}],"modelVersion":"g",
+		"usageMetadata":{"promptTokenCount":9,"candidatesTokenCount":1}}`))
+	s.Event("", []byte(`{"candidates":[{"content":{"parts":[{"text":"b"}]}}]}`))
+	s.Event("", []byte(`{"candidates":[{"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":9,
+		"candidatesTokenCount":4,"thoughtsTokenCount":6,"cachedContentTokenCount":2}}`))
+	want := Usage{Input: 9, Output: 10, CacheRead: 2, Reasoning: 6}
+	if r := s.Report(); r.Usage == nil || *r.Usage != want || r.Model != "g" {
+		t.Errorf("report = %+v (usage %+v), want %+v", r, r.Usage, want)
+	}
+}
+
 func FuzzParseResponse(f *testing.F) {
 	f.Add(`{"model":"m","usage":{"prompt_tokens":1,"completion_tokens":2}}`)
 	f.Add(`{"model":"c","usage":{"input_tokens":1,"cache_creation":{"ephemeral_1h_input_tokens":3}}}`)
+	f.Add(`{"modelVersion":"g","usageMetadata":{"promptTokenCount":1,"promptTokensDetails":[{"modality":"AUDIO"}]}}`)
 	f.Fuzz(func(_ *testing.T, body string) {
-		for _, fam := range []Family{OpenAI, Anthropic} {
+		for _, fam := range []Family{OpenAI, Anthropic, Gemini} {
 			_, _ = ParseResponse(fam, []byte(body))
 			s := NewStream(fam)
 			for _, name := range []string{"", "message_start", "message_delta"} {
