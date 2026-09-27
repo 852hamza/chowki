@@ -105,6 +105,7 @@ func TestKeyErrors(t *testing.T) {
 		{[]string{"key", "create", "--name", "a", "--rpm", "-1"}, exitUsage, "--rpm must be 0 or more"},
 		{[]string{"key", "create", "--name", "a", "--tpm", "1.5"}, exitUsage, "invalid value"},
 		{[]string{"key", "update", "--tpm", "-5", "chowki_nope1"}, exitUsage, "--tpm must be 0 or more"},
+		{[]string{"key", "create", "--name", "a", "--cache", "always"}, exitUsage, "--cache must be exact, off or default"},
 		{[]string{"key", "update", "--budget-usd", "5"}, exitUsage, "Usage:"},
 		{[]string{"key", "update", "--budget-usd", "Inf", "chowki_nope1"}, exitUsage, "must be an amount"},
 		{[]string{"key", "update", "--budget-usd", "5", "chowki_nope1"}, exitError,
@@ -129,7 +130,7 @@ func TestKeyBudgets(t *testing.T) {
 	initDir(t)
 	out := runOK(t, "key", "create", "--name", "alice", "--budget-usd", "50")
 	m := printedKeyRE.FindStringSubmatch(out)
-	if m == nil || !strings.Contains(out, "\nLimits:\n  Monthly budget:       $50.00\n") {
+	if m == nil || !strings.Contains(out, "\nSettings:\n  Monthly budget:       $50.00\n") {
 		t.Fatalf("create output = %q", out)
 	}
 	prefix := m[1][:auth.PrefixLen]
@@ -156,7 +157,7 @@ func TestKeyBudgets(t *testing.T) {
 	}
 
 	if out := runOK(t, "key", "update", "--budget-usd", "75.5", m[1]); !strings.Contains(out,
-		"Updated the limits of virtual key "+prefix+` ("alice"):`+"\n  Monthly budget:       $75.50\n") {
+		"Updated the settings of virtual key "+prefix+` ("alice"):`+"\n  Monthly budget:       $75.50\n") {
 		t.Errorf("update output = %q", out)
 	}
 	if out := runOK(t, "key", "update", "--budget-usd", "0", prefix); !strings.Contains(out,
@@ -188,6 +189,27 @@ func TestKeyRateLimits(t *testing.T) {
 	if out := runOK(t, "key", "update", "--rpm", "0", "--tpm", "5000", prefix); !strings.Contains(out,
 		"  Requests per minute:  none\n  Tokens per minute:    5000\n") {
 		t.Errorf("update output = %q", out)
+	}
+}
+
+func TestKeyCacheMode(t *testing.T) {
+	initDir(t)
+	out := runOK(t, "key", "create", "--name", "bot", "--cache", "exact")
+	m := printedKeyRE.FindStringSubmatch(out)
+	if m == nil || !strings.Contains(out, "  Exact cache:          exact\n") {
+		t.Fatalf("create output = %q", out)
+	}
+	prefix := m[1][:auth.PrefixLen]
+	if fields := strings.Fields(strings.Split(runOK(t, "key", "list"), "\n")[1]); len(fields) < 8 || fields[7] != "exact" {
+		t.Errorf("list row = %q; want the cache mode exact", fields)
+	}
+	if out := runOK(t, "key", "update", "--cache", "default", prefix); !strings.Contains(out,
+		"  Exact cache:          default\n") {
+		t.Errorf("update output = %q", out)
+	}
+	// A key without settings doesn't print them.
+	if out := runOK(t, "key", "create", "--name", "plain"); strings.Contains(out, "Settings:") {
+		t.Errorf("create output of a key without settings = %q", out)
 	}
 }
 

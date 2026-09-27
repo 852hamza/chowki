@@ -15,20 +15,22 @@ import (
 
 	"github.com/852hamza/chowki/internal/auth"
 	"github.com/852hamza/chowki/internal/budget"
+	"github.com/852hamza/chowki/internal/cache"
 	"github.com/852hamza/chowki/internal/config"
 	"github.com/852hamza/chowki/internal/store"
 )
 
 const keyUsage = `Usage:
-  chowki key create --name <NAME> [--project <PROJECT>] [LIMITS] [--config <FILE>]
+  chowki key create --name <NAME> [--project <PROJECT>] [SETTINGS] [--config <FILE>]
   chowki key list [--config <FILE>]
-  chowki key update [--config <FILE>] LIMITS <PREFIX>
+  chowki key update [--config <FILE>] SETTINGS <PREFIX>
   chowki key revoke [--config <FILE>] <PREFIX>
 
-LIMITS are one or more of these; 0 means no limit:
-  --budget-usd <USD>  monthly budget in US dollars
-  --rpm <N>           requests per minute
-  --tpm <N>           tokens per minute, input and output together
+SETTINGS are one or more of these:
+  --budget-usd <USD>  monthly budget in US dollars; 0 means none
+  --rpm <N>           limit of requests per minute; 0 means none
+  --tpm <N>           limit of input and output tokens per minute; 0 means none
+  --cache <MODE>      exact cache: exact, off, or default to follow chowki.yaml
 
 A virtual key is shown once, when you create it. Update or revoke a key by
 its prefix, the first 12 characters, as "chowki key list" shows them.
@@ -49,7 +51,7 @@ func keyCreate(ctx context.Context, args []string, stdout, stderr io.Writer) int
 	configPath := flags.String("config", defaultConfig, "configuration file")
 	name := flags.String("name", "", "who or what uses the key, such as alice or ci-bot (required)")
 	project := flags.String("project", "default", "project that the key belongs to")
-	limits := addLimitFlags(flags)
+	settings := addSettingFlags(flags)
 	if err := flags.Parse(args); err != nil || flags.NArg() > 0 {
 		return exitUsage
 	}
@@ -59,20 +61,20 @@ func keyCreate(ctx context.Context, args []string, stdout, stderr io.Writer) int
 			return exitUsage
 		}
 	}
-	if err := limits.check(); err != nil {
+	if err := settings.check(); err != nil {
 		fmt.Fprintf(stderr, "chowki key create: %v\n", err)
 		return exitUsage
 	}
 	return withStore(ctx, *configPath, stderr, "chowki key create", func(st store.Store) error {
 		now := time.Now().UTC()
-		key, k, err := auth.Create(ctx, st, *project, store.Key{Name: *name, BudgetUSD: *limits.budgetUSD,
-			RPM: *limits.rpm, TPM: *limits.tpm}, now)
+		key, k, err := auth.Create(ctx, st, *project, store.Key{Name: *name, BudgetUSD: *settings.budgetUSD,
+			RPM: *settings.rpm, TPM: *settings.tpm, CacheMode: settings.cacheMode()}, now)
 		if err != nil {
 			return err
 		}
 		details := map[string]string{"name": k.Name, "project": k.Project}
-		for name, v := range limitDetails(k) {
-			if v != "0" { // limits that a new key doesn't have aren't news
+		for name, v := range settingDetails(k) {
+			if v != "0" && v != "default" { // settings that a new key doesn't have aren't news
 				details[name] = v
 			}
 		}
@@ -82,9 +84,9 @@ func keyCreate(ctx context.Context, args []string, stdout, stderr io.Writer) int
 		}
 		fmt.Fprintf(stdout, "Created virtual key %q in project %q:\n\n  %s\n\n"+
 			"Copy it now. Chowki stores only a hash of it and can't show it again.\n", k.Name, k.Project, key)
-		if k.BudgetUSD > 0 || k.RPM > 0 || k.TPM > 0 {
-			fmt.Fprintln(stdout, "\nLimits:")
-			printLimits(stdout, k)
+		if k.BudgetUSD > 0 || k.RPM > 0 || k.TPM > 0 || k.CacheMode != "" {
+			fmt.Fprintln(stdout, "\nSettings:")
+			printSettings(stdout, k)
 		}
 		return nil
 	})
@@ -116,15 +118,15 @@ func keyList(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 			spent[s.KeyID] = s.USD
 		}
 		tw := tabwriter.NewWriter(stdout, 0, 0, 2, ' ', 0)
-		fmt.Fprintf(tw, "PREFIX\tNAME\tPROJECT\tSPENT %s\tBUDGET\tRPM\tTPM\tCREATED\tSTATUS\n", period)
+		fmt.Fprintf(tw, "PREFIX\tNAME\tPROJECT\tSPENT %s\tBUDGET\tRPM\tTPM\tCACHE\tCREATED\tSTATUS\n", period)
 		for _, k := range keys {
 			status := "active"
 			if k.Revoked() {
 				status = "revoked " + formatTime(k.RevokedAt)
 			}
-			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n", k.Prefix, k.Name, k.Project,
+			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n", k.Prefix, k.Name, k.Project,
 				budget.FormatUSD(spent[k.ID]), formatBudget(k.BudgetUSD), formatLimit(k.RPM), formatLimit(k.TPM),
-				formatTime(k.CreatedAt), status)
+				formatCacheMode(k.CacheMode), formatTime(k.CreatedAt), status)
 		}
 		return tw.Flush()
 	})
@@ -134,19 +136,19 @@ func keyUpdate(ctx context.Context, args []string, stdout, stderr io.Writer) int
 	flags := flag.NewFlagSet("chowki key update", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	configPath := flags.String("config", defaultConfig, "configuration file")
-	limits := addLimitFlags(flags)
+	settings := addSettingFlags(flags)
 	if err := flags.Parse(args); err != nil || flags.NArg() != 1 {
 		if err == nil {
 			fmt.Fprint(stderr, keyUsage)
 		}
 		return exitUsage
 	}
-	u := limits.update(flags)
+	u := settings.update(flags)
 	if u == (store.KeyUpdate{}) {
-		fmt.Fprint(stderr, "chowki key update: nothing to change; set --budget-usd, --rpm or --tpm\n")
+		fmt.Fprint(stderr, "chowki key update: nothing to change; set --budget-usd, --rpm, --tpm or --cache\n")
 		return exitUsage
 	}
-	if err := limits.check(); err != nil {
+	if err := settings.check(); err != nil {
 		fmt.Fprintf(stderr, "chowki key update: %v\n", err)
 		return exitUsage
 	}
@@ -159,14 +161,14 @@ func keyUpdate(ctx context.Context, args []string, stdout, stderr io.Writer) int
 		if err != nil {
 			return err
 		}
-		details := limitDetails(k)
+		details := settingDetails(k)
 		details["name"], details["project"] = k.Name, k.Project
 		if err := st.AddAudit(ctx, store.AuditEvent{Time: time.Now().UTC(), Actor: "cli", Action: "key.update",
 			Target: k.Prefix, Details: details}); err != nil {
 			return err
 		}
-		fmt.Fprintf(stdout, "Updated the limits of virtual key %s (%q):\n", k.Prefix, k.Name)
-		printLimits(stdout, k)
+		fmt.Fprintf(stdout, "Updated the settings of virtual key %s (%q):\n", k.Prefix, k.Name)
+		printSettings(stdout, k)
 		return nil
 	})
 }
@@ -230,60 +232,87 @@ func withStore(ctx context.Context, configPath string, stderr io.Writer, command
 	return exitOK
 }
 
-// limitFlags are the flags that set a key's limits.
-type limitFlags struct {
+// settingFlags are the flags that set a key's limits and cache mode.
+type settingFlags struct {
 	budgetUSD *float64
 	rpm, tpm  *int64
+	cache     *string
 }
 
-func addLimitFlags(flags *flag.FlagSet) limitFlags {
-	return limitFlags{
+func addSettingFlags(flags *flag.FlagSet) settingFlags {
+	return settingFlags{
 		budgetUSD: flags.Float64("budget-usd", 0, "monthly budget in US dollars; 0 means none"),
 		rpm:       flags.Int64("rpm", 0, "limit of requests per minute; 0 means none"),
 		tpm:       flags.Int64("tpm", 0, "limit of input and output tokens per minute; 0 means none"),
+		cache:     flags.String("cache", "default", "exact cache: exact, off, or default to follow chowki.yaml"),
 	}
 }
 
-// update returns the limits that flags set, and leaves the others out.
-func (l limitFlags) update(flags *flag.FlagSet) store.KeyUpdate {
+// update returns the settings that flags set, and leaves the others out.
+func (s settingFlags) update(flags *flag.FlagSet) store.KeyUpdate {
 	var u store.KeyUpdate
 	flags.Visit(func(f *flag.Flag) {
 		switch f.Name {
 		case "budget-usd":
-			u.BudgetUSD = l.budgetUSD
+			u.BudgetUSD = s.budgetUSD
 		case "rpm":
-			u.RPM = l.rpm
+			u.RPM = s.rpm
 		case "tpm":
-			u.TPM = l.tpm
+			u.TPM = s.tpm
+		case "cache":
+			mode := s.cacheMode()
+			u.CacheMode = &mode
 		}
 	})
 	return u
 }
 
-func (l limitFlags) check() error {
-	if err := checkBudget(*l.budgetUSD); err != nil {
+// cacheMode is the key's cache mode as the store keeps it: "" follows the
+// configuration.
+func (s settingFlags) cacheMode() string {
+	if *s.cache == "default" {
+		return ""
+	}
+	return *s.cache
+}
+
+func (s settingFlags) check() error {
+	if err := checkBudget(*s.budgetUSD); err != nil {
 		return err
 	}
-	if *l.rpm < 0 {
+	switch {
+	case *s.rpm < 0:
 		return errors.New("--rpm must be 0 or more")
-	}
-	if *l.tpm < 0 {
+	case *s.tpm < 0:
 		return errors.New("--tpm must be 0 or more")
+	case *s.cache != cache.ModeExact && *s.cache != cache.ModeOff && *s.cache != "default":
+		return errors.New("--cache must be exact, off or default")
 	}
 	return nil
 }
 
-// printLimits shows the limits of key k, indented.
-func printLimits(w io.Writer, k store.Key) {
-	fmt.Fprintf(w, "  Monthly budget:       %s\n  Requests per minute:  %s\n  Tokens per minute:    %s\n",
-		formatBudget(k.BudgetUSD), formatLimit(k.RPM), formatLimit(k.TPM))
+// printSettings shows the settings of key k, indented.
+func printSettings(w io.Writer, k store.Key) {
+	fmt.Fprintf(w, "  Monthly budget:       %s\n  Requests per minute:  %s\n  Tokens per minute:    %s\n"+
+		"  Exact cache:          %s\n", formatBudget(k.BudgetUSD), formatLimit(k.RPM), formatLimit(k.TPM),
+		formatCacheMode(k.CacheMode))
 }
 
-// limitDetails returns the limits of key k for the audit log, exactly; "0"
-// means no limit.
-func limitDetails(k store.Key) map[string]string {
+// settingDetails returns the settings of key k for the audit log, exactly;
+// "0" means no limit.
+func settingDetails(k store.Key) map[string]string {
 	return map[string]string{"monthly_budget_usd": formatAmount(k.BudgetUSD),
-		"rpm": strconv.FormatInt(k.RPM, 10), "tpm": strconv.FormatInt(k.TPM, 10)}
+		"rpm": strconv.FormatInt(k.RPM, 10), "tpm": strconv.FormatInt(k.TPM, 10),
+		"cache": formatCacheMode(k.CacheMode)}
+}
+
+// formatCacheMode shows a key's cache mode, where "" follows the
+// configuration.
+func formatCacheMode(mode string) string {
+	if mode == "" {
+		return "default"
+	}
+	return mode
 }
 
 // formatLimit shows a limit per minute, where 0 means none.
