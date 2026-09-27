@@ -149,6 +149,35 @@ func (r *Router) one(wantType, requested string) (Target, error) {
 		"The gateway can't tell which provider serves the model %q. %s", requested, hint)}
 }
 
+// ModelInfo is a name that requests can use: an alias or a catalog model.
+type ModelInfo struct {
+	ID    string // an alias, or <provider>/<model>
+	Owner string // the provider, or "chowki" for an alias
+}
+
+// Models returns the aliases with a target of API type wantType, and the
+// catalog's models of the configured providers of that type, by name.
+func (r *Router) Models(wantType string) []ModelInfo {
+	var out []ModelInfo
+	for name, targets := range r.aliases {
+		for _, t := range targets {
+			if p, _, _ := strings.Cut(t, "/"); r.providers[p].Type == wantType {
+				out = append(out, ModelInfo{ID: name, Owner: "chowki"})
+				break
+			}
+		}
+	}
+	if r.catalog != nil {
+		for _, m := range r.catalog.All() {
+			if p, ok := r.providers[m.Provider]; ok && p.Type == wantType {
+				out = append(out, ModelInfo{ID: m.Provider + "/" + m.Model, Owner: m.Provider})
+			}
+		}
+	}
+	slices.SortFunc(out, func(a, b ModelInfo) int { return strings.Compare(a.ID, b.ID) })
+	return out
+}
+
 // Report records whether a call to target t worked. Failures are the ones
 // that allow a fallback: rate limits, server errors, and connection
 // errors and timeouts.

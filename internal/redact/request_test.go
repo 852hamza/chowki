@@ -66,6 +66,24 @@ func TestRequest(t *testing.T) {
 	}
 }
 
+func TestRequestEmbeddings(t *testing.T) {
+	r := New([]byte("k"), ModeMask)
+	for body, want := range map[string]int{
+		`{"model":"m","input":"mail jane.doe@company.io"}`:                 1,
+		`{"model":"m","input":["jane.doe@company.io","x","+14155552671"]}`: 2,
+		`{"model":"m","input":[[1,2,3]],"user":"jane.doe@company.io"}`:     0,
+	} {
+		out, counts, err := r.Request("embeddings", []byte(body), true)
+		n := 0
+		for _, c := range counts {
+			n += c
+		}
+		if err != nil || n != want || strings.Contains(string(out), "jane.doe") != (want == 0) {
+			t.Errorf("Request(%s) = %s, %v, %v; want %d findings masked", body, out, counts, err, want)
+		}
+	}
+}
+
 func TestRequestKeepsOtherBytes(t *testing.T) {
 	r := New([]byte("k"), ModeMask)
 	text := "Héllo 世界 😀 \"quoted\" <tag> & mail jane.doe@company.io\nnext line"

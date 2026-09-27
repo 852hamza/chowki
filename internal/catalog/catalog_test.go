@@ -77,3 +77,16 @@ func TestLoadErrors(t *testing.T) {
 		t.Errorf("Load(valid) = %v, %v", c, err)
 	}
 }
+
+func TestAll(t *testing.T) {
+	c, err := Load([]byte(`{"models":[
+ {"provider":"b","model":"m","price":{"input":1,"output":1},"source":"https://example.com","updated":"2026-09-27"},
+ {"provider":"a","model":"z","aliases":["y"],"price":{"input":1,"output":1},"source":"https://example.com","updated":"2026-09-27"}]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	all := c.All()
+	if len(all) != 2 || all[0].Provider != "a" || all[1].Provider != "b" {
+		t.Errorf("All() = %+v; want each model once, by provider", all)
+	}
+}

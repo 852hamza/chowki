@@ -25,6 +25,7 @@ func NewAnthropic(t testing.TB, cfg Config) *Server {
 	t.Helper()
 	return start(t, cfg, func(s *Server, mux *http.ServeMux) {
 		mux.HandleFunc("POST /v1/messages", s.anthropicMessages)
+		mux.HandleFunc("POST /v1/messages/count_tokens", s.anthropicCountTokens)
 		mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 			s.anthropicError(w, http.StatusNotFound, "unknown path "+r.URL.Path)
 		})
@@ -36,6 +37,22 @@ type anthropicRequest struct {
 	MaxTokens *int              `json:"max_tokens"`
 	Messages  []json.RawMessage `json:"messages"`
 	Stream    bool              `json:"stream"`
+}
+
+// anthropicCountTokens answers with Usage.Input as the count.
+func (s *Server) anthropicCountTokens(w http.ResponseWriter, r *http.Request) {
+	key := r.Header.Get("x-api-key")
+	if key == "" {
+		key = bearer(r)
+	}
+	switch {
+	case !s.authorized(key):
+		s.anthropicError(w, http.StatusUnauthorized, "invalid x-api-key")
+	case s.cfg.FailStatus != 0:
+		s.anthropicError(w, s.cfg.FailStatus, "fake provider failure")
+	default:
+		writeJSON(w, http.StatusOK, map[string]int{"input_tokens": s.cfg.Usage.Input})
+	}
 }
 
 func (s *Server) anthropicMessages(w http.ResponseWriter, r *http.Request) {

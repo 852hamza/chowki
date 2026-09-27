@@ -2,12 +2,14 @@ package catalog
 
 import (
 	"bytes"
+	"cmp"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
 	"net/url"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -87,6 +89,22 @@ func (c *Catalog) Providers(model string) []string {
 	}
 	slices.Sort(names)
 	return names
+}
+
+// All returns every model in the catalog, by provider and model ID.
+func (c *Catalog) All() []*Model {
+	seen := map[*Model]bool{}
+	var out []*Model
+	for _, m := range c.models {
+		if !seen[m] {
+			seen[m] = true
+			out = append(out, m)
+		}
+	}
+	slices.SortFunc(out, func(a, b *Model) int {
+		return cmp.Or(strings.Compare(a.Provider, b.Provider), strings.Compare(a.Model, b.Model))
+	})
+	return out
 }
 
 // Len returns the number of models in the catalog.

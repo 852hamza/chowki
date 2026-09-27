@@ -133,3 +133,14 @@ func TestNewChecksAliases(t *testing.T) {
 		}
 	}
 }
+
+func TestModels(t *testing.T) {
+	r := newRouter(t, map[string][]string{"fast": {"anthropic/c", "openai/g"}, "smart": {"anthropic/c"}})
+	var got []string
+	for _, m := range r.Models("openai") {
+		got = append(got, m.ID+":"+m.Owner)
+	}
+	if want := []string{"fast:chowki", "openai/gpt-listed:openai"}; !slices.Equal(got, want) {
+		t.Errorf("Models(openai) = %v, want %v", got, want)
+	}
+}

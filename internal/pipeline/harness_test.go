@@ -40,6 +40,8 @@ const (
 
 // testCatalog prices the fakes' models with round numbers.
 const testCatalog = `{"models":[
+ {"provider":"openai","model":"embed-test","price":{"input":0.5,"output":0},
+  "source":"https://example.com/pricing","updated":"2026-09-27"},
  {"provider":"openai","model":"gpt-test","price":{"input":2,"output":10,"cache_read":0.2,"cache_write":2.5},
   "source":"https://example.com/pricing","updated":"2026-09-27"},
  {"provider":"anthropic","model":"claude-test","min_cacheable_tokens":512,"price":{"input":4,"output":20,"cache_read":0.2,"cache_write":5,

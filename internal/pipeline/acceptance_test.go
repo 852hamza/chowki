@@ -329,7 +329,7 @@ func TestRequestErrors(t *testing.T) {
 		{"bad stream options", "/v1/chat/completions", `{"model":"gpt-test","stream_options":3}`, 400, "stream_options"},
 		{"too large", "/v1/chat/completions", `{"model":"gpt-test","x":"` + strings.Repeat("a", 300) + `"}`, 413,
 			"request_too_large"},
-		{"unknown path", "/v1/embeddings", `{}`, 404, "not_found"},
+		{"unknown path", "/v1/completions", `{}`, 404, "not_found"},
 		{"unknown Anthropic path", "/anthropic/v1/complete", `{}`, 404, "not_found_error"},
 	}
 	for _, tt := range tests {

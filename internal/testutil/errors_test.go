@@ -37,8 +37,8 @@ func TestErrors(t *testing.T) {
 			[]string{`invalid JSON body`}},
 		{"openai failure", NewOpenAI, Config{FailStatus: 503}, "/v1/chat/completions", nil, openAIBody, 503,
 			[]string{`"type":"server_error"`}},
-		{"openai unknown path", NewOpenAI, Config{}, "/v1/embeddings", nil, `{}`, 404,
-			[]string{`unknown path /v1/embeddings`}},
+		{"openai unknown path", NewOpenAI, Config{}, "/v1/unknown", nil, `{}`, 404,
+			[]string{`unknown path /v1/unknown`}},
 
 		{"anthropic wrong key", NewAnthropic, Config{APIKey: "sk-ant-right"}, "/v1/messages",
 			map[string]string{"x-api-key": "sk-ant-wrong", "anthropic-version": anthropicVersion}, anthropicBody, 401,

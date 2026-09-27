@@ -76,10 +76,9 @@ type Gateway struct {
 	Timeout time.Duration
 }
 
-// Handler returns the handler of the chat endpoint of API family f:
-// OpenAI chat completions or Anthropic messages.
-func (g *Gateway) Handler(f usage.Family) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { g.serve(w, r, f) })
+// Handler returns the handler of an endpoint that the gateway relays.
+func (g *Gateway) Handler(ep Endpoint) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { g.serve(w, r, ep) })
 }
 
 // NotFound returns a handler that answers unknown paths in the error
@@ -95,6 +94,7 @@ func (g *Gateway) NotFound(f usage.Family) http.Handler {
 
 // call is one request on its way through the gateway.
 type call struct {
+	ep       Endpoint
 	family   usage.Family
 	id       string
 	start    time.Time
@@ -119,12 +119,12 @@ type call struct {
 	fallbacks                  int // the targets that failed before the one that answered
 }
 
-func (g *Gateway) serve(w http.ResponseWriter, r *http.Request, f usage.Family) {
-	c := &call{family: f, id: newRequestID(), start: time.Now(), w: &trackingWriter{ResponseWriter: w}}
+func (g *Gateway) serve(w http.ResponseWriter, r *http.Request, ep Endpoint) {
+	c := &call{ep: ep, family: ep.Family, id: newRequestID(), start: time.Now(), w: &trackingWriter{ResponseWriter: w}}
 	c.w.Header().Set(RequestIDHeader, c.id)
 	if e := g.handle(r.Context(), c, r); e != nil {
 		c.errType = e.Code
-		writeError(c.w, f, c.id, *e)
+		writeError(c.w, ep.Family, c.id, *e)
 	}
 	g.finish(c)
 }
@@ -156,7 +156,7 @@ func (g *Gateway) handle(ctx context.Context, c *call, r *http.Request) *apiErro
 	if err != nil {
 		return &apiError{http.StatusBadRequest, codeInvalidRequest, "Invalid request body: " + err.Error() + "."}
 	}
-	req, e := readRequest(c.family, obj)
+	req, e := readRequest(c.ep, obj)
 	if e != nil {
 		return e
 	}
@@ -175,8 +175,10 @@ func (g *Gateway) handle(ctx context.Context, c *call, r *http.Request) *apiErro
 	}
 	c.provider, c.model, c.stream = targets[0].Provider, targets[0].Model, req.stream
 
-	if e := g.useCache(ctx, c, r, body); e != nil || c.cache == cache.StatusHit {
-		return e
+	if c.ep.kind != kindCountTokens {
+		if e := g.useCache(ctx, c, r, body); e != nil || c.cache == cache.StatusHit {
+			return e
+		}
 	}
 
 	// Change the body only where needed; everything else reaches the
@@ -189,13 +191,16 @@ func (g *Gateway) handle(ctx context.Context, c *call, r *http.Request) *apiErro
 		req.streamOptions["include_usage"] = json.RawMessage("true")
 		edits["stream_options"], _ = json.Marshal(req.streamOptions) // raw JSON values always marshal
 	}
-	if c.family == usage.Anthropic && g.PromptCache != nil {
+	if c.ep == AnthropicMessages && g.PromptCache != nil {
 		if field, value, ok := g.PromptCache.Breakpoint(g.prefix(c, obj, body), time.Now()); ok {
 			edits[field], c.marked = value, true
 		}
 	}
-	if e := g.admit(c, withModel(obj, edits, req.model, c.model)); e != nil {
-		return e
+	// Providers don't bill counting tokens, so it spends no tokens or budget.
+	if c.ep.kind != kindCountTokens {
+		if e := g.admit(c, withModel(obj, edits, req.model, c.model)); e != nil {
+			return e
+		}
 	}
 
 	c.upstreamStart = time.Now()
@@ -213,10 +218,6 @@ const maxAttempts = 3
 // fails after it started ends there.
 func (g *Gateway) forward(ctx context.Context, c *call, r *http.Request, obj *object, edits map[string][]byte,
 	requested string, targets []router.Target, dropUsage bool) *apiError {
-	endpoint := providers.ChatCompletions
-	if c.family == usage.Anthropic {
-		endpoint = providers.Messages
-	}
 	targets = targets[:min(len(targets), maxAttempts)]
 	for i, t := range targets {
 		last := i == len(targets)-1
@@ -230,7 +231,7 @@ func (g *Gateway) forward(ctx context.Context, c *call, r *http.Request, obj *ob
 			continue
 		}
 		attemptCtx, cancel := context.WithTimeout(ctx, g.Timeout)
-		resp, err := t.Provider.Do(attemptCtx, endpoint, withModel(obj, edits, requested, t.Model), r.Header)
+		resp, err := t.Provider.Do(attemptCtx, c.ep.upstream, withModel(obj, edits, requested, t.Model), r.Header)
 		stream := err == nil && c.stream && resp.StatusCode == http.StatusOK && isEventStream(resp.Header)
 		var data []byte
 		if err == nil && !stream {
@@ -363,7 +364,7 @@ type request struct {
 	streamOptions map[string]json.RawMessage
 }
 
-func readRequest(f usage.Family, o *object) (request, *apiError) {
+func readRequest(ep Endpoint, o *object) (request, *apiError) {
 	bad := func(msg string) (request, *apiError) {
 		return request{}, &apiError{http.StatusBadRequest, codeInvalidRequest, msg}
 	}
@@ -372,10 +373,13 @@ func readRequest(f usage.Family, o *object) (request, *apiError) {
 	if !ok || json.Unmarshal(raw, &req.model) != nil || req.model == "" {
 		return bad(`The "model" field must be a model name, such as <provider>/<model>.`)
 	}
+	if ep.kind != kindChat {
+		return req, nil // only chat streams
+	}
 	if raw, ok := o.raw("stream"); ok && json.Unmarshal(raw, &req.stream) != nil {
 		return bad(`The "stream" field must be true or false.`)
 	}
-	if f == usage.OpenAI {
+	if ep.Family == usage.OpenAI {
 		req.streamOptions = map[string]json.RawMessage{}
 		if raw, ok := o.raw("stream_options"); ok && string(raw) != "null" {
 			if json.Unmarshal(raw, &req.streamOptions) != nil {
@@ -399,7 +403,7 @@ func (g *Gateway) redact(c *call, body []byte, obj *object) ([]byte, *object, *a
 	if mode == redact.ModeOff {
 		return body, obj, nil
 	}
-	out, counts, err := g.Redactor.Request(string(c.family), body, mode == redact.ModeMask)
+	out, counts, err := g.Redactor.Request(c.ep.redactionKind(), body, mode == redact.ModeMask)
 	if err != nil {
 		return nil, nil, &apiError{http.StatusBadRequest, codeInvalidRequest, "The request body couldn't be read."}
 	}
@@ -439,7 +443,7 @@ func (g *Gateway) useCache(ctx context.Context, c *call, r *http.Request, body [
 	c.cache = cache.StatusBypass
 	var hit cache.Response
 	if !c.stream && g.Cache.On(c.key.CacheMode, header) {
-		key, err := cache.Key(cache.Request{Family: string(c.family), Endpoint: endpointPath(c.family),
+		key, err := cache.Key(cache.Request{Family: string(c.family), Endpoint: c.ep.Path,
 			Provider: c.provider.Name, Model: c.model, Project: c.key.ProjectID,
 			Headers: providers.Forwarded(r.Header), Body: body})
 		if err == nil { // the body parsed already, so it always does
@@ -538,7 +542,8 @@ func (g *Gateway) relayBody(c *call, resp *http.Response, data []byte) {
 	copyHeaders(c.w.Header(), resp.Header)
 	var cost usage.Cost
 	if resp.StatusCode == http.StatusOK {
-		if rep, err := usage.ParseResponse(c.family, data); err == nil {
+		// A token count is an answer, not usage.
+		if rep, err := usage.ParseResponse(c.family, data); err == nil && c.ep.kind != kindCountTokens {
 			c.report = rep
 		}
 		if cost = g.cost(c); cost.USD != nil {
@@ -655,7 +660,7 @@ func (g *Gateway) finish(c *call) {
 	}
 	rec := store.Request{
 		ID: c.id, Time: c.start, KeyID: c.key.ID, ProjectID: c.key.ProjectID, APIFamily: string(c.family),
-		Endpoint: endpointPath(c.family), Model: c.model, Stream: c.stream, Status: status, ErrorType: c.errType,
+		Endpoint: c.ep.Path, Model: c.model, Stream: c.stream, Status: status, ErrorType: c.errType,
 		Latency: latency, TTFB: ttfb,
 	}
 	if c.provider != nil {
@@ -666,8 +671,12 @@ func (g *Gateway) finish(c *call) {
 			CacheWrite: u.CacheWrite, Reasoning: u.Reasoning}
 	}
 	cost := g.cost(c)
-	if c.cache == cache.StatusHit {
+	switch {
+	case c.cache == cache.StatusHit:
 		cost = hitCost(c.savedUSD)
+	case c.ep.kind == kindCountTokens && c.errType == "":
+		free := 0.0
+		cost = usage.Cost{USD: &free}
 	}
 	rec.CostUSD, rec.SavingsUSD, rec.SavingsMethod = cost.USD, cost.SavingsUSD, cost.SavingsMethod
 	rec.CacheStatus, rec.Redactions = c.cache, c.redactions
@@ -727,13 +736,6 @@ func hitCost(original *float64) usage.Cost {
 		cost.SavingsUSD = *original
 	}
 	return cost
-}
-
-func endpointPath(f usage.Family) string {
-	if f == usage.Anthropic {
-		return "/anthropic/v1/messages"
-	}
-	return "/v1/chat/completions"
 }
 
 func newRequestID() string {

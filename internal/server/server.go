@@ -21,8 +21,10 @@ const ShutdownTimeout = 30 * time.Second
 // API family their path belongs to.
 func Routes(gw *pipeline.Gateway) http.Handler {
 	mux := http.NewServeMux()
-	mux.Handle("POST /v1/chat/completions", gw.Handler(usage.OpenAI))
-	mux.Handle("POST /anthropic/v1/messages", gw.Handler(usage.Anthropic))
+	for _, ep := range pipeline.Endpoints {
+		mux.Handle("POST "+ep.Path, gw.Handler(ep))
+	}
+	mux.Handle("GET /v1/models", gw.Models())
 	mux.HandleFunc("GET /healthz", healthz)
 	mux.Handle("GET /readyz", readyz(gw.Store))
 	mux.Handle("GET /metrics", gw.Metrics.Handler())

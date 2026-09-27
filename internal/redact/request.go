@@ -9,10 +9,11 @@ import (
 	"strings"
 )
 
-// Request finds secrets and personal data in the text of a request body
-// of API family "openai" or "anthropic": message contents and their text
-// parts, system prompts, tool results and documents given as text. It
-// never reads images, audio or any other field. It counts the findings by
+// Request finds secrets and personal data in the text of a request body of
+// kind "openai" or "anthropic", for their chat endpoints, or "embeddings":
+// message contents and their text parts, system prompts, tool results and
+// documents given as text, and the input of embeddings. It never reads
+// images, audio or any other field. It counts the findings by
 // type, and with mask it also returns the body with each finding replaced
 // by its placeholder and every other byte unchanged.
 func (r *Redactor) Request(family string, body []byte, mask bool) ([]byte, map[string]int, error) {
@@ -125,10 +126,23 @@ func textFields(family string, root *node) []*node {
 			}
 		}
 	}
-	if family == "anthropic" {
+	switch family {
+	case "anthropic":
 		for _, s := range root.all("system") {
 			content(s)
 		}
+	case "embeddings":
+		// The input is a string or a list of strings; lists of token IDs
+		// hold no text.
+		for _, in := range root.all("input") {
+			text(in)
+			if in.kind == '[' {
+				for _, v := range in.vals {
+					text(v)
+				}
+			}
+		}
+		return out
 	}
 	for _, messages := range root.all("messages") {
 		if messages.kind == '[' {

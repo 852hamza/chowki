@@ -21,6 +21,7 @@ func NewOpenAI(t testing.TB, cfg Config) *Server {
 	t.Helper()
 	return start(t, cfg, func(s *Server, mux *http.ServeMux) {
 		mux.HandleFunc("POST /v1/chat/completions", s.openAIChat)
+		mux.HandleFunc("POST /v1/embeddings", s.openAIEmbeddings)
 		mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 			openAIError(w, http.StatusNotFound, "", "unknown path "+r.URL.Path)
 		})
@@ -34,6 +35,33 @@ type openAIRequest struct {
 	StreamOptions *struct {
 		IncludeUsage bool `json:"include_usage"`
 	} `json:"stream_options"`
+}
+
+// openAIEmbeddings answers with one small embedding per request, and
+// reports Usage.Input as its prompt tokens.
+func (s *Server) openAIEmbeddings(w http.ResponseWriter, r *http.Request) {
+	if !s.authorized(bearer(r)) {
+		openAIError(w, http.StatusUnauthorized, "", "Incorrect API key provided.")
+		return
+	}
+	if s.cfg.FailStatus != 0 {
+		openAIError(w, s.cfg.FailStatus, "", "fake provider failure")
+		return
+	}
+	var req struct {
+		Model string          `json:"model"`
+		Input json.RawMessage `json:"input"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Model == "" || len(req.Input) == 0 {
+		openAIError(w, http.StatusBadRequest, "input", "model and input are required")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"object": "list",
+		"data":   []any{map[string]any{"object": "embedding", "index": 0, "embedding": []float64{0.25, -0.5, 0.75}}},
+		"model":  req.Model,
+		"usage":  map[string]int{"prompt_tokens": s.cfg.Usage.Input, "total_tokens": s.cfg.Usage.Input},
+	})
 }
 
 func (s *Server) openAIChat(w http.ResponseWriter, r *http.Request) {
