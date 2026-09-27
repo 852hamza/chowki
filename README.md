@@ -23,8 +23,9 @@ a single Go binary that stores its data in SQLite.
 
 ## Quickstart
 
-A five-minute quickstart comes with the first release. Until then, you can build Chowki from
-source with Go 1.27 or later, Git and GNU Make:
+Build Chowki from source with Go 1.27 or later, Git and GNU Make, then follow
+[Send your first request](docs/get-started/quickstart.md) to create a virtual key and send a request
+through the gateway:
 
 ```sh
 git clone https://github.com/852hamza/chowki.git
@@ -35,6 +36,10 @@ make build
 
 ## Documentation
 
+- [Send your first request](docs/get-started/quickstart.md): set up Chowki in about ten minutes.
+- [Manage virtual keys](docs/how-to/manage-virtual-keys.md): create, list and revoke keys.
+- [Configuration reference](docs/reference/configuration.md): every setting and its environment
+  variable.
 - [Architecture](docs/concepts/architecture.md): how a request flows through Chowki.
 - [Set up a development environment](docs/contributing/development-setup.md): build and test
   Chowki.
