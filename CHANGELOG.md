@@ -95,6 +95,11 @@ All notable changes to Chowki are recorded in this file. The format is based on
   `GET /v1/models` lists their models.
 - The model catalog lists each model's context window, maximum output and capabilities: tools,
   vision, JSON output, caching and thinking.
+- `chowki scan` finds secrets in a repository, `.env` files and MCP configurations: keys of AI
+  providers and clouds, private keys, tokens, and passwords assigned to settings, and with
+  `--pii`, personal data. It never prints the secrets. Reports come as text, JSON or SARIF 2.1.0,
+  and it exits with 1 when it finds any. `action.yml` runs it in GitHub Actions and uploads the
+  findings to code scanning.
 - A guide to DeepSeek, xAI, Mistral, Groq and OpenRouter as providers, with their base URLs.
   Usage from xAI, whose completion tokens exclude reasoning, now counts the reasoning as output,
   and Groq's usage in `x_groq` counts in streams.

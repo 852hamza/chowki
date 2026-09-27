@@ -20,9 +20,9 @@ a single Go binary that stores its data in SQLite.
 > **Status:** early development. Chowki relays OpenAI, Anthropic and Google Gemini requests with
 > virtual keys, translates OpenAI-format requests for Anthropic and Gemini models, records their
 > cost, enforces budgets and rate limits, caches repeated answers, marks repeated Anthropic prompts
-> for caching, redacts secrets and personal data, falls back between providers, and shows it all in
-> a dashboard. The secret scanner isn't built yet, so don't use it in production. Follow the
-> [changelog](CHANGELOG.md) to see what has landed.
+> for caching, redacts secrets and personal data, falls back between providers, shows it all in a
+> dashboard, and scans repositories for secrets. Don't use it in production before v0.1.0. Follow
+> the [changelog](CHANGELOG.md) to see what has landed.
 
 ## Quickstart
 
@@ -58,6 +58,8 @@ make build
   DeepSeek, xAI, Mistral, Groq, OpenRouter and others.
 - [Use the dashboard](docs/how-to/use-the-dashboard.md): see spend, savings, redactions and
   budgets in a browser.
+- [Scan for secrets](docs/how-to/scan-for-secrets.md): find keys and passwords in repositories,
+  locally and in GitHub Actions.
 - [API reference](docs/reference/api.md): endpoints, headers and error codes.
 - [Admin API reference](docs/reference/admin-api.md): reports, and managing keys and projects.
 - [Configuration reference](docs/reference/configuration.md): every setting and its environment
