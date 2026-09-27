@@ -43,7 +43,7 @@ func commands() []command {
 		{"usage", "Report token usage, cost and savings", notImplemented("usage")},
 		{"scan", "Find secrets in a repository, .env files or MCP configurations", runScan},
 		{"setup", "Connect an app or coding agent to the gateway", runSetup},
-		{"doctor", "Check the installation and configuration", notImplemented("doctor")},
+		{"doctor", "Check the installation and configuration", runDoctor},
 		{"version", "Print version information", runVersion},
 	}
 }

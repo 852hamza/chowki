@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -23,6 +24,78 @@ func openTest(t *testing.T) *SQLite {
 	}
 	t.Cleanup(func() { _ = s.Close() })
 	return s
+}
+
+func TestInspectSQLite(t *testing.T) {
+	files, err := fs.Glob(migrations, "migrations/*.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	latest := len(files) // the migrations are numbered from 1 without gaps
+	dir := t.TempDir()
+	migrated := filepath.Join(dir, "migrated.db")
+	s, err := OpenSQLite(t.Context(), "file:"+migrated)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p, err := s.EnsureProject(t.Context(), "default")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i, revoked := range []bool{false, false, true} {
+		k, err := s.CreateKey(t.Context(), Key{ProjectID: p.ID, Name: "app", Prefix: fmt.Sprintf("chowki_k%d", i),
+			Hash: [32]byte{byte(i)}, CreatedAt: time.Now()})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if revoked {
+			if _, err := s.RevokeKey(t.Context(), k.Prefix, time.Now()); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	_ = s.Close()
+	newer := filepath.Join(dir, "newer.db")
+	s, err = OpenSQLite(t.Context(), "file:"+newer)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.db.ExecContext(t.Context(), "INSERT INTO schema_migrations VALUES (999, 0)"); err != nil {
+		t.Fatal(err)
+	}
+	_ = s.Close()
+	empty := filepath.Join(dir, "empty.db")
+	if err := os.WriteFile(empty, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	tests := []struct {
+		name, dsn    string
+		want         Inspection
+		wantNotExist bool
+	}{
+		{"migrated", "file:" + migrated, Inspection{Path: migrated, Version: latest, Latest: latest, Keys: 2}, false},
+		{"newer", "file:" + newer, Inspection{Path: newer, Version: 999, Latest: latest}, false},
+		{"never migrated", "file:" + empty, Inspection{Path: empty, Latest: latest}, false},
+		{"in memory", "file::memory:", Inspection{Latest: latest}, false},
+		{"missing", "file:" + filepath.Join(dir, "missing.db"),
+			Inspection{Path: filepath.Join(dir, "missing.db"), Latest: latest}, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := InspectSQLite(t.Context(), tt.dsn)
+			if tt.wantNotExist != errors.Is(err, fs.ErrNotExist) || !tt.wantNotExist && err != nil {
+				t.Fatalf("InspectSQLite() error = %v, want not exist: %v", err, tt.wantNotExist)
+			}
+			if got != tt.want {
+				t.Errorf("InspectSQLite() = %+v, want %+v", got, tt.want)
+			}
+		})
+	}
+	// Inspecting changes nothing: a missing database stays missing.
+	if _, err := os.Stat(filepath.Join(dir, "missing.db")); !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("InspectSQLite() created the missing database: %v", err)
+	}
 }
 
 func TestOpenSQLite(t *testing.T) {
