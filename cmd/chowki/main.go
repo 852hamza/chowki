@@ -32,7 +32,7 @@ type command struct {
 
 func commands() []command {
 	return []command{
-		{"serve", "Run the gateway", notImplemented("serve")},
+		{"serve", "Run the gateway", runServe},
 		{"init", "Create a configuration, a master key and the database", runInit},
 		{"provider", "Manage provider keys", notImplemented("provider")},
 		{"key", "Create, list and revoke virtual keys", runKey},

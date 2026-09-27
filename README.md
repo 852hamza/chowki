@@ -17,8 +17,9 @@ a single Go binary that stores its data in SQLite.
 
 *Chowki* (چوکی) means "checkpoint" in Urdu.
 
-> **Status:** early development. Chowki doesn't relay requests yet, so it isn't ready for use.
-> Follow the [changelog](CHANGELOG.md) to see what has landed.
+> **Status:** early development. Chowki relays OpenAI and Anthropic requests with virtual keys and
+> records their cost, but budgets, caching and redaction aren't built yet, so don't use it in
+> production. Follow the [changelog](CHANGELOG.md) to see what has landed.
 
 ## Quickstart
 

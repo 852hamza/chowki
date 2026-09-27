@@ -22,6 +22,10 @@ All notable changes to Chowki are recorded in this file. The format is based on
   It never replaces an existing file.
 - `chowki key create`, `list` and `revoke` manage virtual keys. A key is shown once; Chowki stores
   only its prefix and SHA-256 hash, and every change goes to the audit log.
+- `chowki serve` runs the gateway. It relays OpenAI chat completions (`/v1/chat/completions`) and
+  Anthropic messages (`/anthropic/v1/messages`), streaming and non-streaming, authenticated with
+  virtual keys. It routes `provider/model` names, records each request's tokens and cost in the
+  database, and adds the headers `x-chowki-request-id` and `x-chowki-cost-usd`.
 - A model catalog, `catalog/models.json`, with the official prices of current OpenAI and Anthropic
   models, including cache writes, 1-hour cache writes and long-context prices.
 
