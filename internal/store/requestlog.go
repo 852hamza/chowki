@@ -102,6 +102,9 @@ func RunRetention(ctx context.Context, st Store, days int, interval time.Duratio
 	for {
 		cutoff := time.Now().AddDate(0, 0, -days)
 		if n, err := st.DeleteRequestsBefore(ctx, cutoff); err != nil {
+			if ctx.Err() != nil {
+				return // shutting down
+			}
 			logger.Error("delete old request records", "error", err)
 		} else if n > 0 {
 			logger.Info("deleted old request records", "count", n, "retention_days", days)

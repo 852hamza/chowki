@@ -82,6 +82,14 @@ func serve(ctx context.Context, configPath string, ln net.Listener, logOut io.Wr
 		}
 	}
 
+	// Listen before starting anything else, so a taken port fails fast.
+	if ln == nil {
+		if ln, err = (&net.ListenConfig{}).Listen(ctx, "tcp", cfg.Server.Listen); err != nil {
+			return fmt.Errorf("%w; set server.listen or %s to use another address", err, "CHOWKI_SERVER_LISTEN")
+		}
+	}
+	defer func() { _ = ln.Close() }() // no-op once the server has closed it
+
 	st, err := store.OpenSQLite(ctx, cfg.Storage.DSN)
 	if err != nil {
 		return err
@@ -101,11 +109,6 @@ func serve(ctx context.Context, configPath string, ln net.Listener, logOut io.Wr
 		}
 	}()
 
-	if ln == nil {
-		if ln, err = (&net.ListenConfig{}).Listen(ctx, "tcp", cfg.Server.Listen); err != nil {
-			return err
-		}
-	}
 	gw := &pipeline.Gateway{
 		Store: st, Requests: requests, Providers: ps, Catalog: cat, Logger: logger,
 		MaxBody: int64(cfg.Server.MaxBodyMB) << 20, Timeout: cfg.Server.UpstreamTimeout,
