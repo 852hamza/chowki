@@ -58,5 +58,11 @@ All notable changes to Chowki are recorded in this file. The format is based on
 - Health checks and metrics: `GET /healthz` (liveness), `GET /readyz` (the database answers) and
   `GET /metrics` in the Prometheus text format, with requests, tokens, cost, savings, redactions,
   and histograms of provider latency and the gateway's own overhead.
+- Aliases and fallback: `aliases` in `chowki.yaml` gives a list of `<provider>/<model>` targets one
+  name. On a 429, a 5xx, a connection error or a timeout, and only before the first byte reaches
+  the client, Chowki tries the next target, at most two more. A target that fails three times in a
+  row is skipped for 30 seconds.
+- Model allowlists per virtual key: `chowki key create|update --models "fast,openai/*"`. Other
+  models get 403 `model_not_allowed`. The key settings now show the models.
 
 [Unreleased]: https://github.com/852hamza/chowki/commits/main
