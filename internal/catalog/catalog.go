@@ -27,11 +27,12 @@ type Model struct {
 	Model    string   `json:"model"`
 	Aliases  []string `json:"aliases,omitempty"`
 	// ContextWindow, MaxOutput and MinCacheableTokens are 0 when unknown.
-	ContextWindow      int      `json:"context_window,omitempty"`
-	MaxOutput          int      `json:"max_output,omitempty"`
-	MinCacheableTokens int      `json:"min_cacheable_tokens,omitempty"`
-	Supports           []string `json:"supports,omitempty"`
-	Price              Price    `json:"price"`
+	ContextWindow      int `json:"context_window,omitempty"`
+	MaxOutput          int `json:"max_output,omitempty"`
+	MinCacheableTokens int `json:"min_cacheable_tokens,omitempty"`
+	// Supports lists capabilities from Capabilities.
+	Supports []string `json:"supports,omitempty"`
+	Price    Price    `json:"price"`
 	// Tiers are prices for large prompts, in ascending order of threshold.
 	Tiers []Tier `json:"tiers,omitempty"`
 	// Changes are announced prices, in ascending order of date: from its
@@ -62,6 +63,10 @@ type Tier struct {
 	AboveInputTokens int64 `json:"above_input_tokens"`
 	Price
 }
+
+// Capabilities are what a model can do, as its maker documents it: call
+// tools, read images, return JSON for a schema, cache prompts, and think.
+var Capabilities = []string{"tools", "vision", "json", "caching", "thinking"}
 
 // Change is a price that applies from a date on.
 type Change struct {
@@ -180,6 +185,14 @@ func (m *Model) validate() error {
 	}
 	if _, err := time.Parse(time.DateOnly, m.Updated); err != nil {
 		errs = append(errs, errors.New("updated must be a date such as 2026-09-27"))
+	}
+	for _, c := range m.Supports {
+		if !slices.Contains(Capabilities, c) {
+			errs = append(errs, fmt.Errorf("supports: unknown capability %q", c))
+		}
+	}
+	if m.ContextWindow < 0 || m.MaxOutput < 0 || m.MinCacheableTokens < 0 {
+		errs = append(errs, errors.New("token limits must not be negative"))
 	}
 	errs = append(errs, m.Price.validate("price"), validateTiers("tiers", m.Tiers))
 	last := m.Updated

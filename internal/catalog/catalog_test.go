@@ -86,6 +86,10 @@ func TestLoadErrors(t *testing.T) {
 			`"tiers":[{"above_input_tokens":500,"input":1,"output":1},{"above_input_tokens":100,"input":1,"output":1}],"source"`, 1) + `]}`,
 			"ascending"},
 		{"duplicate", `{"models":[` + valid + `,` + valid + `]}`, "p/m is listed twice"},
+		{"unknown capability", `{"models":[` + strings.Replace(valid, `"source"`, `"supports":["telepathy"],"source"`, 1) +
+			`]}`, "unknown capability"},
+		{"negative limit", `{"models":[` + strings.Replace(valid, `"source"`, `"max_output":-1,"source"`, 1) + `]}`,
+			"must not be negative"},
 		{"change before updated", `{"models":[` + strings.Replace(valid, `"source"`,
 			`"changes":[{"from":"2026-01-01","price":{"input":1,"output":1}}],"source"`, 1) + `]}`, "changes[0].from must be"},
 		{"changes out of order", `{"models":[` + strings.Replace(valid, `"source"`,
@@ -138,5 +142,12 @@ func TestDefaultGeminiPrices(t *testing.T) {
 	}
 	if _, ok := c.Find("gemini", "gemini-3.1-pro-preview-customtools"); !ok {
 		t.Error("the alias of gemini-3.1-pro-preview is missing")
+	}
+	// Every chat model says how much it can write: translation for
+	// Anthropic needs it.
+	for _, m := range c.All() {
+		if m.MaxOutput == 0 && !strings.Contains(m.Model, "embedding") {
+			t.Errorf("%s/%s has no max_output", m.Provider, m.Model)
+		}
 	}
 }
