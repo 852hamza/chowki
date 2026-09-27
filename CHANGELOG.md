@@ -9,8 +9,8 @@ All notable changes to Chowki are recorded in this file. The format is based on
 ### Added
 
 - The `chowki` command. `chowki version` prints the version, commit, build date and repository
-  URL. The `serve`, `init`, `provider`, `key`, `usage`, `scan`, `setup` and `doctor` commands
-  exist but aren't implemented yet.
+  URL. The `provider`, `usage`, `scan`, `setup` and `doctor` commands exist but aren't
+  implemented yet.
 - Project identity in `project.env`. `make sync` applies it to the whole repository, and
   `make sync-check` finds leftovers of an earlier identity and hard-coded URLs in Go code.
 - Fake OpenAI-compatible, Anthropic and Gemini providers for tests, with JSON and streaming
@@ -29,5 +29,10 @@ All notable changes to Chowki are recorded in this file. The format is based on
   database, and adds the headers `x-chowki-request-id` and `x-chowki-cost-usd`.
 - A model catalog, `catalog/models.json`, with the official prices of current OpenAI and Anthropic
   models, including cache writes, 1-hour cache writes and long-context prices.
+- Monthly budgets in US dollars for virtual keys (`chowki key create --budget-usd`,
+  `chowki key update`) and for projects (`chowki project update`). Once a budget is used up, its
+  requests fail with HTTP 429 and the code `budget_exceeded` until the next calendar month in UTC.
+  Requests to models without a price count as $0. Spend is saved with the request records and
+  survives restarts; `chowki key list` and the new `chowki project list` show this month's spend.
 
 [Unreleased]: https://github.com/852hamza/chowki/commits/main

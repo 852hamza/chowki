@@ -48,8 +48,8 @@ Each request passes these stages in order:
 
 ```mermaid
 flowchart TD
-  A[Parse] --> B[Authenticate] --> C[Policy] --> D[Rate limit] --> E[Budget check]
-  E --> F[Redact] --> G[Exact cache] --> H[Route] --> I[Prompt-cache optimizer]
+  A[Parse] --> B[Authenticate] --> C[Policy] --> D[Rate limit] --> E[Redact]
+  E --> F[Exact cache] --> G[Route] --> H[Budget check] --> I[Prompt-cache optimizer]
   I --> J[Upstream call] --> K[Account] --> L[Persist]
 ```
 
@@ -57,18 +57,21 @@ flowchart TD
 2. **Authenticate**: verify the virtual key and reject revoked keys.
 3. **Policy**: check the models and endpoints that the key may use.
 4. **Rate limit**: enforce requests and tokens per minute for the key.
-5. **Budget check**: reject the request when the key has used up its budget.
-6. **Redact**: find secrets and personal data, then mask them, block the request or raise an alert,
+5. **Redact**: find secrets and personal data, then mask them, block the request or raise an alert,
    depending on the policy.
-7. **Exact cache**: for a non-streaming request identical to an earlier one, return the stored
+6. **Exact cache**: for a non-streaming request identical to an earlier one, return the stored
    response. The cache is opt-in.
-8. **Route**: resolve an alias, such as `fast`, to a provider and model.
+7. **Route**: resolve an alias, such as `fast`, to a provider and model.
+8. **Budget check**: reject the request when the key or its project has used up its monthly
+   budget. The check follows routing because it estimates the request's cost from the model's
+   price, and it counts requests in progress at that estimate.
 9. **Prompt-cache optimizer**: for Anthropic, mark stable prompt prefixes, so that repeated
    prefixes cost less.
 10. **Upstream call**: call the provider with the provider key and a timeout, and relay a streamed
     answer chunk by chunk.
 11. **Account**: read the token usage that the provider reported, and compute cost and savings.
-12. **Persist**: save the request metadata and update spend and metrics.
+12. **Persist**: save the request metadata together with the spend that it adds, and update
+    metrics.
 
 When Chowki rejects a request, it answers in the error format of the API family that you called,
 so your SDK shows the error correctly.
@@ -81,7 +84,7 @@ so your SDK shows the error correctly.
 | Provider key | The key of your account with a provider. Only Chowki holds it, encrypted with AES-256-GCM. |
 | Alias | A model name, such as `fast`, that Chowki resolves to one or more provider models in fallback order |
 | API family | The request format that a client speaks: OpenAI, Anthropic or Gemini |
-| Project | A group of virtual keys |
+| Project | A group of virtual keys, which can share a monthly budget |
 
 ## Design choices and trade-offs
 

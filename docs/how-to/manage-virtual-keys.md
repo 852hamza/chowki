@@ -38,6 +38,9 @@ revoke one key without touching the others or your provider keys.
 
 2. Give the key to its user through a secret store or another private channel.
 
+To limit what a key can spend each month, add `--budget-usd`. See
+[Set monthly budgets](set-budgets.md).
+
 Chowki stores only the key's prefix, its first 12 characters, and its SHA-256 hash. If a key is
 lost, revoke it and create a new one.
 
@@ -56,25 +59,26 @@ chowki key list
 Output:
 
 ```text
-PREFIX        NAME    PROJECT  CREATED               STATUS
-chowki_n5jcb  alice   default  2026-09-27 04:41 UTC  active
-chowki_dezmK  ci-bot  team-a   2026-09-27 04:43 UTC  active
+PREFIX        NAME    PROJECT  SPENT 2026-09  BUDGET  CREATED               STATUS
+chowki_sh63H  alice   team-a   $3.00          $50.00  2026-09-27 05:42 UTC  active
+chowki_EqKeh  ci-bot  team-a   $1.00          none    2026-09-27 05:42 UTC  active
 ```
 
-The list shows each key's prefix, never the key itself.
+The list shows each key's prefix, never the key itself, and what the key spent this month (UTC)
+next to its monthly budget.
 
 ## Revoke a key
 
 1. Revoke a key by its prefix:
 
    ```sh
-   chowki key revoke chowki_dezmK
+   chowki key revoke chowki_EqKeh
    ```
 
    Output:
 
    ```text
-   Revoked virtual key chowki_dezmK ("ci-bot"). Requests with it now fail.
+   Revoked virtual key chowki_EqKeh ("ci-bot"). Requests with it now fail.
    ```
 
 You can also pass the full key instead of the prefix. Revoking is permanent, and revoking a key
@@ -102,5 +106,5 @@ the key as `revoked` with the time.
 
 ## Related
 
-- [Configuration reference](../reference/configuration.md) ·
-  [Architecture](../concepts/architecture.md)
+- [Set monthly budgets](set-budgets.md) · [Configuration reference](../reference/configuration.md)
+  · [Architecture](../concepts/architecture.md)
