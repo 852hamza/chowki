@@ -20,5 +20,7 @@ All notable changes to Chowki are recorded in this file. The format is based on
 - Developer guide pages: architecture, development setup and code structure.
 - `chowki init` creates `chowki.yaml`, a master key readable only by you, and the SQLite database.
   It never replaces an existing file.
+- `chowki key create`, `list` and `revoke` manage virtual keys. A key is shown once; Chowki stores
+  only its prefix and SHA-256 hash, and every change goes to the audit log.
 
 [Unreleased]: https://github.com/852hamza/chowki/commits/main
