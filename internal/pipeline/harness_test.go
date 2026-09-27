@@ -96,7 +96,7 @@ func newHarness(t testing.TB, oa, an testutil.Config, opts ...option) *harness {
 		t.Fatal(err)
 	}
 	h.st = &recordingStore{SQLite: sq}
-	if h.key, _, err = auth.Create(t.Context(), sq, "default", "test", time.Now()); err != nil {
+	if h.key, _, err = auth.Create(t.Context(), sq, "default", store.Key{Name: "test"}, time.Now()); err != nil {
 		t.Fatal(err)
 	}
 	cat, err := catalog.Load([]byte(testCatalog))

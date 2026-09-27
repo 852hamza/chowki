@@ -90,10 +90,11 @@ func Verify(ctx context.Context, st store.Store, key string) (store.Key, error) 
 	return k, nil
 }
 
-// Create generates a key named name in the project, creating the project if
-// needed, saves its prefix and hash, and returns the key. The key is shown
-// once: only its hash is stored.
-func Create(ctx context.Context, st store.Store, project, name string, now time.Time) (string, store.Key, error) {
+// Create generates a key in the project, creating the project if needed,
+// and saves its prefix and hash with the name and settings of k, such as
+// its budget. It returns the key, which is shown once: only its hash is
+// stored.
+func Create(ctx context.Context, st store.Store, project string, k store.Key, now time.Time) (string, store.Key, error) {
 	p, err := st.EnsureProject(ctx, project)
 	if err != nil {
 		return "", store.Key{}, err
@@ -105,14 +106,15 @@ func Create(ctx context.Context, st store.Store, project, name string, now time.
 		if err != nil {
 			return "", store.Key{}, err
 		}
-		k, err := st.CreateKey(ctx, store.Key{ProjectID: p.ID, Name: name, Prefix: prefix, Hash: hash, CreatedAt: now})
+		k.ProjectID, k.Prefix, k.Hash, k.CreatedAt = p.ID, prefix, hash, now
+		stored, err := st.CreateKey(ctx, k)
 		if errors.Is(err, store.ErrExists) {
 			continue
 		}
 		if err != nil {
 			return "", store.Key{}, err
 		}
-		return key, k, nil
+		return key, stored, nil
 	}
 	return "", store.Key{}, errors.New("create key: no unused prefix after 5 tries")
 }

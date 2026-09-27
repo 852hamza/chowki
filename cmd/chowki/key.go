@@ -6,48 +6,37 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"os"
-	"os/signal"
+	"math"
+	"strconv"
 	"strings"
 	"text/tabwriter"
 	"time"
 	"unicode"
 
 	"github.com/852hamza/chowki/internal/auth"
+	"github.com/852hamza/chowki/internal/budget"
 	"github.com/852hamza/chowki/internal/config"
 	"github.com/852hamza/chowki/internal/store"
 )
 
 const keyUsage = `Usage:
-  chowki key create --name <NAME> [--project <PROJECT>] [--config <FILE>]
+  chowki key create --name <NAME> [--project <PROJECT>] [--budget-usd <USD>] [--config <FILE>]
   chowki key list [--config <FILE>]
+  chowki key update [--config <FILE>] --budget-usd <USD> <PREFIX>
   chowki key revoke [--config <FILE>] <PREFIX>
 
-A virtual key is shown once, when you create it. Revoke a key by its prefix,
-the first 12 characters, as "chowki key list" shows them.
+A virtual key is shown once, when you create it. Update or revoke a key by
+its prefix, the first 12 characters, as "chowki key list" shows them.
+--budget-usd sets a monthly budget in US dollars; 0 means no budget.
 `
 
 func runKey(args []string, stdout, stderr io.Writer) int {
-	if len(args) == 0 {
-		fmt.Fprint(stderr, keyUsage)
-		return exitUsage
-	}
-	sub := map[string]func(context.Context, []string, io.Writer, io.Writer) int{
+	return runSubcommand("key", keyUsage, map[string]subcommand{
 		"create": keyCreate,
 		"list":   keyList,
+		"update": keyUpdate,
 		"revoke": keyRevoke,
-	}[args[0]]
-	switch {
-	case args[0] == "help" || args[0] == "-h" || args[0] == "--help":
-		fmt.Fprint(stdout, keyUsage)
-		return exitOK
-	case sub == nil:
-		fmt.Fprintf(stderr, "chowki key: unknown command %q\n\n%s", args[0], keyUsage)
-		return exitUsage
-	}
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
-	defer stop()
-	return sub(ctx, args[1:], stdout, stderr)
+	}, args, stdout, stderr)
 }
 
 func keyCreate(ctx context.Context, args []string, stdout, stderr io.Writer) int {
@@ -56,6 +45,7 @@ func keyCreate(ctx context.Context, args []string, stdout, stderr io.Writer) int
 	configPath := flags.String("config", defaultConfig, "configuration file")
 	name := flags.String("name", "", "who or what uses the key, such as alice or ci-bot (required)")
 	project := flags.String("project", "default", "project that the key belongs to")
+	budgetUSD := flags.Float64("budget-usd", 0, "monthly budget in US dollars; 0 means none")
 	if err := flags.Parse(args); err != nil || flags.NArg() > 0 {
 		return exitUsage
 	}
@@ -65,18 +55,28 @@ func keyCreate(ctx context.Context, args []string, stdout, stderr io.Writer) int
 			return exitUsage
 		}
 	}
+	if err := checkBudget(*budgetUSD); err != nil {
+		fmt.Fprintf(stderr, "chowki key create: %v\n", err)
+		return exitUsage
+	}
 	return withStore(ctx, *configPath, stderr, "chowki key create", func(st store.Store) error {
 		now := time.Now().UTC()
-		key, k, err := auth.Create(ctx, st, *project, *name, now)
+		key, k, err := auth.Create(ctx, st, *project, store.Key{Name: *name, BudgetUSD: *budgetUSD}, now)
 		if err != nil {
 			return err
 		}
+		details := map[string]string{"name": k.Name, "project": k.Project}
+		withBudget := ""
+		if k.BudgetUSD > 0 {
+			details["monthly_budget_usd"] = formatAmount(k.BudgetUSD)
+			withBudget = " with a monthly budget of " + budget.FormatUSD(k.BudgetUSD)
+		}
 		if err := st.AddAudit(ctx, store.AuditEvent{Time: now, Actor: "cli", Action: "key.create", Target: k.Prefix,
-			Details: map[string]string{"name": k.Name, "project": k.Project}}); err != nil {
+			Details: details}); err != nil {
 			return err
 		}
-		fmt.Fprintf(stdout, "Created virtual key %q in project %q:\n\n  %s\n\n"+
-			"Copy it now. Chowki stores only a hash of it and can't show it again.\n", k.Name, k.Project, key)
+		fmt.Fprintf(stdout, "Created virtual key %q in project %q%s:\n\n  %s\n\n"+
+			"Copy it now. Chowki stores only a hash of it and can't show it again.\n", k.Name, k.Project, withBudget, key)
 		return nil
 	})
 }
@@ -97,16 +97,75 @@ func keyList(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 			fmt.Fprintln(stdout, "No virtual keys yet. Create one with: chowki key create --name <NAME>")
 			return nil
 		}
+		period := store.Period(time.Now())
+		spend, err := st.SpendByKey(ctx, period)
+		if err != nil {
+			return err
+		}
+		spent := map[int64]float64{}
+		for _, s := range spend {
+			spent[s.KeyID] = s.USD
+		}
 		tw := tabwriter.NewWriter(stdout, 0, 0, 2, ' ', 0)
-		fmt.Fprintln(tw, "PREFIX\tNAME\tPROJECT\tCREATED\tSTATUS")
+		fmt.Fprintf(tw, "PREFIX\tNAME\tPROJECT\tSPENT %s\tBUDGET\tCREATED\tSTATUS\n", period)
 		for _, k := range keys {
 			status := "active"
 			if k.Revoked() {
 				status = "revoked " + formatTime(k.RevokedAt)
 			}
-			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n", k.Prefix, k.Name, k.Project, formatTime(k.CreatedAt), status)
+			fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\n", k.Prefix, k.Name, k.Project,
+				budget.FormatUSD(spent[k.ID]), formatBudget(k.BudgetUSD), formatTime(k.CreatedAt), status)
 		}
 		return tw.Flush()
+	})
+}
+
+func keyUpdate(ctx context.Context, args []string, stdout, stderr io.Writer) int {
+	flags := flag.NewFlagSet("chowki key update", flag.ContinueOnError)
+	flags.SetOutput(stderr)
+	configPath := flags.String("config", defaultConfig, "configuration file")
+	budgetUSD := flags.Float64("budget-usd", 0, "monthly budget in US dollars; 0 removes it")
+	if err := flags.Parse(args); err != nil || flags.NArg() != 1 {
+		if err == nil {
+			fmt.Fprint(stderr, keyUsage)
+		}
+		return exitUsage
+	}
+	var u store.KeyUpdate
+	flags.Visit(func(f *flag.Flag) {
+		if f.Name == "budget-usd" {
+			u.BudgetUSD = budgetUSD
+		}
+	})
+	if u.BudgetUSD == nil {
+		fmt.Fprint(stderr, "chowki key update: nothing to change; set --budget-usd\n")
+		return exitUsage
+	}
+	if err := checkBudget(*u.BudgetUSD); err != nil {
+		fmt.Fprintf(stderr, "chowki key update: %v\n", err)
+		return exitUsage
+	}
+	prefix := auth.PrefixOf(flags.Arg(0))
+	return withStore(ctx, *configPath, stderr, "chowki key update", func(st store.Store) error {
+		k, err := st.UpdateKey(ctx, prefix, u)
+		if errors.Is(err, store.ErrNotFound) {
+			return fmt.Errorf("no virtual key has the prefix %q; see chowki key list", prefix)
+		}
+		if err != nil {
+			return err
+		}
+		if err := st.AddAudit(ctx, store.AuditEvent{Time: time.Now().UTC(), Actor: "cli", Action: "key.update",
+			Target: k.Prefix, Details: map[string]string{"name": k.Name, "project": k.Project,
+				"monthly_budget_usd": formatAmount(k.BudgetUSD)}}); err != nil {
+			return err
+		}
+		if k.BudgetUSD == 0 {
+			fmt.Fprintf(stdout, "Virtual key %s (%q) now has no monthly budget.\n", k.Prefix, k.Name)
+		} else {
+			fmt.Fprintf(stdout, "Virtual key %s (%q) now has a monthly budget of %s.\n", k.Prefix, k.Name,
+				budget.FormatUSD(k.BudgetUSD))
+		}
+		return nil
 	})
 }
 
@@ -168,6 +227,25 @@ func withStore(ctx context.Context, configPath string, stderr io.Writer, command
 	}
 	return exitOK
 }
+
+// checkBudget validates a --budget-usd value.
+func checkBudget(usd float64) error {
+	if math.IsNaN(usd) || math.IsInf(usd, 0) || usd < 0 {
+		return errors.New("--budget-usd must be an amount of 0 or more, such as 50 or 12.5")
+	}
+	return nil
+}
+
+// formatBudget shows a monthly budget, where 0 means none.
+func formatBudget(usd float64) string {
+	if usd == 0 {
+		return "none"
+	}
+	return budget.FormatUSD(usd)
+}
+
+// formatAmount writes an amount for the audit log, exactly.
+func formatAmount(usd float64) string { return strconv.FormatFloat(usd, 'f', -1, 64) }
 
 // checkLabel validates a key or project name, which appear in lists and
 // logs.

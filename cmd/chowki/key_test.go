@@ -2,10 +2,12 @@ package main
 
 import (
 	"bytes"
+	"database/sql"
 	"errors"
 	"regexp"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/852hamza/chowki/internal/auth"
 	"github.com/852hamza/chowki/internal/store"
@@ -96,6 +98,14 @@ func TestKeyErrors(t *testing.T) {
 		{[]string{"key", "list", "extra"}, exitUsage, ""},
 		{[]string{"key", "revoke"}, exitUsage, "Usage:"},
 		{[]string{"key", "revoke", "chowki_nope1"}, exitError, `no virtual key has the prefix "chowki_nope1"`},
+		{[]string{"key", "create", "--name", "a", "--budget-usd", "-1"}, exitUsage, "must be an amount of 0 or more"},
+		{[]string{"key", "create", "--name", "a", "--budget-usd", "NaN"}, exitUsage, "must be an amount of 0 or more"},
+		{[]string{"key", "create", "--name", "a", "--budget-usd", "ten"}, exitUsage, "invalid value"},
+		{[]string{"key", "update", "chowki_nope1"}, exitUsage, "nothing to change"},
+		{[]string{"key", "update", "--budget-usd", "5"}, exitUsage, "Usage:"},
+		{[]string{"key", "update", "--budget-usd", "Inf", "chowki_nope1"}, exitUsage, "must be an amount"},
+		{[]string{"key", "update", "--budget-usd", "5", "chowki_nope1"}, exitError,
+			`no virtual key has the prefix "chowki_nope1"`},
 		{[]string{"key", "list", "--config", "missing.yaml"}, exitError, "read config"},
 	}
 	for _, tt := range tests {
@@ -110,4 +120,65 @@ func TestKeyErrors(t *testing.T) {
 	if out := runOK(t, "key", "help"); !strings.Contains(out, "chowki key create") {
 		t.Errorf("key help = %q", out)
 	}
+}
+
+func TestKeyBudgets(t *testing.T) {
+	initDir(t)
+	out := runOK(t, "key", "create", "--name", "alice", "--budget-usd", "50")
+	m := printedKeyRE.FindStringSubmatch(out)
+	if m == nil || !strings.Contains(out, "with a monthly budget of $50.00:") {
+		t.Fatalf("create output = %q", out)
+	}
+	prefix := m[1][:auth.PrefixLen]
+
+	st, err := store.OpenSQLite(t.Context(), "file:data/chowki.db")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = st.Close() }()
+	k, err := st.KeyByPrefix(t.Context(), prefix)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cost := 12.345
+	if err := st.InsertRequests(t.Context(), []store.Request{{ID: "r1", Time: time.Now(), KeyID: k.ID,
+		ProjectID: k.ProjectID, CostUSD: &cost}}); err != nil {
+		t.Fatal(err)
+	}
+	list := runOK(t, "key", "list")
+	for _, want := range []string{"SPENT " + store.Period(time.Now()), "BUDGET", "$12.35", "$50.00"} {
+		if !strings.Contains(list, want) {
+			t.Errorf("list doesn't contain %q:\n%s", want, list)
+		}
+	}
+
+	if out := runOK(t, "key", "update", "--budget-usd", "75.5", m[1]); !strings.Contains(out,
+		"Virtual key "+prefix+` ("alice") now has a monthly budget of $75.50.`) {
+		t.Errorf("update output = %q", out)
+	}
+	if out := runOK(t, "key", "update", "--budget-usd", "0", prefix); !strings.Contains(out, "now has no monthly budget") {
+		t.Errorf("update to 0 output = %q", out)
+	}
+	if list := runOK(t, "key", "list"); !strings.Contains(list, "none") {
+		t.Errorf("list after removing the budget:\n%s", list)
+	}
+	if n := countAudit(t, "key.update", prefix); n != 2 {
+		t.Errorf("audit log has %d key.update entries, want 2", n)
+	}
+}
+
+// countAudit counts the audit log entries of an action on a target.
+func countAudit(t *testing.T, action, target string) int {
+	t.Helper()
+	db, err := sql.Open("sqlite", "file:data/chowki.db")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+	var n int
+	if err := db.QueryRowContext(t.Context(), `SELECT count(*) FROM audit_log WHERE action = ? AND target = ?`,
+		action, target).Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	return n
 }

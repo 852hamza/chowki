@@ -3,9 +3,11 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"os"
+	"os/signal"
 	"runtime"
 	"text/tabwriter"
 
@@ -35,13 +37,38 @@ func commands() []command {
 		{"serve", "Run the gateway", runServe},
 		{"init", "Create a configuration, a master key and the database", runInit},
 		{"provider", "Manage provider keys", notImplemented("provider")},
-		{"key", "Create, list and revoke virtual keys", runKey},
+		{"key", "Create, list, update and revoke virtual keys", runKey},
+		{"project", "List projects and set their budgets", runProject},
 		{"usage", "Report token usage, cost and savings", notImplemented("usage")},
 		{"scan", "Find secrets in a repository, .env files or MCP configurations", notImplemented("scan")},
 		{"setup", "Connect an app or coding agent to the gateway", notImplemented("setup")},
 		{"doctor", "Check the installation and configuration", notImplemented("doctor")},
 		{"version", "Print version information", runVersion},
 	}
+}
+
+// subcommand runs a subcommand of a command group, such as "key create".
+type subcommand func(ctx context.Context, args []string, stdout, stderr io.Writer) int
+
+// runSubcommand runs the subcommand of group that args[0] names, or prints
+// the group's usage.
+func runSubcommand(group, usage string, subs map[string]subcommand, args []string, stdout, stderr io.Writer) int {
+	if len(args) == 0 {
+		fmt.Fprint(stderr, usage)
+		return exitUsage
+	}
+	sub := subs[args[0]]
+	switch {
+	case args[0] == "help" || args[0] == "-h" || args[0] == "--help":
+		fmt.Fprint(stdout, usage)
+		return exitOK
+	case sub == nil:
+		fmt.Fprintf(stderr, "chowki %s: unknown command %q\n\n%s", group, args[0], usage)
+		return exitUsage
+	}
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+	defer stop()
+	return sub(ctx, args[1:], stdout, stderr)
 }
 
 // run executes the command line args and returns the exit code.
