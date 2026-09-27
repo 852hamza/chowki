@@ -48,6 +48,16 @@ func TestSealAndOpen(t *testing.T) {
 	}
 }
 
+func TestDeriveKey(t *testing.T) {
+	master := bytes.Repeat([]byte{1}, KeySize)
+	a, err := DeriveKey(master, "redaction")
+	b, _ := DeriveKey(master, "redaction")
+	c, _ := DeriveKey(master, "cache")
+	if err != nil || len(a) != KeySize || !bytes.Equal(a, b) || bytes.Equal(a, c) || bytes.Equal(a, master) {
+		t.Errorf("DeriveKey() = %x, %v; want a stable key per purpose, unlike the master key", a, err)
+	}
+}
+
 func TestNewRejectsAShortKey(t *testing.T) {
 	if _, err := New(make([]byte, 16), "cache"); err == nil {
 		t.Error("New() accepted a 16-byte master key")

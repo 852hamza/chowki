@@ -233,6 +233,10 @@ func TestKeyRateLimits(t *testing.T) {
 	if k, err := s.UpdateKey(ctx, "chowki_abcde", KeyUpdate{CacheMode: mode("")}); err != nil || k.CacheMode != "" {
 		t.Errorf("UpdateKey() back to the default cache mode = %+v, %v", k, err)
 	}
+	if k, err := s.UpdateKey(ctx, "chowki_abcde", KeyUpdate{RedactionMode: mode("block")}); err != nil ||
+		k.RedactionMode != "block" || k.TPM != 5000 {
+		t.Errorf("UpdateKey() of the redaction mode = %+v, %v", k, err)
+	}
 }
 
 func TestSpend(t *testing.T) {
@@ -294,7 +298,7 @@ func TestRequests(t *testing.T) {
 		{ID: "r1", Time: base, KeyID: 1, ProjectID: 1, APIFamily: "openai", Endpoint: "/v1/chat/completions",
 			Provider: "openai", Model: "m", Stream: true, Status: 200, Latency: 1500 * time.Millisecond,
 			TTFB: 300 * time.Millisecond, Tokens: &Tokens{Input: 100, Output: 20, CacheRead: 60, CacheWrite: 10, Reasoning: 5},
-			CostUSD: &cost, SavingsUSD: 0.001, SavingsMethod: "prompt_cache"},
+			CostUSD: &cost, SavingsUSD: 0.001, SavingsMethod: "prompt_cache", Redactions: map[string]int{"email": 2}},
 		{ID: "r2", Time: base.Add(48 * time.Hour), KeyID: 1, ProjectID: 1, APIFamily: "anthropic",
 			Endpoint: "/anthropic/v1/messages", Provider: "anthropic", Model: "m", Status: 502,
 			ErrorType: "upstream_error", Latency: 20 * time.Millisecond},
@@ -334,6 +338,23 @@ func TestRequests(t *testing.T) {
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("stored requests =\n%+v\nwant\n%+v", got, want)
+	}
+
+	var redactions []string
+	rows, err = s.db.QueryContext(ctx, `SELECT redactions FROM requests ORDER BY ts`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for rows.Next() {
+		var r string
+		if err := rows.Scan(&r); err != nil {
+			t.Fatal(err)
+		}
+		redactions = append(redactions, r)
+	}
+	_ = rows.Close()
+	if !reflect.DeepEqual(redactions, []string{`{"email":2}`, ""}) {
+		t.Errorf("stored redactions = %q, want the counts and nothing", redactions)
 	}
 
 	if err := s.InsertRequests(ctx, rs[:1]); err == nil {

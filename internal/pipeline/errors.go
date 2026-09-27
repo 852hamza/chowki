@@ -24,6 +24,7 @@ const (
 	codeTooLarge           = "request_too_large"
 	codeBudgetExceeded     = "budget_exceeded"
 	codeRateLimited        = "rate_limit_exceeded"
+	codeSensitiveData      = "sensitive_data_blocked"
 	codeUnknownProvider    = "unknown_provider"
 	codeWrongEndpoint      = "wrong_endpoint"
 	codeProviderKeyMissing = "provider_key_missing"

@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"maps"
 	"mime"
 	"net/http"
 	"slices"
@@ -25,6 +26,7 @@ import (
 	"github.com/852hamza/chowki/internal/promptcache"
 	"github.com/852hamza/chowki/internal/providers"
 	"github.com/852hamza/chowki/internal/ratelimit"
+	"github.com/852hamza/chowki/internal/redact"
 	"github.com/852hamza/chowki/internal/sse"
 	"github.com/852hamza/chowki/internal/store"
 	"github.com/852hamza/chowki/internal/usage"
@@ -38,6 +40,9 @@ const (
 	// CacheHeader says whether the exact cache answered a request: hit, miss
 	// or bypass. In a request, "on" or "off" overrides the key's setting.
 	CacheHeader = "x-chowki-cache"
+	// RedactionsHeader counts the secrets and personal data that redaction
+	// found in a request.
+	RedactionsHeader = "x-chowki-redactions"
 )
 
 // maxResponse limits a non-streaming response that the gateway reads.
@@ -50,6 +55,7 @@ const maxResponse = 64 << 20
 type Gateway struct {
 	Store    store.Store
 	Requests *store.RequestLog
+	Redactor *redact.Redactor
 	Cache    *cache.Cache
 	Limits   *ratelimit.Limiter
 	Budgets  *budget.Tracker
@@ -100,6 +106,8 @@ type call struct {
 	cacheKey [32]byte          // for a miss, where relayBody stores the response
 	savedUSD *float64          // for a hit, what the original request cost
 	marked   bool              // the prompt-cache optimizer added a breakpoint
+	// redactions counts what redaction found, by type, never the values.
+	redactions map[string]int
 }
 
 func (g *Gateway) serve(w http.ResponseWriter, r *http.Request, f usage.Family) {
@@ -141,6 +149,9 @@ func (g *Gateway) handle(ctx context.Context, c *call, r *http.Request) *apiErro
 	}
 	req, e := readRequest(c.family, obj)
 	if e != nil {
+		return e
+	}
+	if body, obj, e = g.redact(c, body, obj); e != nil {
 		return e
 	}
 
@@ -277,6 +288,44 @@ func readRequest(f usage.Family, o *object) (request, *apiError) {
 		}
 	}
 	return req, nil
+}
+
+// redact applies the key's redaction mode to the text of a request: mask
+// replaces the secrets and personal data that the detectors find with
+// placeholders, block rejects the request, and alert forwards it and logs
+// what was found. Records and logs count the findings by type; they never
+// hold the values.
+func (g *Gateway) redact(c *call, body []byte, obj *object) ([]byte, *object, *apiError) {
+	mode := g.Redactor.Mode(c.key.RedactionMode)
+	if mode == redact.ModeOff {
+		return body, obj, nil
+	}
+	out, counts, err := g.Redactor.Request(string(c.family), body, mode == redact.ModeMask)
+	if err != nil {
+		return nil, nil, &apiError{http.StatusBadRequest, codeInvalidRequest, "The request body couldn't be read."}
+	}
+	if len(counts) == 0 {
+		return body, obj, nil
+	}
+	c.redactions = counts
+	total := 0
+	for _, n := range counts {
+		total += n
+	}
+	c.w.Header().Set(RedactionsHeader, strconv.Itoa(total))
+	switch mode {
+	case redact.ModeBlock:
+		return nil, nil, &apiError{http.StatusBadRequest, codeSensitiveData, fmt.Sprintf(
+			"The request contains data that this key may not send: %s. Remove it and send the request again.",
+			strings.Join(slices.Sorted(maps.Keys(counts)), ", "))}
+	case redact.ModeAlert:
+		g.Logger.Warn("sensitive data in a request", "request_id", c.id, "key_id", c.key.ID, "redactions", counts)
+		return body, obj, nil
+	}
+	if obj, err = parseObject(out); err != nil { // only string contents changed, so it parses
+		return nil, nil, &apiError{http.StatusInternalServerError, codeInternal, "The gateway couldn't redact the request."}
+	}
+	return out, obj, nil
 }
 
 // useCache answers a request from the exact cache when it can, which also
@@ -566,7 +615,7 @@ func (g *Gateway) finish(c *call) {
 		cost = hitCost(c.savedUSD)
 	}
 	rec.CostUSD, rec.SavingsUSD, rec.SavingsMethod = cost.USD, cost.SavingsUSD, cost.SavingsMethod
-	rec.CacheStatus = c.cache
+	rec.CacheStatus, rec.Redactions = c.cache, c.redactions
 	g.Requests.Add(rec)
 	var spent float64 // an unpriced request counts as free: its cost is unknown
 	if cost.USD != nil {
@@ -586,6 +635,9 @@ func (g *Gateway) finish(c *call) {
 	}
 	if c.marked {
 		attrs = append(attrs, "prompt_cache_breakpoint", true)
+	}
+	if len(c.redactions) > 0 {
+		attrs = append(attrs, "redactions", c.redactions)
 	}
 	if t := rec.Tokens; t != nil {
 		attrs = append(attrs, "input_tokens", t.Input, "output_tokens", t.Output, "cache_read_tokens", t.CacheRead,

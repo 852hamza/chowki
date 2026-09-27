@@ -246,9 +246,9 @@ func nullIfZero[T int64 | float64 | string](v T) any {
 // CreateKey implements Store.
 func (s *SQLite) CreateKey(ctx context.Context, k Key) (Key, error) {
 	res, err := s.db.ExecContext(ctx, `INSERT INTO virtual_keys (project_id, name, prefix, key_hash,
-		monthly_budget_usd, rpm, tpm, cache_mode, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		monthly_budget_usd, rpm, tpm, cache_mode, redaction_mode, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		k.ProjectID, k.Name, k.Prefix, k.Hash[:], nullIfZero(k.BudgetUSD), nullIfZero(k.RPM), nullIfZero(k.TPM),
-		nullIfZero(k.CacheMode), k.CreatedAt.UnixMilli())
+		nullIfZero(k.CacheMode), nullIfZero(k.RedactionMode), k.CreatedAt.UnixMilli())
 	var se *sqlite.Error
 	if errors.As(err, &se) && se.Code() == sqlite3.SQLITE_CONSTRAINT_UNIQUE {
 		return Key{}, fmt.Errorf("create key: prefix %s: %w", k.Prefix, ErrExists)
@@ -269,7 +269,7 @@ func (s *SQLite) KeyByPrefix(ctx context.Context, prefix string) (Key, error) {
 }
 
 const keyColumns = `SELECT k.id, k.project_id, p.name, k.name, k.prefix, k.key_hash, k.monthly_budget_usd,
-	p.monthly_budget_usd, k.rpm, k.tpm, k.cache_mode, k.created_at, k.revoked_at
+	p.monthly_budget_usd, k.rpm, k.tpm, k.cache_mode, k.redaction_mode, k.created_at, k.revoked_at
 	FROM virtual_keys k JOIN projects p ON p.id = k.project_id`
 
 func (s *SQLite) keyWhere(ctx context.Context, where string, arg any) (Key, error) {
@@ -309,10 +309,10 @@ func scanKey(row interface{ Scan(...any) error }) (Key, error) {
 	var hash []byte
 	var budget, projectBudget sql.NullFloat64
 	var rpm, tpm, revoked sql.NullInt64
-	var cacheMode sql.NullString
+	var cacheMode, redactionMode sql.NullString
 	var created int64
 	if err := row.Scan(&k.ID, &k.ProjectID, &k.Project, &k.Name, &k.Prefix, &hash, &budget, &projectBudget,
-		&rpm, &tpm, &cacheMode, &created, &revoked); err != nil {
+		&rpm, &tpm, &cacheMode, &redactionMode, &created, &revoked); err != nil {
 		return Key{}, err
 	}
 	if len(hash) != len(k.Hash) {
@@ -320,7 +320,7 @@ func scanKey(row interface{ Scan(...any) error }) (Key, error) {
 	}
 	copy(k.Hash[:], hash)
 	k.BudgetUSD, k.ProjectBudgetUSD = budget.Float64, projectBudget.Float64
-	k.RPM, k.TPM, k.CacheMode = rpm.Int64, tpm.Int64, cacheMode.String
+	k.RPM, k.TPM, k.CacheMode, k.RedactionMode = rpm.Int64, tpm.Int64, cacheMode.String, redactionMode.String
 	k.CreatedAt = time.UnixMilli(created).UTC()
 	if revoked.Valid {
 		k.RevokedAt = time.UnixMilli(revoked.Int64).UTC()
@@ -344,10 +344,12 @@ func (s *SQLite) UpdateKey(ctx context.Context, prefix string, u KeyUpdate) (Key
 		monthly_budget_usd = CASE WHEN ? THEN ? ELSE monthly_budget_usd END,
 		rpm = CASE WHEN ? THEN ? ELSE rpm END,
 		tpm = CASE WHEN ? THEN ? ELSE tpm END,
-		cache_mode = CASE WHEN ? THEN ? ELSE cache_mode END
+		cache_mode = CASE WHEN ? THEN ? ELSE cache_mode END,
+		redaction_mode = CASE WHEN ? THEN ? ELSE redaction_mode END
 		WHERE prefix = ?`,
 		u.BudgetUSD != nil, optional(u.BudgetUSD), u.RPM != nil, optional(u.RPM), u.TPM != nil, optional(u.TPM),
-		u.CacheMode != nil, optional(u.CacheMode), prefix); err != nil {
+		u.CacheMode != nil, optional(u.CacheMode), u.RedactionMode != nil, optional(u.RedactionMode),
+		prefix); err != nil {
 		return Key{}, fmt.Errorf("update key: %w", err)
 	}
 	return s.KeyByPrefix(ctx, prefix)
@@ -385,7 +387,8 @@ func (s *SQLite) InsertRequests(ctx context.Context, rs []Request) error {
 		stmt, err := tx.PrepareContext(ctx, `INSERT INTO requests (id, ts, key_id, project_id, api_family,
 			endpoint, provider, model, stream, status, error_type, latency_ms, ttfb_ms, input_tokens,
 			output_tokens, cache_read_tokens, cache_write_tokens, reasoning_tokens, cost_usd, savings_usd,
-			savings_method, cache_status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+			savings_method, cache_status, redactions)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
 		if err != nil {
 			return err
 		}
@@ -398,6 +401,11 @@ func (s *SQLite) InsertRequests(ctx context.Context, rs []Request) error {
 			if r.CostUSD != nil {
 				cost = *r.CostUSD
 			}
+			var redactions string
+			if len(r.Redactions) > 0 {
+				b, _ := json.Marshal(r.Redactions) // a map of counts always marshals
+				redactions = string(b)
+			}
 			tokens := [5]any{}
 			if t := r.Tokens; t != nil {
 				tokens = [5]any{t.Input, t.Output, t.CacheRead, t.CacheWrite, t.Reasoning}
@@ -405,7 +413,7 @@ func (s *SQLite) InsertRequests(ctx context.Context, rs []Request) error {
 			if _, err := stmt.ExecContext(ctx, r.ID, r.Time.UnixMilli(), r.KeyID, r.ProjectID, r.APIFamily,
 				r.Endpoint, r.Provider, r.Model, r.Stream, r.Status, r.ErrorType, r.Latency.Milliseconds(), ttfb,
 				tokens[0], tokens[1], tokens[2], tokens[3], tokens[4], cost, r.SavingsUSD, r.SavingsMethod,
-				r.CacheStatus); err != nil {
+				r.CacheStatus, redactions); err != nil {
 				return err
 			}
 		}

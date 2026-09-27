@@ -25,14 +25,25 @@ type Box struct {
 	aead cipher.AEAD
 }
 
-// New returns the box of masterKey for purpose.
-func New(masterKey []byte, purpose string) (*Box, error) {
+// DeriveKey returns a key of KeySize bytes for one purpose, such as
+// "redaction", derived from masterKey with HKDF-SHA256. Keys for different
+// purposes are independent.
+func DeriveKey(masterKey []byte, purpose string) ([]byte, error) {
 	if len(masterKey) != KeySize {
 		return nil, fmt.Errorf("secretbox: the master key has %d bytes, want %d", len(masterKey), KeySize)
 	}
 	key, err := hkdf.Key(sha256.New, masterKey, nil, "chowki "+purpose, KeySize)
 	if err != nil {
 		return nil, fmt.Errorf("secretbox: derive key: %w", err)
+	}
+	return key, nil
+}
+
+// New returns the box of masterKey for purpose.
+func New(masterKey []byte, purpose string) (*Box, error) {
+	key, err := DeriveKey(masterKey, purpose)
+	if err != nil {
+		return nil, err
 	}
 	block, err := aes.NewCipher(key)
 	if err != nil {

@@ -203,6 +203,21 @@ Whether Chowki marks the prompt prefix of Anthropic requests for the provider's 
 the same tools and system prompt repeat. `off` forwards every request as the client sent it. See
 [Use Anthropic prompt caching](../how-to/anthropic-prompt-caching.md).
 
+## `defaults.redaction`
+
+| | |
+|---|---|
+| Type | String |
+| Default | `mask` |
+| Allowed values | `off`, `mask`, `block`, `alert` |
+| Environment variable | `CHOWKI_DEFAULTS_REDACTION` |
+| Since | v0.1 |
+
+What Chowki does with secrets and personal data in the text of requests from virtual keys without
+their own redaction setting. `mask` replaces them with placeholders, `block` rejects the request,
+`alert` forwards it and logs what it found, and `off` doesn't look. See
+[Redact secrets and personal data](../how-to/redact-sensitive-data.md).
+
 ## `providers`
 
 | | |

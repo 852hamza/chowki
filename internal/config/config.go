@@ -69,6 +69,9 @@ type Defaults struct {
 	// PromptCache is auto or off: whether Chowki adds a prompt-cache
 	// breakpoint to Anthropic requests whose prefix repeats.
 	PromptCache string `yaml:"prompt_cache"`
+	// Redaction is off, mask, block or alert: what happens to secrets and
+	// personal data in the text of requests.
+	Redaction string `yaml:"redaction"`
 }
 
 // Log configures logging.
@@ -110,7 +113,7 @@ func Default() Config {
 		Security:      Security{MasterKeyFile: ".chowki/master.key", AllowPrivateUpstreams: true},
 		Log:           Log{Level: "info"},
 		RetentionDays: 90,
-		Defaults:      Defaults{Cache: "off", CacheTTL: time.Hour, PromptCache: "auto"},
+		Defaults:      Defaults{Cache: "off", CacheTTL: time.Hour, PromptCache: "auto", Redaction: "mask"},
 	}
 }
 
@@ -200,6 +203,9 @@ func (c *Config) validate() error {
 	}
 	if c.Defaults.PromptCache != "auto" && c.Defaults.PromptCache != "off" {
 		add("defaults.prompt_cache", "must be auto or off")
+	}
+	if !slices.Contains([]string{"off", "mask", "block", "alert"}, c.Defaults.Redaction) {
+		add("defaults.redaction", "must be off, mask, block or alert")
 	}
 
 	guard := netguard.Policy{AllowPrivate: c.Security.AllowPrivateUpstreams}

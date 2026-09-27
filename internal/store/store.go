@@ -104,7 +104,10 @@ type Key struct {
 	RPM, TPM int64
 	// CacheMode is exact or off; empty follows the configuration.
 	CacheMode string
-	CreatedAt time.Time
+	// RedactionMode is off, mask, block or alert; empty follows the
+	// configuration.
+	RedactionMode string
+	CreatedAt     time.Time
 	// RevokedAt is zero while the key is active.
 	RevokedAt time.Time
 }
@@ -117,8 +120,8 @@ func (k Key) Revoked() bool { return !k.RevokedAt.IsZero() }
 type KeyUpdate struct {
 	BudgetUSD *float64
 	RPM, TPM  *int64
-	// CacheMode "" follows the configuration.
-	CacheMode *string
+	// CacheMode and RedactionMode "" follow the configuration.
+	CacheMode, RedactionMode *string
 }
 
 // KeySpend is what a key spent in a period.
@@ -157,6 +160,8 @@ type Request struct {
 	// CacheStatus is hit, miss or bypass; empty when the request was
 	// rejected before the exact cache.
 	CacheStatus string
+	// Redactions counts what redaction found, by type; nil when nothing.
+	Redactions map[string]int
 }
 
 // CacheEntry is a response in the exact cache.

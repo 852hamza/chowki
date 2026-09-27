@@ -37,6 +37,7 @@ defaults:
   cache: off               # off or exact: answer repeated non-streaming requests from the cache
   cache_ttl: 1h            # how long a cached answer is reused
   prompt_cache: auto       # auto or off: mark repeated Anthropic prompt prefixes for caching
+  redaction: mask          # off, mask, block or alert: secrets and personal data in prompts
 
 # The providers that Chowki forwards requests to. Keys never go in this file:
 # api_key_env names the environment variable, or .env entry, that holds each key.

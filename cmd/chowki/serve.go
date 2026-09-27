@@ -25,6 +25,7 @@ import (
 	"github.com/852hamza/chowki/internal/promptcache"
 	"github.com/852hamza/chowki/internal/providers"
 	"github.com/852hamza/chowki/internal/ratelimit"
+	"github.com/852hamza/chowki/internal/redact"
 	"github.com/852hamza/chowki/internal/secretbox"
 	"github.com/852hamza/chowki/internal/server"
 	"github.com/852hamza/chowki/internal/store"
@@ -66,6 +67,10 @@ func serve(ctx context.Context, configPath string, ln net.Listener, logOut io.Wr
 		return err
 	}
 	cacheBox, err := secretbox.New(masterKey, "cache")
+	if err != nil {
+		return err
+	}
+	redactionKey, err := secretbox.DeriveKey(masterKey, "redaction")
 	if err != nil {
 		return err
 	}
@@ -130,7 +135,8 @@ func serve(ctx context.Context, configPath string, ln net.Listener, logOut io.Wr
 	}()
 
 	gw := &pipeline.Gateway{
-		Store: st, Requests: requests, Cache: responses, Limits: ratelimit.New(), Budgets: budgets,
+		Store: st, Requests: requests, Redactor: redact.New(redactionKey, cfg.Defaults.Redaction),
+		Cache: responses, Limits: ratelimit.New(), Budgets: budgets,
 		Providers: ps, Catalog: cat, Logger: logger,
 		MaxBody: int64(cfg.Server.MaxBodyMB) << 20, Timeout: cfg.Server.UpstreamTimeout,
 	}
