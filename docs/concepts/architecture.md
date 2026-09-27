@@ -56,7 +56,8 @@ flowchart TD
 1. **Parse**: enforce the body size limit and detect the API family from the path.
 2. **Authenticate**: verify the virtual key and reject revoked keys.
 3. **Policy**: check the models and endpoints that the key may use.
-4. **Rate limit**: enforce requests and tokens per minute for the key.
+4. **Rate limit**: enforce the key's limits of requests and tokens per minute. The request limit
+   applies before Chowki reads the request body.
 5. **Redact**: find secrets and personal data, then mask them, block the request or raise an alert,
    depending on the policy.
 6. **Exact cache**: for a non-streaming request identical to an earlier one, return the stored

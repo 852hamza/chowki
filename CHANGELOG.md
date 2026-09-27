@@ -34,5 +34,9 @@ All notable changes to Chowki are recorded in this file. The format is based on
   requests fail with HTTP 429 and the code `budget_exceeded` until the next calendar month in UTC.
   Requests to models without a price count as $0. Spend is saved with the request records and
   survives restarts; `chowki key list` and the new `chowki project list` show this month's spend.
+- Rate limits per virtual key: requests per minute (`--rpm`) and input and output tokens per minute
+  (`--tpm`) on `chowki key create` and `chowki key update`. A key over a limit gets HTTP 429 with
+  the code `rate_limit_exceeded`, and the headers `Retry-After` and `retry-after-ms` say when to
+  retry. Limits are kept in memory. `chowki key update` now prints all of a key's limits.
 
 [Unreleased]: https://github.com/852hamza/chowki/commits/main

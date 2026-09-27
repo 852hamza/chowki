@@ -45,26 +45,35 @@ can't run up a surprise bill.
    Output:
 
    ```text
-   Created virtual key "alice" in project "team-a" with a monthly budget of $50.00:
+   Created virtual key "alice" in project "team-a":
 
      chowki_EXAMPLEEXAMPLEEXAMPLEEXAMPLEEXAMPLEEXAMPLEEXAMPLE
 
    Copy it now. Chowki stores only a hash of it and can't show it again.
+
+   Limits:
+     Monthly budget:       $50.00
+     Requests per minute:  none
+     Tokens per minute:    none
    ```
 
 2. To change the budget of an existing key, pass its prefix, as `chowki key list` shows it:
 
    ```sh
-   chowki key update --budget-usd 100 chowki_sh63H
+   chowki key update --budget-usd 100 chowki_IRXOs
    ```
 
    Output:
 
    ```text
-   Virtual key chowki_sh63H ("alice") now has a monthly budget of $100.00.
+   Updated the limits of virtual key chowki_IRXOs ("alice"):
+     Monthly budget:       $100.00
+     Requests per minute:  none
+     Tokens per minute:    none
    ```
 
-To remove a budget, set it to `0`. Chowki records every budget change in its audit log.
+To remove a budget, set it to `0`. Chowki records every budget change in its audit log. To limit
+requests and tokens per minute too, see [Set rate limits](set-rate-limits.md).
 
 ## Set a budget for a project
 
@@ -94,9 +103,9 @@ chowki key list
 Output:
 
 ```text
-PREFIX        NAME    PROJECT  SPENT 2026-09  BUDGET  CREATED               STATUS
-chowki_sh63H  alice   team-a   $3.00          $50.00  2026-09-27 05:42 UTC  active
-chowki_EqKeh  ci-bot  team-a   $1.00          none    2026-09-27 05:42 UTC  active
+PREFIX        NAME    PROJECT  SPENT 2026-09  BUDGET  RPM   TPM     CREATED               STATUS
+chowki_IRXOs  alice   team-a   $3.00          $50.00  none  none    2026-09-27 06:04 UTC  active
+chowki_z5J3e  ci-bot  team-a   $1.00          none    60    100000  2026-09-27 06:04 UTC  active
 ```
 
 List the projects with the spend of their keys:
@@ -117,7 +126,7 @@ An amount below one cent shows as `<$0.01`.
 ## Verify
 
 When a budget is used up, requests fail with HTTP status 429 in the error format of the API that
-the client speaks. For example, after `chowki key update --budget-usd 2 chowki_sh63H` for a key
+the client speaks. For example, after `chowki key update --budget-usd 2 chowki_IRXOs` for a key
 that has spent $3.00 this month, an OpenAI-format request gets:
 
 ```json
@@ -144,4 +153,5 @@ request. The gateway also logs a warning when a key or project reaches 80% and 1
 
 ## Related
 
-- [Manage virtual keys](manage-virtual-keys.md) · [Architecture](../concepts/architecture.md)
+- [Manage virtual keys](manage-virtual-keys.md) · [Set rate limits](set-rate-limits.md) ·
+  [Architecture](../concepts/architecture.md)

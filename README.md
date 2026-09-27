@@ -18,9 +18,8 @@ a single Go binary that stores its data in SQLite.
 *Chowki* (چوکی) means "checkpoint" in Urdu.
 
 > **Status:** early development. Chowki relays OpenAI and Anthropic requests with virtual keys,
-> records their cost and enforces monthly budgets, but rate limits, caching and redaction aren't
-> built yet, so don't use it in production. Follow the [changelog](CHANGELOG.md) to see what has
-> landed.
+> records their cost, and enforces budgets and rate limits, but caching and redaction aren't built
+> yet, so don't use it in production. Follow the [changelog](CHANGELOG.md) to see what has landed.
 
 ## Quickstart
 
@@ -41,6 +40,7 @@ make build
 - [Manage virtual keys](docs/how-to/manage-virtual-keys.md): create, list and revoke keys.
 - [Set monthly budgets](docs/how-to/set-budgets.md): limit what a key or a project spends each
   month.
+- [Set rate limits](docs/how-to/set-rate-limits.md): limit a key's requests and tokens per minute.
 - [Configuration reference](docs/reference/configuration.md): every setting and its environment
   variable.
 - [Architecture](docs/concepts/architecture.md): how a request flows through Chowki.

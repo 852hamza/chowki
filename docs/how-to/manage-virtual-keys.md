@@ -38,8 +38,9 @@ revoke one key without touching the others or your provider keys.
 
 2. Give the key to its user through a secret store or another private channel.
 
-To limit what a key can spend each month, add `--budget-usd`. See
-[Set monthly budgets](set-budgets.md).
+To limit what a key can spend each month, add `--budget-usd`; see
+[Set monthly budgets](set-budgets.md). To limit its requests and tokens per minute, add `--rpm` and
+`--tpm`; see [Set rate limits](set-rate-limits.md).
 
 Chowki stores only the key's prefix, its first 12 characters, and its SHA-256 hash. If a key is
 lost, revoke it and create a new one.
@@ -59,26 +60,26 @@ chowki key list
 Output:
 
 ```text
-PREFIX        NAME    PROJECT  SPENT 2026-09  BUDGET  CREATED               STATUS
-chowki_sh63H  alice   team-a   $3.00          $50.00  2026-09-27 05:42 UTC  active
-chowki_EqKeh  ci-bot  team-a   $1.00          none    2026-09-27 05:42 UTC  active
+PREFIX        NAME    PROJECT  SPENT 2026-09  BUDGET  RPM   TPM     CREATED               STATUS
+chowki_IRXOs  alice   team-a   $3.00          $50.00  none  none    2026-09-27 06:04 UTC  active
+chowki_z5J3e  ci-bot  team-a   $1.00          none    60    100000  2026-09-27 06:04 UTC  active
 ```
 
-The list shows each key's prefix, never the key itself, and what the key spent this month (UTC)
-next to its monthly budget.
+The list shows each key's prefix, never the key itself. It also shows what the key spent this
+month (UTC), its monthly budget, and its limits of requests (`RPM`) and tokens (`TPM`) per minute.
 
 ## Revoke a key
 
 1. Revoke a key by its prefix:
 
    ```sh
-   chowki key revoke chowki_EqKeh
+   chowki key revoke chowki_z5J3e
    ```
 
    Output:
 
    ```text
-   Revoked virtual key chowki_EqKeh ("ci-bot"). Requests with it now fail.
+   Revoked virtual key chowki_z5J3e ("ci-bot"). Requests with it now fail.
    ```
 
 You can also pass the full key instead of the prefix. Revoking is permanent, and revoking a key
@@ -106,5 +107,6 @@ the key as `revoked` with the time.
 
 ## Related
 
-- [Set monthly budgets](set-budgets.md) · [Configuration reference](../reference/configuration.md)
-  · [Architecture](../concepts/architecture.md)
+- [Set monthly budgets](set-budgets.md) · [Set rate limits](set-rate-limits.md) ·
+  [Configuration reference](../reference/configuration.md) ·
+  [Architecture](../concepts/architecture.md)
