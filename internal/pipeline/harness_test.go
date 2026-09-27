@@ -24,6 +24,7 @@ import (
 	"github.com/852hamza/chowki/internal/providers"
 	"github.com/852hamza/chowki/internal/ratelimit"
 	"github.com/852hamza/chowki/internal/redact"
+	"github.com/852hamza/chowki/internal/router"
 	"github.com/852hamza/chowki/internal/secretbox"
 	"github.com/852hamza/chowki/internal/server"
 	"github.com/852hamza/chowki/internal/store"
@@ -85,12 +86,15 @@ type harness struct {
 	dbPath    string
 	st        *recordingStore
 	logs      *syncBuffer
+	aliases   map[string][]string // set by options
 	openai    *testutil.Server
 	anthropic *testutil.Server
 	closed    bool
 }
 
-type option func(*pipeline.Gateway, *[]config.Provider)
+// option changes a harness before it starts: its gateway, providers and
+// aliases.
+type option func(*harness, *[]config.Provider)
 
 func newHarness(t testing.TB, oa, an testutil.Config, opts ...option) *harness {
 	t.Helper()
@@ -125,9 +129,12 @@ func newHarness(t testing.TB, oa, an testutil.Config, opts ...option) *harness {
 			APIKey: anthropicKey},
 	}
 	for _, o := range opts {
-		o(h.gw, &cfgs)
+		o(h, &cfgs)
 	}
 	if h.gw.Providers, err = providers.New(cfgs, netguard.Policy{AllowPrivate: true}); err != nil {
+		t.Fatal(err)
+	}
+	if h.gw.Router, err = router.New(h.gw.Providers, cat, h.aliases); err != nil {
 		t.Fatal(err)
 	}
 	h.gw.Requests = store.NewRequestLog(h.st, logger)

@@ -273,7 +273,7 @@ func TestNoKeyMaterialInLogs(t *testing.T) {
 }
 
 func TestRouting(t *testing.T) {
-	twoOpenAI := func(_ *pipeline.Gateway, cfgs *[]config.Provider) {
+	twoOpenAI := func(_ *harness, cfgs *[]config.Provider) {
 		*cfgs = append(*cfgs, config.Provider{Name: "local", Type: config.TypeOpenAI, BaseURL: "http://127.0.0.1:1/v1"})
 	}
 	t.Run("provider prefix is removed", func(t *testing.T) {
@@ -314,8 +314,8 @@ func TestRouting(t *testing.T) {
 }
 
 func TestRequestErrors(t *testing.T) {
-	h := newHarness(t, testutil.Config{}, testutil.Config{}, func(g *pipeline.Gateway, _ *[]config.Provider) {
-		g.MaxBody = 256
+	h := newHarness(t, testutil.Config{}, testutil.Config{}, func(h *harness, _ *[]config.Provider) {
+		h.gw.MaxBody = 256
 	})
 	tests := []struct {
 		name, path, body string
@@ -356,7 +356,7 @@ func TestUpstreamErrors(t *testing.T) {
 	t.Run("unreachable provider", func(t *testing.T) {
 		gone := httptest.NewServer(http.NotFoundHandler())
 		gone.Close()
-		h := newHarness(t, testutil.Config{}, testutil.Config{}, func(_ *pipeline.Gateway, cfgs *[]config.Provider) {
+		h := newHarness(t, testutil.Config{}, testutil.Config{}, func(_ *harness, cfgs *[]config.Provider) {
 			(*cfgs)[1].BaseURL = gone.URL
 		})
 		resp := h.post(t.Context(), "/anthropic/v1/messages", anthropicBody)
@@ -374,8 +374,8 @@ func TestUpstreamErrors(t *testing.T) {
 			}
 		}))
 		t.Cleanup(slow.Close)
-		h := newHarness(t, testutil.Config{}, testutil.Config{}, func(g *pipeline.Gateway, cfgs *[]config.Provider) {
-			g.Timeout = 100 * time.Millisecond
+		h := newHarness(t, testutil.Config{}, testutil.Config{}, func(h *harness, cfgs *[]config.Provider) {
+			h.gw.Timeout = 100 * time.Millisecond
 			(*cfgs)[0].BaseURL = slow.URL + "/v1"
 		})
 		resp := h.post(t.Context(), "/v1/chat/completions", openAIBody)
@@ -384,7 +384,7 @@ func TestUpstreamErrors(t *testing.T) {
 		}
 	})
 	t.Run("missing provider key", func(t *testing.T) {
-		h := newHarness(t, testutil.Config{}, testutil.Config{}, func(_ *pipeline.Gateway, cfgs *[]config.Provider) {
+		h := newHarness(t, testutil.Config{}, testutil.Config{}, func(_ *harness, cfgs *[]config.Provider) {
 			(*cfgs)[0].APIKey = ""
 		})
 		resp := h.post(t.Context(), "/v1/chat/completions", openAIBody)

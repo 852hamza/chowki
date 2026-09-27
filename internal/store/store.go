@@ -109,6 +109,9 @@ type Key struct {
 	// RedactionMode is off, mask, block or alert; empty follows the
 	// configuration.
 	RedactionMode string
+	// AllowedModels are the model names, aliases and patterns such as
+	// "openai/*" that the key may request; empty allows every model.
+	AllowedModels []string
 	CreatedAt     time.Time
 	// RevokedAt is zero while the key is active.
 	RevokedAt time.Time
@@ -124,6 +127,8 @@ type KeyUpdate struct {
 	RPM, TPM  *int64
 	// CacheMode and RedactionMode "" follow the configuration.
 	CacheMode, RedactionMode *string
+	// AllowedModels empty allows every model.
+	AllowedModels *[]string
 }
 
 // KeySpend is what a key spent in a period.

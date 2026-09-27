@@ -27,6 +27,7 @@ import (
 	"github.com/852hamza/chowki/internal/providers"
 	"github.com/852hamza/chowki/internal/ratelimit"
 	"github.com/852hamza/chowki/internal/redact"
+	"github.com/852hamza/chowki/internal/router"
 	"github.com/852hamza/chowki/internal/secretbox"
 	"github.com/852hamza/chowki/internal/server"
 	"github.com/852hamza/chowki/internal/store"
@@ -83,6 +84,10 @@ func serve(ctx context.Context, configPath string, ln net.Listener, logOut io.Wr
 	if err != nil {
 		return err
 	}
+	routes, err := router.New(ps, cat, cfg.Aliases)
+	if err != nil {
+		return err
+	}
 	names := make([]string, 0, len(ps))
 	for name := range ps {
 		names = append(names, name)
@@ -136,8 +141,9 @@ func serve(ctx context.Context, configPath string, ln net.Listener, logOut io.Wr
 	}()
 
 	gw := &pipeline.Gateway{
-		Store: st, Requests: requests, Metrics: metrics.New(), Redactor: redact.New(redactionKey, cfg.Defaults.Redaction),
-		Cache: responses, Limits: ratelimit.New(), Budgets: budgets,
+		Store: st, Requests: requests, Router: routes, Metrics: metrics.New(),
+		Redactor: redact.New(redactionKey, cfg.Defaults.Redaction),
+		Cache:    responses, Limits: ratelimit.New(), Budgets: budgets,
 		Providers: ps, Catalog: cat, Logger: logger,
 		MaxBody: int64(cfg.Server.MaxBodyMB) << 20, Timeout: cfg.Server.UpstreamTimeout,
 	}
