@@ -1,0 +1,26 @@
+# Private: agent files and internal planning — never commit
+CLAUDE.md
+CLAUDE.local.md
+.internal/
+.claude/
+
+# Secrets and local runtime data — never commit
+.env
+.env.*
+!.env.example
+.chowki/
+data/
+*.db
+*.db-*
+
+# Build and test output
+bin/
+dist/
+coverage.out
+*.test
+
+# Editors and OS
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/extensions.json
