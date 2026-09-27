@@ -203,6 +203,30 @@ func TestBudgets(t *testing.T) {
 	}
 }
 
+func TestKeyRateLimits(t *testing.T) {
+	s := openTest(t)
+	ctx := t.Context()
+	p, err := s.EnsureProject(ctx, "team")
+	if err != nil {
+		t.Fatal(err)
+	}
+	k, err := s.CreateKey(ctx, Key{ProjectID: p.ID, Name: "bot", Prefix: "chowki_abcde", RPM: 60, TPM: 100_000,
+		CreatedAt: time.Now()})
+	if err != nil || k.RPM != 60 || k.TPM != 100_000 {
+		t.Fatalf("CreateKey() = %+v, %v; want 60 RPM and 100000 TPM", k, err)
+	}
+	n := func(v int64) *int64 { return &v }
+	// Only the given settings change; 0 removes a limit.
+	k, err = s.UpdateKey(ctx, "chowki_abcde", KeyUpdate{RPM: n(120), TPM: n(0), BudgetUSD: usd(9)})
+	if err != nil || k.RPM != 120 || k.TPM != 0 || k.BudgetUSD != 9 {
+		t.Errorf("UpdateKey() = %+v, %v; want 120 RPM, no TPM and a budget of 9", k, err)
+	}
+	if k, err := s.UpdateKey(ctx, "chowki_abcde", KeyUpdate{TPM: n(5000)}); err != nil || k.RPM != 120 || k.TPM != 5000 ||
+		k.BudgetUSD != 9 {
+		t.Errorf("UpdateKey() of TPM only = %+v, %v", k, err)
+	}
+}
+
 func TestSpend(t *testing.T) {
 	s := openTest(t)
 	ctx := t.Context()

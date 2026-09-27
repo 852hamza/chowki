@@ -83,7 +83,10 @@ type Key struct {
 	// ProjectBudgetUSD is the monthly budget of the key's project; 0 means
 	// none. Reads fill it in; CreateKey ignores it.
 	ProjectBudgetUSD float64
-	CreatedAt        time.Time
+	// RPM and TPM limit the key's requests and tokens per minute; 0 means
+	// no limit.
+	RPM, TPM  int64
+	CreatedAt time.Time
 	// RevokedAt is zero while the key is active.
 	RevokedAt time.Time
 }
@@ -92,10 +95,10 @@ type Key struct {
 func (k Key) Revoked() bool { return !k.RevokedAt.IsZero() }
 
 // KeyUpdate lists the settings of a key to change; nil fields stay as they
-// are.
+// are, and 0 removes a limit.
 type KeyUpdate struct {
-	// BudgetUSD is the new monthly budget; 0 removes it.
 	BudgetUSD *float64
+	RPM, TPM  *int64
 }
 
 // KeySpend is what a key spent in a period.

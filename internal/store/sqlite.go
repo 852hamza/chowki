@@ -234,7 +234,7 @@ func (s *SQLite) UpdateProject(ctx context.Context, name string, u ProjectUpdate
 }
 
 // nullIfZero stores 0, which means "no limit", as NULL.
-func nullIfZero(v float64) any {
+func nullIfZero[T int64 | float64](v T) any {
 	if v == 0 {
 		return nil
 	}
@@ -244,8 +244,9 @@ func nullIfZero(v float64) any {
 // CreateKey implements Store.
 func (s *SQLite) CreateKey(ctx context.Context, k Key) (Key, error) {
 	res, err := s.db.ExecContext(ctx, `INSERT INTO virtual_keys (project_id, name, prefix, key_hash,
-		monthly_budget_usd, created_at) VALUES (?, ?, ?, ?, ?, ?)`,
-		k.ProjectID, k.Name, k.Prefix, k.Hash[:], nullIfZero(k.BudgetUSD), k.CreatedAt.UnixMilli())
+		monthly_budget_usd, rpm, tpm, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		k.ProjectID, k.Name, k.Prefix, k.Hash[:], nullIfZero(k.BudgetUSD), nullIfZero(k.RPM), nullIfZero(k.TPM),
+		k.CreatedAt.UnixMilli())
 	var se *sqlite.Error
 	if errors.As(err, &se) && se.Code() == sqlite3.SQLITE_CONSTRAINT_UNIQUE {
 		return Key{}, fmt.Errorf("create key: prefix %s: %w", k.Prefix, ErrExists)
@@ -266,7 +267,8 @@ func (s *SQLite) KeyByPrefix(ctx context.Context, prefix string) (Key, error) {
 }
 
 const keyColumns = `SELECT k.id, k.project_id, p.name, k.name, k.prefix, k.key_hash, k.monthly_budget_usd,
-	p.monthly_budget_usd, k.created_at, k.revoked_at FROM virtual_keys k JOIN projects p ON p.id = k.project_id`
+	p.monthly_budget_usd, k.rpm, k.tpm, k.created_at, k.revoked_at
+	FROM virtual_keys k JOIN projects p ON p.id = k.project_id`
 
 func (s *SQLite) keyWhere(ctx context.Context, where string, arg any) (Key, error) {
 	k, err := scanKey(s.db.QueryRowContext(ctx, keyColumns+" WHERE "+where, arg))
@@ -304,10 +306,10 @@ func scanKey(row interface{ Scan(...any) error }) (Key, error) {
 	var k Key
 	var hash []byte
 	var budget, projectBudget sql.NullFloat64
+	var rpm, tpm, revoked sql.NullInt64
 	var created int64
-	var revoked sql.NullInt64
 	if err := row.Scan(&k.ID, &k.ProjectID, &k.Project, &k.Name, &k.Prefix, &hash, &budget, &projectBudget,
-		&created, &revoked); err != nil {
+		&rpm, &tpm, &created, &revoked); err != nil {
 		return Key{}, err
 	}
 	if len(hash) != len(k.Hash) {
@@ -315,6 +317,7 @@ func scanKey(row interface{ Scan(...any) error }) (Key, error) {
 	}
 	copy(k.Hash[:], hash)
 	k.BudgetUSD, k.ProjectBudgetUSD = budget.Float64, projectBudget.Float64
+	k.RPM, k.TPM = rpm.Int64, tpm.Int64
 	k.CreatedAt = time.UnixMilli(created).UTC()
 	if revoked.Valid {
 		k.RevokedAt = time.UnixMilli(revoked.Int64).UTC()
@@ -333,13 +336,26 @@ func (s *SQLite) RevokeKey(ctx context.Context, prefix string, at time.Time) (Ke
 
 // UpdateKey implements Store.
 func (s *SQLite) UpdateKey(ctx context.Context, prefix string, u KeyUpdate) (Key, error) {
-	if u.BudgetUSD != nil {
-		if _, err := s.db.ExecContext(ctx, `UPDATE virtual_keys SET monthly_budget_usd = ? WHERE prefix = ?`,
-			nullIfZero(*u.BudgetUSD), prefix); err != nil {
-			return Key{}, fmt.Errorf("update key: %w", err)
-		}
+	// Each setting is a pair of arguments: whether to change it, and its value.
+	if _, err := s.db.ExecContext(ctx, `UPDATE virtual_keys SET
+		monthly_budget_usd = CASE WHEN ? THEN ? ELSE monthly_budget_usd END,
+		rpm = CASE WHEN ? THEN ? ELSE rpm END,
+		tpm = CASE WHEN ? THEN ? ELSE tpm END
+		WHERE prefix = ?`,
+		u.BudgetUSD != nil, optional(u.BudgetUSD), u.RPM != nil, optional(u.RPM), u.TPM != nil, optional(u.TPM),
+		prefix); err != nil {
+		return Key{}, fmt.Errorf("update key: %w", err)
 	}
 	return s.KeyByPrefix(ctx, prefix)
+}
+
+// optional returns what to store for a setting that may be unset: NULL when
+// it's unset or 0.
+func optional[T int64 | float64](v *T) any {
+	if v == nil {
+		return nil
+	}
+	return nullIfZero(*v)
 }
 
 // InsertRequests implements Store.
