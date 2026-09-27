@@ -77,5 +77,15 @@ All notable changes to Chowki are recorded in this file. The format is based on
   exact-cache hit rate and redactions over a range of days, a chart by day with a table view, the
   top keys and models, and the state of every budget. It needs no external scripts, fonts or
   styles, and it has a dark mode.
+- Google Gemini: the Gemini API under `/gemini`, for the Google Gen AI SDKs:
+  `generateContent`, `streamGenerateContent` (with `alt=sse`), `countTokens` (free),
+  `embedContent` and `batchEmbedContents`, with errors in Google's format. `chowki init` adds a
+  `gemini` provider, which takes its key from `GEMINI_API_KEY`.
+- Gemini prices in the model catalog, from Gemini 2.5 to Gemini 3.8 Flash: thinking tokens cost
+  the output price, cached tokens the context-caching price, and prompts above 200,000 tokens the
+  long-context price. Catalog entries can list announced price changes by date. Requests with audio
+  input, built-in tools or the Flex and Priority tiers stay unpriced.
+- `free_tier: true` for a provider whose requests aren't billed, such as on the Gemini API's free
+  tier: their cost is $0.
 
 [Unreleased]: https://github.com/852hamza/chowki/commits/main
