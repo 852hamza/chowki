@@ -64,6 +64,8 @@ type Store interface {
 	DeleteRequestsBefore(ctx context.Context, t time.Time) (int64, error)
 	// AddAudit records an administrative action.
 	AddAudit(ctx context.Context, e AuditEvent) error
+	// Ping checks that the database answers.
+	Ping(ctx context.Context) error
 	// Close closes the database.
 	Close() error
 }

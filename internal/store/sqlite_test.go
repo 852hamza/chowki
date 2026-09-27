@@ -403,6 +403,7 @@ func TestClosedDatabaseErrors(t *testing.T) {
 	_, checks["CacheSize"] = s.CacheSize(ctx)
 	_, checks["DeleteRequestsBefore"] = s.DeleteRequestsBefore(ctx, time.Now())
 	checks["AddAudit"] = s.AddAudit(ctx, AuditEvent{})
+	checks["Ping"] = s.Ping(ctx)
 	for name, err := range checks {
 		if err == nil {
 			t.Errorf("%s() on a closed database succeeded", name)

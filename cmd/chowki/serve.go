@@ -20,6 +20,7 @@ import (
 	"github.com/852hamza/chowki/internal/cache"
 	"github.com/852hamza/chowki/internal/catalog"
 	"github.com/852hamza/chowki/internal/config"
+	"github.com/852hamza/chowki/internal/metrics"
 	"github.com/852hamza/chowki/internal/netguard"
 	"github.com/852hamza/chowki/internal/pipeline"
 	"github.com/852hamza/chowki/internal/promptcache"
@@ -135,7 +136,7 @@ func serve(ctx context.Context, configPath string, ln net.Listener, logOut io.Wr
 	}()
 
 	gw := &pipeline.Gateway{
-		Store: st, Requests: requests, Redactor: redact.New(redactionKey, cfg.Defaults.Redaction),
+		Store: st, Requests: requests, Metrics: metrics.New(), Redactor: redact.New(redactionKey, cfg.Defaults.Redaction),
 		Cache: responses, Limits: ratelimit.New(), Budgets: budgets,
 		Providers: ps, Catalog: cat, Logger: logger,
 		MaxBody: int64(cfg.Server.MaxBodyMB) << 20, Timeout: cfg.Server.UpstreamTimeout,

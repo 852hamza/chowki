@@ -3,10 +3,12 @@ package server
 import (
 	"bytes"
 	"context"
+	"errors"
 	"io"
 	"log/slog"
 	"net"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -55,6 +57,34 @@ func TestRunShutsDownGracefully(t *testing.T) {
 	}
 	if !strings.Contains(logs.String(), "shutting down") {
 		t.Errorf("logs = %s", logs.String())
+	}
+}
+
+type pinger struct{ err error }
+
+func (p pinger) Ping(context.Context) error { return p.err }
+
+func TestHealth(t *testing.T) {
+	tests := []struct {
+		name    string
+		handler http.Handler
+		status  int
+		body    string
+	}{
+		{"healthz", http.HandlerFunc(healthz), http.StatusOK, `{"status":"ok"}`},
+		{"ready", readyz(pinger{}), http.StatusOK, `{"status":"ready"}`},
+		{"not ready", readyz(pinger{errors.New("disk gone")}), http.StatusServiceUnavailable,
+			`{"reason":"the database doesn't answer","status":"not ready"}`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			w := httptest.NewRecorder()
+			tt.handler.ServeHTTP(w, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/", nil))
+			if w.Code != tt.status || strings.TrimSpace(w.Body.String()) != tt.body ||
+				w.Header().Get("Content-Type") != "application/json" {
+				t.Errorf("status %d, body %s; want %d and %s", w.Code, w.Body.String(), tt.status, tt.body)
+			}
+		})
 	}
 }
 

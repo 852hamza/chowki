@@ -473,5 +473,14 @@ func (s *SQLite) AddAudit(ctx context.Context, e AuditEvent) error {
 	return nil
 }
 
+// Ping implements Store.
+func (s *SQLite) Ping(ctx context.Context) error {
+	var one int
+	if err := s.db.QueryRowContext(ctx, `SELECT 1`).Scan(&one); err != nil {
+		return fmt.Errorf("ping database: %w", err)
+	}
+	return nil
+}
+
 // Close implements Store.
 func (s *SQLite) Close() error { return s.db.Close() }

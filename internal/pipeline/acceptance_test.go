@@ -396,3 +396,28 @@ func TestUpstreamErrors(t *testing.T) {
 		}
 	})
 }
+
+// The gateway counts each request in its metrics, and serves health checks.
+func TestMetricsAndHealth(t *testing.T) {
+	h := newHarness(t, testutil.Config{Usage: fakeUsage}, testutil.Config{})
+	readBody(t, h.post(t.Context(), "/v1/chat/completions", openAIBody))
+	readBody(t, h.send(t.Context(), http.MethodPost, h.url+"/v1/chat/completions", nil, openAIBody)) // no key
+	for path, want := range map[string]string{
+		"/metrics": `chowki_requests_total{family="openai",provider="openai",model="gpt-test",status="200",cache="bypass"} 1` +
+			"\n",
+		"/healthz": `{"status":"ok"}`,
+		"/readyz":  `{"status":"ready"}`,
+	} {
+		resp := h.send(t.Context(), http.MethodGet, h.url+path, nil, "")
+		if body := readBody(t, resp); resp.StatusCode != http.StatusOK || !strings.Contains(body, want) {
+			t.Errorf("GET %s = %d\n%s\nwant %s", path, resp.StatusCode, body, want)
+		}
+	}
+	resp := h.send(t.Context(), http.MethodGet, h.url+"/metrics", nil, "")
+	body := readBody(t, resp)
+	for _, want := range []string{`status="401"`, `chowki_tokens_total{type="input"} 1200`, "chowki_overhead_seconds_count 2"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("/metrics lacks %s:\n%s", want, body)
+		}
+	}
+}

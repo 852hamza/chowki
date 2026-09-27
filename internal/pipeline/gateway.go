@@ -23,6 +23,7 @@ import (
 	"github.com/852hamza/chowki/internal/cache"
 	"github.com/852hamza/chowki/internal/catalog"
 	"github.com/852hamza/chowki/internal/config"
+	"github.com/852hamza/chowki/internal/metrics"
 	"github.com/852hamza/chowki/internal/promptcache"
 	"github.com/852hamza/chowki/internal/providers"
 	"github.com/852hamza/chowki/internal/ratelimit"
@@ -55,6 +56,7 @@ const maxResponse = 64 << 20
 type Gateway struct {
 	Store    store.Store
 	Requests *store.RequestLog
+	Metrics  *metrics.Registry
 	Redactor *redact.Redactor
 	Cache    *cache.Cache
 	Limits   *ratelimit.Limiter
@@ -108,6 +110,9 @@ type call struct {
 	marked   bool              // the prompt-cache optimizer added a breakpoint
 	// redactions counts what redaction found, by type, never the values.
 	redactions map[string]int
+	// upstreamStart and upstreamEnd bound the provider's part of the
+	// request, its response included; zero when it didn't reach one.
+	upstreamStart, upstreamEnd time.Time
 }
 
 func (g *Gateway) serve(w http.ResponseWriter, r *http.Request, f usage.Family) {
@@ -202,6 +207,8 @@ func (g *Gateway) handle(ctx context.Context, c *call, r *http.Request) *apiErro
 	if c.family == usage.Anthropic {
 		endpoint = providers.Messages
 	}
+	c.upstreamStart = time.Now()
+	defer func() { c.upstreamEnd = time.Now() }()
 	resp, err := p.Do(upstreamCtx, endpoint, body, r.Header)
 	if err != nil {
 		switch {
@@ -594,7 +601,14 @@ func (g *Gateway) finish(c *call) {
 	if c.errType != "" {
 		attrs = append(attrs, "error", c.errType)
 	}
+	m := metrics.Request{Family: string(c.family), Status: status, Cache: c.cache, Redactions: c.redactions,
+		Overhead: latency}
+	if !c.upstreamStart.IsZero() {
+		m.Upstream = c.upstreamEnd.Sub(c.upstreamStart)
+		m.Overhead -= m.Upstream
+	}
 	if c.key.ID == 0 {
+		g.Metrics.Record(m)
 		g.Logger.Info("request rejected", attrs...)
 		return
 	}
@@ -617,6 +631,15 @@ func (g *Gateway) finish(c *call) {
 	rec.CostUSD, rec.SavingsUSD, rec.SavingsMethod = cost.USD, cost.SavingsUSD, cost.SavingsMethod
 	rec.CacheStatus, rec.Redactions = c.cache, c.redactions
 	g.Requests.Add(rec)
+	m.Provider, m.Model, m.SavingsUSD, m.SavingsMethod = rec.Provider, rec.Model, cost.SavingsUSD, cost.SavingsMethod
+	if cost.USD != nil {
+		m.CostUSD = *cost.USD
+	}
+	if t := rec.Tokens; t != nil {
+		m.Tokens = metrics.Tokens{Input: t.Input, Output: t.Output, CacheRead: t.CacheRead, CacheWrite: t.CacheWrite,
+			Reasoning: t.Reasoning}
+	}
+	g.Metrics.Record(m)
 	var spent float64 // an unpriced request counts as free: its cost is unknown
 	if cost.USD != nil {
 		spent = *cost.USD

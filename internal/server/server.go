@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"log/slog"
 	"net"
@@ -15,15 +16,46 @@ import (
 // ShutdownTimeout is how long a shutdown waits for requests in flight.
 const ShutdownTimeout = 30 * time.Second
 
-// Routes returns the gateway's HTTP handler. Unknown paths get a 404 in
-// the error format of the API family their path belongs to.
+// Routes returns the gateway's HTTP handler: the API endpoints, health
+// checks and metrics. Unknown paths get a 404 in the error format of the
+// API family their path belongs to.
 func Routes(gw *pipeline.Gateway) http.Handler {
 	mux := http.NewServeMux()
 	mux.Handle("POST /v1/chat/completions", gw.Handler(usage.OpenAI))
 	mux.Handle("POST /anthropic/v1/messages", gw.Handler(usage.Anthropic))
+	mux.HandleFunc("GET /healthz", healthz)
+	mux.Handle("GET /readyz", readyz(gw.Store))
+	mux.Handle("GET /metrics", gw.Metrics.Handler())
 	mux.Handle("/anthropic/", gw.NotFound(usage.Anthropic))
 	mux.Handle("/", gw.NotFound(usage.OpenAI))
 	return mux
+}
+
+// healthz answers while the process runs, for liveness probes.
+func healthz(w http.ResponseWriter, _ *http.Request) {
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+// readyz answers 200 when the gateway can serve requests, and 503 when its
+// database doesn't answer, for readiness probes and load balancers.
+func readyz(db interface{ Ping(context.Context) error }) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+		defer cancel()
+		if err := db.Ping(ctx); err != nil {
+			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"status": "not ready",
+				"reason": "the database doesn't answer"})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]string{"status": "ready"})
+	}
+}
+
+func writeJSON(w http.ResponseWriter, status int, v any) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-store")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(v) // the client may be gone; nothing to do then
 }
 
 // Run serves h on ln until ctx ends, then shuts down gracefully: it stops
