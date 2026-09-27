@@ -18,5 +18,7 @@ All notable changes to Chowki are recorded in this file. The format is based on
 - Continuous integration: build, tests, race detector, golangci-lint, govulncheck, the project
   identity check, and a check of commit messages and DCO sign-offs.
 - Developer guide pages: architecture, development setup and code structure.
+- `chowki init` creates `chowki.yaml`, a master key readable only by you, and the SQLite database.
+  It never replaces an existing file.
 
 [Unreleased]: https://github.com/852hamza/chowki/commits/main
