@@ -124,8 +124,13 @@ func (s *Server) geminiModels(w http.ResponseWriter, r *http.Request) {
 
 	id := s.id("fake-response-")
 	response := func(text string, finish bool, u Usage) map[string]any {
+		part := map[string]any{"text": text}
+		if c := s.cfg.ToolCall; c != nil {
+			part = map[string]any{"functionCall": map[string]any{"name": c.Name, "args": json.RawMessage(c.Arguments)},
+				"thoughtSignature": FakeSignature}
+		}
 		candidate := map[string]any{
-			"content": map[string]any{"role": "model", "parts": []any{map[string]any{"text": text}}},
+			"content": map[string]any{"role": "model", "parts": []any{part}},
 			"index":   0,
 		}
 		if finish {
@@ -145,6 +150,9 @@ func (s *Server) geminiModels(w http.ResponseWriter, r *http.Request) {
 
 	sse := newSSE(w, r, s.cfg.ChunkDelay)
 	pieces := s.cfg.pieces()
+	if s.cfg.ToolCall != nil {
+		pieces = pieces[:1] // Gemini streams a call whole
+	}
 	for i, piece := range pieces {
 		u := s.cfg.Usage
 		u.Output = u.Output * (i + 1) / len(pieces)

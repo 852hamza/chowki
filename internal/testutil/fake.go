@@ -71,7 +71,22 @@ type Config struct {
 	// Delay is a pause before the fake answers at all, headers included.
 	// Tests use it to make a provider slower than the gateway's timeout.
 	Delay time.Duration
+	// ToolCall, when set, makes the reply a call of a tool instead of text.
+	// Streams split its arguments into Chunks pieces where the format
+	// streams them, as OpenAI's and Anthropic's do; Gemini's sends a call
+	// whole, with a thought signature.
+	ToolCall *ToolCall
 }
+
+// ToolCall is a call of a tool that a fake provider makes.
+type ToolCall struct {
+	Name string
+	// Arguments is a JSON object.
+	Arguments string
+}
+
+// FakeSignature is the thought signature of the fake Gemini's calls.
+const FakeSignature = "ZmFrZS1zaWduYXR1cmU="
 
 func (c Config) text() string {
 	if c.Text == "" {
@@ -81,8 +96,13 @@ func (c Config) text() string {
 }
 
 // pieces splits the reply into the configured number of streamed pieces.
-func (c Config) pieces() []string {
-	runes := []rune(c.text())
+func (c Config) pieces() []string { return c.split(c.text()) }
+
+// argumentPieces splits a tool call's arguments like the reply.
+func (c Config) argumentPieces() []string { return c.split(c.ToolCall.Arguments) }
+
+func (c Config) split(s string) []string {
+	runes := []rune(s)
 	n := c.Chunks
 	if n == 0 {
 		n = 3
@@ -104,6 +124,8 @@ func (c Config) validate() error {
 		return errors.New("chunks must not be negative")
 	case c.FailStatus != 0 && (c.FailStatus < 400 || c.FailStatus > 599):
 		return fmt.Errorf("fail status %d is not an HTTP error status", c.FailStatus)
+	case c.ToolCall != nil && !json.Valid([]byte(c.ToolCall.Arguments)):
+		return errors.New("tool call arguments must be JSON")
 	}
 	return nil
 }

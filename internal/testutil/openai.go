@@ -87,7 +87,16 @@ func (s *Server) openAIChat(w http.ResponseWriter, r *http.Request) {
 	}
 
 	id := s.id("chatcmpl-fake")
+	callID := s.id("call_fake")
 	if !req.Stream {
+		message := map[string]any{"role": "assistant", "content": s.cfg.text(), "refusal": nil}
+		finish := "stop"
+		if c := s.cfg.ToolCall; c != nil {
+			message["content"] = nil
+			message["tool_calls"] = []any{map[string]any{"id": callID, "type": "function",
+				"function": map[string]any{"name": c.Name, "arguments": c.Arguments}}}
+			finish = "tool_calls"
+		}
 		writeJSON(w, http.StatusOK, map[string]any{
 			"id":      id,
 			"object":  "chat.completion",
@@ -95,9 +104,9 @@ func (s *Server) openAIChat(w http.ResponseWriter, r *http.Request) {
 			"model":   req.Model,
 			"choices": []any{map[string]any{
 				"index":         0,
-				"message":       map[string]any{"role": "assistant", "content": s.cfg.text(), "refusal": nil},
+				"message":       message,
 				"logprobs":      nil,
-				"finish_reason": "stop",
+				"finish_reason": finish,
 			}},
 			"usage": openAIUsage(s.cfg.Usage),
 		})
@@ -123,15 +132,26 @@ func (s *Server) openAIChat(w http.ResponseWriter, r *http.Request) {
 	}
 
 	sse := newSSE(w, r, s.cfg.ChunkDelay)
-	if !sse.send("", chunk(choice(map[string]any{"role": "assistant", "content": ""}, nil))) {
+	first, pieces, finish := map[string]any{"role": "assistant", "content": ""}, s.cfg.pieces(), "stop"
+	piece := func(p string) map[string]any { return map[string]any{"content": p} }
+	if c := s.cfg.ToolCall; c != nil {
+		first = map[string]any{"role": "assistant", "content": nil, "tool_calls": []any{map[string]any{"index": 0,
+			"id": callID, "type": "function", "function": map[string]any{"name": c.Name, "arguments": ""}}}}
+		pieces, finish = s.cfg.argumentPieces(), "tool_calls"
+		piece = func(p string) map[string]any {
+			return map[string]any{"tool_calls": []any{map[string]any{"index": 0,
+				"function": map[string]any{"arguments": p}}}}
+		}
+	}
+	if !sse.send("", chunk(choice(first, nil))) {
 		return
 	}
-	for i, piece := range s.cfg.pieces() {
-		if i > 0 && !sse.pause() || !sse.send("", chunk(choice(map[string]any{"content": piece}, nil))) {
+	for i, p := range pieces {
+		if i > 0 && !sse.pause() || !sse.send("", chunk(choice(piece(p), nil))) {
 			return
 		}
 	}
-	if !sse.send("", chunk(choice(map[string]any{}, "stop"))) {
+	if !sse.send("", chunk(choice(map[string]any{}, finish))) {
 		return
 	}
 	if includeUsage {
