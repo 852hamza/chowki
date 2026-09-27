@@ -1,0 +1,58 @@
+# Project identity (PROJECT_DOMAIN, GITHUB_OWNER, GITHUB_REPO, WEBSITE_URL,
+# DOCS_URL). After editing project.env, run `make sync`.
+include project.env
+
+GO ?= go
+
+# Same rule as internal/buildinfo and tools/projectsync.
+GO_MODULE := github.com/$(GITHUB_OWNER)/$(GITHUB_REPO)
+BUILDINFO := $(GO_MODULE)/internal/buildinfo
+
+VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null)
+COMMIT  ?= $(shell git rev-parse HEAD 2>/dev/null)
+DATE    ?= $(shell TZ=UTC0 git show -s --date=format-local:%Y-%m-%dT%H:%M:%SZ --format=%cd HEAD 2>/dev/null)
+
+# Evaluated only by `build`, so other targets don't run git.
+LDFLAGS = \
+	-X $(BUILDINFO).version=$(VERSION) \
+	-X $(BUILDINFO).commit=$(COMMIT) \
+	-X $(BUILDINFO).date=$(DATE) \
+	-X $(BUILDINFO).domain=$(PROJECT_DOMAIN) \
+	-X $(BUILDINFO).owner=$(GITHUB_OWNER) \
+	-X $(BUILDINFO).repo=$(GITHUB_REPO) \
+	-X $(BUILDINFO).website=$(WEBSITE_URL) \
+	-X $(BUILDINFO).docs=$(DOCS_URL)
+
+.PHONY: build test race lint vuln sync sync-check help
+
+## build: compile bin/chowki with version and project identity
+build:
+	$(GO) build -trimpath -ldflags '$(LDFLAGS)' -o bin/chowki ./cmd/chowki
+
+## test: run all tests
+test:
+	$(GO) test ./...
+
+## race: run all tests with the race detector
+race:
+	$(GO) test -race ./...
+
+## lint: run golangci-lint (configured in .golangci.yml)
+lint:
+	golangci-lint run
+
+## vuln: check dependencies and the Go standard library for known vulnerabilities
+vuln:
+	govulncheck ./...
+
+## sync: apply project.env to go.mod, imports, docs and buildinfo defaults
+sync:
+	$(GO) run ./tools/projectsync
+
+## sync-check: fail if the repository is out of sync with project.env
+sync-check:
+	$(GO) run ./tools/projectsync --check
+
+## help: list these targets
+help:
+	@sed -n 's/^## //p' Makefile

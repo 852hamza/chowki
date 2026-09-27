@@ -1,0 +1,7 @@
+# Written by `make sync`: the project identity it applied last.
+# Don't edit this file. Change project.env and run `make sync` instead.
+PROJECT_DOMAIN=chowki.dev
+GITHUB_OWNER=852hamza
+GITHUB_REPO=chowki
+WEBSITE_URL=
+DOCS_URL=
