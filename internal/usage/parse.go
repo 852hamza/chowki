@@ -49,6 +49,7 @@ type Report struct {
 type openAIUsage struct {
 	PromptTokens        int64 `json:"prompt_tokens"`
 	CompletionTokens    int64 `json:"completion_tokens"`
+	TotalTokens         int64 `json:"total_tokens"`
 	PromptTokensDetails struct {
 		CachedTokens     int64 `json:"cached_tokens"`
 		CacheWriteTokens int64 `json:"cache_write_tokens"`
@@ -62,6 +63,12 @@ type openAIBody struct {
 	Model       string       `json:"model"`
 	ServiceTier string       `json:"service_tier"`
 	Usage       *openAIUsage `json:"usage"`
+	// XGroq carries Groq's usage in the last chunk of a stream, instead of
+	// usage, as client libraries for Groq observe; Groq's API reference
+	// doesn't show it.
+	XGroq *struct {
+		Usage *openAIUsage `json:"usage"`
+	} `json:"x_groq"`
 }
 
 func (b openAIBody) apply(r *Report) {
@@ -73,14 +80,25 @@ func (b openAIBody) apply(r *Report) {
 	if b.ServiceTier != "" && b.ServiceTier != "default" {
 		r.Modifier = "service tier " + b.ServiceTier
 	}
-	if u := b.Usage; u != nil {
-		r.Usage = &Usage{
-			Input:      u.PromptTokens,
-			Output:     u.CompletionTokens,
-			CacheRead:  u.PromptTokensDetails.CachedTokens,
-			CacheWrite: u.PromptTokensDetails.CacheWriteTokens,
-			Reasoning:  u.CompletionTokensDetails.ReasoningTokens,
-		}
+	u := b.Usage
+	if u == nil && b.XGroq != nil {
+		u = b.XGroq.Usage
+	}
+	if u == nil {
+		return
+	}
+	r.Usage = &Usage{
+		Input:      u.PromptTokens,
+		Output:     u.CompletionTokens,
+		CacheRead:  u.PromptTokensDetails.CachedTokens,
+		CacheWrite: u.PromptTokensDetails.CacheWriteTokens,
+		Reasoning:  u.CompletionTokensDetails.ReasoningTokens,
+	}
+	// OpenAI counts reasoning in the completion. Some compatible APIs, such
+	// as xAI's, count it apart, which their total shows: the output adds it.
+	if reasoning := u.CompletionTokensDetails.ReasoningTokens; reasoning > 0 &&
+		u.TotalTokens == u.PromptTokens+u.CompletionTokens+reasoning {
+		r.Usage.Output += reasoning
 	}
 }
 
