@@ -1,0 +1,38 @@
+{
+  "model": "claude",
+  "messages": [
+    {"role": "system", "content": "You are a travel agent."},
+    {"role": "developer", "content": [{"type": "text", "text": "Answer in JSON."}]},
+    {"role": "user", "content": [
+      {"type": "text", "text": "What's the weather in Paris and London? Here is my ticket."},
+      {"type": "image_url", "image_url": {"url": "data:image/png;base64,iVBORw0KGgo=", "detail": "high"}}
+    ]},
+    {"role": "assistant", "content": "Let me check both cities.", "tool_calls": [
+      {"id": "toolu_01A", "type": "function", "function": {"name": "get_weather", "arguments": "{\"city\":\"Paris\"}"},
+       "extra_content": {"google": {"thought_signature": "c2lnLUE="}}},
+      {"id": "toolu_01B", "type": "function", "function": {"name": "get_weather", "arguments": "{\"city\":\"London\"}"}}
+    ]},
+    {"role": "tool", "tool_call_id": "toolu_01A", "content": "{\"temp_c\":15}"},
+    {"role": "tool", "tool_call_id": "toolu_01B", "content": [{"type": "text", "text": "12C and rain"}]},
+    {"role": "user", "content": "Which is warmer?"}
+  ],
+  "tools": [
+    {"type": "function", "function": {"name": "get_weather", "description": "Gets the weather in a city.",
+      "parameters": {"type": "object", "properties": {"city": {"type": "string"}}, "required": ["city"],
+        "additionalProperties": false}, "strict": true}}
+  ],
+  "tool_choice": "auto",
+  "parallel_tool_calls": true,
+  "max_completion_tokens": 1024,
+  "temperature": 0.5,
+  "top_p": 0.9,
+  "stop": ["END"],
+  "user": "user-42",
+  "reasoning_effort": "high",
+  "response_format": {"type": "json_schema", "json_schema": {"name": "answer",
+    "schema": {"type": "object", "properties": {"city": {"type": "string"}}, "required": ["city"]}, "strict": true}},
+  "stream": true,
+  "stream_options": {"include_usage": true},
+  "metadata": {"team": "travel"},
+  "prompt_cache_key": "agent-1"
+}

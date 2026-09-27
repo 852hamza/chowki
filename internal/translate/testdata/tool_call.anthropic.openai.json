@@ -1,0 +1,48 @@
+{
+  "id": "chatcmpl-msg_01XYZ",
+  "object": "chat.completion",
+  "created": 1790000000,
+  "model": "claude-sonnet-5",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "Let me check both cities.",
+        "refusal": null,
+        "tool_calls": [
+          {
+            "id": "toolu_01A",
+            "type": "function",
+            "function": {
+              "name": "get_weather",
+              "arguments": "{\"city\": \"Paris\"}"
+            }
+          },
+          {
+            "id": "toolu_01B",
+            "type": "function",
+            "function": {
+              "name": "get_weather",
+              "arguments": "{\"city\": \"London\"}"
+            }
+          }
+        ]
+      },
+      "logprobs": null,
+      "finish_reason": "tool_calls"
+    }
+  ],
+  "usage": {
+    "prompt_tokens": 2150,
+    "completion_tokens": 120,
+    "total_tokens": 2270,
+    "prompt_tokens_details": {
+      "cached_tokens": 2000,
+      "cache_write_tokens": 100
+    },
+    "completion_tokens_details": {
+      "reasoning_tokens": 80
+    }
+  }
+}

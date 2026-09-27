@@ -1,0 +1,127 @@
+{
+  "contents": [
+    {
+      "role": "user",
+      "parts": [
+        {
+          "text": "What's the weather in Paris and London? Here is my ticket."
+        },
+        {
+          "inlineData": {
+            "data": "iVBORw0KGgo=",
+            "mimeType": "image/png"
+          }
+        }
+      ]
+    },
+    {
+      "role": "model",
+      "parts": [
+        {
+          "text": "Let me check both cities."
+        },
+        {
+          "functionCall": {
+            "args": {
+              "city": "Paris"
+            },
+            "name": "get_weather"
+          },
+          "thoughtSignature": "c2lnLUE="
+        },
+        {
+          "functionCall": {
+            "args": {
+              "city": "London"
+            },
+            "name": "get_weather"
+          }
+        }
+      ]
+    },
+    {
+      "role": "user",
+      "parts": [
+        {
+          "functionResponse": {
+            "name": "get_weather",
+            "response": {
+              "temp_c": 15
+            }
+          }
+        },
+        {
+          "functionResponse": {
+            "name": "get_weather",
+            "response": {
+              "output": "12C and rain"
+            }
+          }
+        },
+        {
+          "text": "Which is warmer?"
+        }
+      ]
+    }
+  ],
+  "systemInstruction": {
+    "parts": [
+      {
+        "text": "You are a travel agent."
+      },
+      {
+        "text": "Answer in JSON."
+      }
+    ]
+  },
+  "tools": [
+    {
+      "functionDeclarations": [
+        {
+          "name": "get_weather",
+          "description": "Gets the weather in a city.",
+          "parametersJsonSchema": {
+            "type": "object",
+            "properties": {
+              "city": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "city"
+            ],
+            "additionalProperties": false
+          }
+        }
+      ]
+    }
+  ],
+  "toolConfig": {
+    "functionCallingConfig": {
+      "mode": "VALIDATED"
+    }
+  },
+  "generationConfig": {
+    "maxOutputTokens": 1024,
+    "temperature": 0.5,
+    "topP": 0.9,
+    "stopSequences": [
+      "END"
+    ],
+    "responseMimeType": "application/json",
+    "responseJsonSchema": {
+      "type": "object",
+      "properties": {
+        "city": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "city"
+      ]
+    },
+    "thinkingConfig": {
+      "thinkingLevel": "HIGH"
+    }
+  }
+}
