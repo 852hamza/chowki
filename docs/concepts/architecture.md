@@ -58,8 +58,9 @@ flowchart TD
 3. **Policy**: check the models and endpoints that the key may use.
 4. **Rate limit**: enforce the key's limit of requests per minute, before Chowki reads the request
    body.
-5. **Redact**: find secrets and personal data, then mask them, block the request or raise an alert,
-   depending on the policy.
+5. **Redact**: find secrets and personal data in the text of the request, then mask them with
+   placeholders, block the request or log an alert, depending on the key's mode. See
+   [Redact secrets and personal data](../how-to/redact-sensitive-data.md).
 6. **Route**: resolve an alias, such as `fast`, to a provider and model.
 7. **Exact cache**: for a non-streaming request identical to an earlier one, return the stored
    response. The cache is opt-in. A cached answer costs nothing, so the next stage doesn't apply to

@@ -58,22 +58,24 @@ requests that repeat, such as tests, evaluations and scripts that send the same 
      Requests per minute:  none
      Tokens per minute:    none
      Exact cache:          exact
+     Redaction:            default
    ```
 
 2. To turn the cache on for an existing key, pass its prefix, as `chowki key list` shows it:
 
    ```sh
-   chowki key update --cache exact chowki_9VRDs
+   chowki key update --cache exact chowki_nKaBn
    ```
 
    Output:
 
    ```text
-   Updated the settings of virtual key chowki_9VRDs ("alice"):
+   Updated the settings of virtual key chowki_nKaBn ("alice"):
      Monthly budget:       $100.00
      Requests per minute:  none
      Tokens per minute:    none
      Exact cache:          exact
+     Redaction:            default
    ```
 
 `--cache off` turns the cache off for a key. `--cache default` makes the key follow
@@ -110,7 +112,7 @@ HTTP/1.1 200 OK
 Content-Type: application/json
 X-Chowki-Cache: miss
 X-Chowki-Cost-Usd: 1.00000000
-X-Chowki-Request-Id: req_fe86a333ef13bfdf15ea22a4
+X-Chowki-Request-Id: req_3929f2025bca9f991c15dd7b
 ```
 
 The second comes from the cache, and costs nothing:
@@ -120,7 +122,7 @@ HTTP/1.1 200 OK
 Content-Type: application/json
 X-Chowki-Cache: hit
 X-Chowki-Cost-Usd: 0.00000000
-X-Chowki-Request-Id: req_2702287d578c019cef99a51f
+X-Chowki-Request-Id: req_d1b631450f5c8be13a9c8d3d
 ```
 
 Your costs differ. `X-Chowki-Cache` is `bypass` for a request that doesn't use the cache: a

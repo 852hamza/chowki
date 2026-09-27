@@ -56,22 +56,24 @@ can't run up a surprise bill.
      Requests per minute:  none
      Tokens per minute:    none
      Exact cache:          default
+     Redaction:            default
    ```
 
 2. To change the budget of an existing key, pass its prefix, as `chowki key list` shows it:
 
    ```sh
-   chowki key update --budget-usd 100 chowki_9VRDs
+   chowki key update --budget-usd 100 chowki_nKaBn
    ```
 
    Output:
 
    ```text
-   Updated the settings of virtual key chowki_9VRDs ("alice"):
+   Updated the settings of virtual key chowki_nKaBn ("alice"):
      Monthly budget:       $100.00
      Requests per minute:  none
      Tokens per minute:    none
      Exact cache:          default
+     Redaction:            default
    ```
 
 To remove a budget, set it to `0`. Chowki records every budget change in its audit log. To limit
@@ -105,9 +107,10 @@ chowki key list
 Output:
 
 ```text
-PREFIX        NAME    PROJECT  SPENT 2026-09  BUDGET  RPM   TPM     CACHE    CREATED               STATUS
-chowki_9VRDs  alice   team-a   $3.00          $50.00  none  none    default  2026-09-27 06:31 UTC  active
-chowki_PXQSi  ci-bot  team-a   $1.00          none    60    100000  default  2026-09-27 06:31 UTC  active
+PREFIX        NAME      PROJECT  SPENT 2026-09  BUDGET  RPM   TPM     CACHE    REDACTION  CREATED               STATUS
+chowki_nKaBn  alice     team-a   $3.00          $50.00  none  none    default  default    2026-09-27 09:45 UTC  active
+chowki_E615T  ci-bot    team-a   $1.00          none    60    100000  default  default    2026-09-27 09:45 UTC  active
+chowki_jlIEY  docs-bot  team-a   $0.00          none    none  none    exact    default    2026-09-27 09:45 UTC  active
 ```
 
 List the projects with the spend of their keys:
@@ -120,7 +123,7 @@ Output:
 
 ```text
 NAME    ACTIVE KEYS  SPENT 2026-09  BUDGET
-team-a  2            $4.00          $200.00
+team-a  3            $4.00          $200.00
 ```
 
 An amount below one cent shows as `<$0.01`.
@@ -128,7 +131,7 @@ An amount below one cent shows as `<$0.01`.
 ## Verify
 
 When a budget is used up, requests fail with HTTP status 429 in the error format of the API that
-the client speaks. For example, after `chowki key update --budget-usd 2 chowki_9VRDs` for a key
+the client speaks. For example, after `chowki key update --budget-usd 2 chowki_nKaBn` for a key
 that has spent $3.00 this month, an OpenAI-format request gets:
 
 ```json

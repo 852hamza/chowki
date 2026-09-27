@@ -48,5 +48,12 @@ All notable changes to Chowki are recorded in this file. The format is based on
   the system prompt, or of the tools. It never changes requests that set `cache_control`
   themselves. `defaults.prompt_cache: off` turns it off. The catalog now lists the minimum
   cacheable prompt of each Anthropic model.
+- Redaction of secrets and personal data in the text of requests: private keys, AWS, GitHub,
+  Slack, OpenAI, Anthropic, Google and Stripe keys, JWTs, Chowki keys, `password = …` pairs, email
+  addresses, card numbers, IBANs, Pakistani CNIC and mobile numbers, and international phone
+  numbers. Modes `mask` (the default), `block`, `alert` and `off`, per key with `--redaction` or for
+  all keys with `defaults.redaction`. Placeholders are deterministic, such as
+  `[REDACTED:email:b443e741]`; the `x-chowki-redactions` header, logs and records count findings by
+  type and never hold the values.
 
 [Unreleased]: https://github.com/852hamza/chowki/commits/main

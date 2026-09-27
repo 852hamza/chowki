@@ -18,9 +18,10 @@ a single Go binary that stores its data in SQLite.
 *Chowki* (چوکی) means "checkpoint" in Urdu.
 
 > **Status:** early development. Chowki relays OpenAI and Anthropic requests with virtual keys,
-> records their cost, enforces budgets and rate limits, caches repeated answers and marks repeated
-> Anthropic prompts for caching, but redaction isn't built yet, so don't use it in production.
-> Follow the [changelog](CHANGELOG.md) to see what has landed.
+> records their cost, enforces budgets and rate limits, caches repeated answers, marks repeated
+> Anthropic prompts for caching and redacts secrets and personal data. The dashboard, fallback
+> routing, Gemini and the secret scanner aren't built yet, so don't use it in production. Follow the
+> [changelog](CHANGELOG.md) to see what has landed.
 
 ## Quickstart
 
@@ -46,6 +47,8 @@ make build
   cache.
 - [Use Anthropic prompt caching](docs/how-to/anthropic-prompt-caching.md): let Chowki mark
   repeated prompt prefixes for Anthropic's cache.
+- [Redact secrets and personal data](docs/how-to/redact-sensitive-data.md): mask, block or report
+  keys and personal data in prompts.
 - [Configuration reference](docs/reference/configuration.md): every setting and its environment
   variable.
 - [Architecture](docs/concepts/architecture.md): how a request flows through Chowki.
