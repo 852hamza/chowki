@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"math"
 	"net/url"
+	"slices"
 	"sync"
 	"time"
 
@@ -73,6 +74,19 @@ func (m *Model) PriceFor(inputTokens int64) Price {
 func (c *Catalog) Find(provider, model string) (*Model, bool) {
 	m, ok := c.models[provider+"/"+model]
 	return m, ok
+}
+
+// Providers returns the providers that list model, by ID or alias, in
+// alphabetical order.
+func (c *Catalog) Providers(model string) []string {
+	var names []string
+	for _, m := range c.models {
+		if (m.Model == model || slices.Contains(m.Aliases, model)) && !slices.Contains(names, m.Provider) {
+			names = append(names, m.Provider)
+		}
+	}
+	slices.Sort(names)
+	return names
 }
 
 // Len returns the number of models in the catalog.

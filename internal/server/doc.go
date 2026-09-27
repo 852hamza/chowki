@@ -1,3 +1,3 @@
-// Package server runs the HTTP server: routing, middleware, graceful
-// shutdown and the error shapes that clients receive.
+// Package server runs the gateway's HTTP server: routes, timeouts, limits
+// and graceful shutdown. The request handling itself lives in pipeline.
 package server

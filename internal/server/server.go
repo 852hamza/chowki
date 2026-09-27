@@ -1,0 +1,63 @@
+package server
+
+import (
+	"context"
+	"errors"
+	"log/slog"
+	"net"
+	"net/http"
+	"time"
+
+	"github.com/852hamza/chowki/internal/pipeline"
+	"github.com/852hamza/chowki/internal/usage"
+)
+
+// ShutdownTimeout is how long a shutdown waits for requests in flight.
+const ShutdownTimeout = 30 * time.Second
+
+// Routes returns the gateway's HTTP handler. Unknown paths get a 404 in
+// the error format of the API family their path belongs to.
+func Routes(gw *pipeline.Gateway) http.Handler {
+	mux := http.NewServeMux()
+	mux.Handle("POST /v1/chat/completions", gw.Handler(usage.OpenAI))
+	mux.Handle("POST /anthropic/v1/messages", gw.Handler(usage.Anthropic))
+	mux.Handle("/anthropic/", gw.NotFound(usage.Anthropic))
+	mux.Handle("/", gw.NotFound(usage.OpenAI))
+	return mux
+}
+
+// Run serves h on ln until ctx ends, then shuts down gracefully: it stops
+// accepting connections and waits up to ShutdownTimeout for requests in
+// flight, then closes the rest.
+func Run(ctx context.Context, ln net.Listener, h http.Handler, logger *slog.Logger) error {
+	srv := &http.Server{
+		Handler:           h,
+		ReadHeaderTimeout: 10 * time.Second,
+		IdleTimeout:       2 * time.Minute,
+		MaxHeaderBytes:    64 << 10,
+		ErrorLog:          slog.NewLogLogger(logger.Handler(), slog.LevelWarn),
+		// No write timeout: a stream may last as long as the upstream
+		// timeout allows.
+	}
+	errc := make(chan error, 1)
+	go func() { errc <- srv.Serve(ln) }()
+	logger.Info("listening", "addr", ln.Addr().String())
+
+	select {
+	case err := <-errc:
+		return err
+	case <-ctx.Done():
+	}
+	logger.Info("shutting down")
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), ShutdownTimeout)
+	defer cancel()
+	err := srv.Shutdown(shutdownCtx)
+	if errors.Is(err, context.DeadlineExceeded) {
+		logger.Warn("requests still running after the shutdown timeout; closing them")
+		err = srv.Close()
+	}
+	if serveErr := <-errc; !errors.Is(serveErr, http.ErrServerClosed) && err == nil {
+		err = serveErr
+	}
+	return err
+}

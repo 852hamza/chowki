@@ -22,6 +22,12 @@ func TestDefaultCatalogIsValid(t *testing.T) {
 	if _, ok := c.Find("openai", "claude-haiku-4-5"); ok {
 		t.Error("Find() matched a model of another provider")
 	}
+	if got := c.Providers("claude-haiku-4-5"); len(got) != 1 || got[0] != "anthropic" {
+		t.Errorf("Providers(alias) = %q, want [anthropic]", got)
+	}
+	if got := c.Providers("no-such-model"); got != nil {
+		t.Errorf("Providers(unknown) = %q, want none", got)
+	}
 }
 
 func TestPriceFor(t *testing.T) {
