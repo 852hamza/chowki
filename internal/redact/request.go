@@ -10,12 +10,13 @@ import (
 )
 
 // Request finds secrets and personal data in the text of a request body of
-// kind "openai" or "anthropic", for their chat endpoints, or "embeddings":
-// message contents and their text parts, system prompts, tool results and
-// documents given as text, and the input of embeddings. It never reads
-// images, audio or any other field. It counts the findings by
-// type, and with mask it also returns the body with each finding replaced
-// by its placeholder and every other byte unchanged.
+// kind "openai", "anthropic" or "gemini", for their chat endpoints,
+// "embeddings" for OpenAI embeddings, or "gemini-embeddings": message
+// contents and their text parts, system prompts, tool results and documents
+// given as text, and the input of embeddings. It never reads images, audio
+// or any other field. It counts the findings by type, and with mask it also
+// returns the body with each finding replaced by its placeholder and every
+// other byte unchanged.
 func (r *Redactor) Request(family string, body []byte, mask bool) ([]byte, map[string]int, error) {
 	root, err := parse(body)
 	if err != nil {
@@ -89,6 +90,14 @@ func (n *node) all(key string) []*node {
 	return out
 }
 
+// elements returns the elements of an array, and nothing for other values.
+func (n *node) elements() []*node {
+	if n.kind != '[' {
+		return nil
+	}
+	return n.vals
+}
+
 // textFields returns the string values in a request body that hold text
 // for the model, each once.
 func textFields(family string, root *node) []*node {
@@ -127,6 +136,26 @@ func textFields(family string, root *node) []*node {
 		}
 	}
 	switch family {
+	case "gemini":
+		// countTokens may nest a whole generateContent request.
+		for _, r := range append([]*node{root}, root.all("generateContentRequest")...) {
+			geminiRequest(r, text)
+		}
+		return out
+	case "gemini-embeddings":
+		// embedContent has one content; batchEmbedContents a list of
+		// requests that each have one.
+		for _, c := range root.all("content") {
+			geminiContent(c, text)
+		}
+		for _, list := range root.all("requests") {
+			for _, r := range list.elements() {
+				for _, c := range r.all("content") {
+					geminiContent(c, text)
+				}
+			}
+		}
+		return out
 	case "anthropic":
 		for _, s := range root.all("system") {
 			content(s)
@@ -154,6 +183,46 @@ func textFields(family string, root *node) []*node {
 		}
 	}
 	return out
+}
+
+// geminiRequest finds the text of a Gemini generateContent request: the
+// parts of its contents and of its system instruction.
+func geminiRequest(r *node, text func(*node)) {
+	for _, list := range r.all("contents") {
+		for _, c := range list.elements() {
+			geminiContent(c, text)
+		}
+	}
+	for _, c := range r.all("systemInstruction") {
+		geminiContent(c, text)
+	}
+}
+
+// geminiContent finds the text parts of a Gemini Content, and the strings in
+// the results of function calls, which are JSON objects of any shape.
+func geminiContent(c *node, text func(*node)) {
+	for _, parts := range c.all("parts") {
+		for _, p := range parts.elements() {
+			for _, t := range p.all("text") {
+				text(t)
+			}
+			for _, fr := range p.all("functionResponse") {
+				for _, r := range fr.all("response") {
+					eachString(r, text)
+				}
+			}
+		}
+	}
+}
+
+// eachString passes every string value in n, but no object key, to text.
+func eachString(n *node, text func(*node)) {
+	if n.kind == '"' {
+		text(n)
+	}
+	for _, v := range n.vals {
+		eachString(v, text)
+	}
 }
 
 // document finds the text of an Anthropic document source: plain text in

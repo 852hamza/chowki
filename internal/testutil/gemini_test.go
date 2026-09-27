@@ -1,6 +1,7 @@
 package testutil
 
 import (
+	"io"
 	"net/http"
 	"strings"
 	"testing"
@@ -95,5 +96,29 @@ func TestGeminiStream(t *testing.T) {
 	}
 	if text.String() != "Hello, world!" {
 		t.Errorf("streamed text = %q, want %q", text.String(), "Hello, world!")
+	}
+}
+
+func TestGeminiCountTokensAndEmbeddings(t *testing.T) {
+	s := NewGemini(t, Config{Usage: Usage{Input: 9}})
+	for _, tc := range []struct{ path, body, want string }{
+		{":countTokens", `{"contents":[{"parts":[{"text":"hi"}]}]}`, `{"totalTokens":9}`},
+		{":countTokens", `{"generateContentRequest":{"contents":[]}}`, `{"totalTokens":9}`},
+		{":embedContent", `{"content":{"parts":[{"text":"hi"}]}}`,
+			`{"embedding":{"values":[0.25,-0.5,0.75]},"usageMetadata":{"promptTokenCount":9}}`},
+		{":batchEmbedContents", `{"requests":[{"model":"models/gemini-test","content":{}},` +
+			`{"model":"models/gemini-test","content":{}}]}`,
+			`{"embeddings":[{"values":[0.25,-0.5,0.75]},{"values":[0.25,-0.5,0.75]}],"usageMetadata":{"promptTokenCount":9}}`},
+	} {
+		resp := post(t.Context(), t, s.URL+"/v1beta/models/gemini-test"+tc.path, nil, tc.body)
+		checkResponse(t, resp, http.StatusOK, "application/json")
+		data, err := io.ReadAll(resp.Body)
+		if got := strings.TrimSpace(string(data)); err != nil || got != tc.want {
+			t.Errorf("%s = %s, want %s", tc.path, got, tc.want)
+		}
+	}
+	for _, body := range []string{`{}`, `{"requests":[{"model":"models/other","content":{}}]}`} {
+		resp := post(t.Context(), t, s.URL+"/v1beta/models/gemini-test:batchEmbedContents", nil, body)
+		checkResponse(t, resp, http.StatusBadRequest, "application/json")
 	}
 }

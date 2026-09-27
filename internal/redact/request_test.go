@@ -42,6 +42,15 @@ func TestRequest(t *testing.T) {
 			`{"role":"assistant","content":[{"type":"thinking","thinking":"the key is ` + awsKey + `","signature":"s"}]}]}`,
 			map[string]int{TypeJWT: 1, TypePhone: 1, TypeCNIC: 1, TypeIBAN: 1, TypeEmail: 1},
 			[]string{`"data":"` + awsKey, `the key is ` + awsKey}},
+		{"gemini", "gemini", `{"systemInstruction":{"parts":[{"text":"Reply to jane.doe@company.io"}]},"contents":[` +
+			`{"role":"user","parts":[{"text":"key ` + awsKey + `"},{"inlineData":{"mimeType":"image/png","data":"` + awsKey + `"}}]},` +
+			`{"role":"model","parts":[{"functionCall":{"name":"f","args":{"k":"` + awsKey + `"}},"thoughtSignature":"s"}]},` +
+			`{"role":"user","parts":[{"functionResponse":{"name":"f","response":{"output":"card 4111 1111 1111 1111",` +
+			`"+14155552671":{"deep":["+14155552671"]}}}}]}],"generationConfig":{"stopSequences":["jane.doe@company.io"]}}`,
+			map[string]int{TypeEmail: 1, TypeAWSKey: 1, TypeCard: 1, TypePhone: 1},
+			[]string{`"data":"` + awsKey, `"args":{"k":"` + awsKey, `"+14155552671":{`, `["jane.doe@company.io"]`}},
+		{"gemini count tokens", "gemini", `{"generateContentRequest":{"model":"models/g","contents":[` +
+			`{"role":"user","parts":[{"text":"mail jane.doe@company.io"}]}]}}`, map[string]int{TypeEmail: 1}, nil},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -84,6 +93,25 @@ func TestRequestEmbeddings(t *testing.T) {
 	}
 }
 
+func TestRequestGeminiEmbeddings(t *testing.T) {
+	r := New([]byte("k"), ModeMask)
+	for body, want := range map[string]int{
+		`{"content":{"parts":[{"text":"mail jane.doe@company.io"}]}}`: 1,
+		`{"requests":[{"model":"models/e","content":{"parts":[{"text":"jane.doe@company.io"}]}},` +
+			`{"content":{"parts":[{"text":"+14155552671"}]}}]}`: 2,
+		`{"content":{"parts":[{"inlineData":{"data":"jane.doe@company.io"}}]},"title":"jane.doe@company.io"}`: 0,
+	} {
+		out, counts, err := r.Request("gemini-embeddings", []byte(body), true)
+		n := 0
+		for _, c := range counts {
+			n += c
+		}
+		if err != nil || n != want || !json.Valid(out) {
+			t.Errorf("Request(%s) = %s, %v, %v; want %d findings", body, out, counts, err, want)
+		}
+	}
+}
+
 func TestRequestKeepsOtherBytes(t *testing.T) {
 	r := New([]byte("k"), ModeMask)
 	text := "Héllo 世界 😀 \"quoted\" <tag> & mail jane.doe@company.io\nnext line"
@@ -121,12 +149,14 @@ func FuzzRequest(f *testing.F) {
 	f.Add(`{"messages":[{"role":"user","content":"mail jane.doe@company.io"}]}`)
 	f.Add(`{"system":[{"type":"text","text":"x"}],"messages":[{"content":[{"type":"tool_result","content":"+14155552671"}]}]}`)
 	f.Add(`{"messages":[{"content":[{"type":"text","type":"text","text":"a@b.co","text":"c@d.co"}]}]}`)
+	f.Add(`{"contents":[{"parts":[{"text":"a@b.co"},{"functionResponse":{"response":{"x":["a@b.co",{"y":"c@d.co"}]}}}]}]}`)
+	f.Add(`{"requests":[{"content":{"parts":[{"text":"a@b.co"}]}}]}`)
 	r := New([]byte("k"), ModeMask)
 	f.Fuzz(func(t *testing.T, body string) {
 		if !json.Valid([]byte(body)) {
 			return
 		}
-		for _, family := range []string{"openai", "anthropic"} {
+		for _, family := range []string{"openai", "anthropic", "embeddings", "gemini", "gemini-embeddings"} {
 			out, _, err := r.Request(family, []byte(body), true)
 			if err == nil && !json.Valid(out) {
 				t.Fatalf("Request(%s) = %s, which isn't JSON", body, out)

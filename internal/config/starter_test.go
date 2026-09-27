@@ -22,7 +22,11 @@ func TestStarterIsValid(t *testing.T) {
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("starter settings = %+v, want the defaults %+v", got, want)
 	}
-	if len(cfg.Providers) != 2 {
-		t.Errorf("starter has %d providers, want 2", len(cfg.Providers))
+	var types []string
+	for _, p := range cfg.Providers {
+		types = append(types, p.Type)
+	}
+	if !reflect.DeepEqual(types, []string{TypeOpenAI, TypeAnthropic, TypeGemini}) {
+		t.Errorf("starter providers have the types %q, want one of each", types)
 	}
 }

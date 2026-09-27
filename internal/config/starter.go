@@ -50,6 +50,10 @@ providers:
     type: anthropic
     base_url: https://api.anthropic.com
     api_key_env: ANTHROPIC_API_KEY
+  - name: gemini
+    type: gemini
+    base_url: https://generativelanguage.googleapis.com
+    api_key_env: GEMINI_API_KEY
   # Any OpenAI-compatible API works the same way, for example a local Ollama server:
   # - name: local
   #   type: openai

@@ -3,6 +3,7 @@ package pipeline
 import (
 	"encoding/json"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/852hamza/chowki/internal/providers"
@@ -40,15 +41,64 @@ var (
 		kindCountTokens}
 )
 
-// Endpoints are all the endpoints that the gateway relays.
+// Endpoints are the endpoints with fixed paths that the gateway relays.
 var Endpoints = []Endpoint{OpenAIChat, OpenAIEmbeddings, AnthropicMessages, AnthropicCountTokens}
+
+// geminiPrefix is where the gateway serves Gemini's model methods, whose
+// paths go on with the model and the method.
+const geminiPrefix = "/gemini/v1beta/models/"
+
+// Gemini's model methods. Records show their paths with {model}, and each
+// target of a request gets a path with its own model.
+var (
+	GeminiGenerate = Endpoint{usage.Gemini, geminiPrefix + "{model}:generateContent", ":generateContent", kindChat}
+	GeminiStream   = Endpoint{usage.Gemini, geminiPrefix + "{model}:streamGenerateContent",
+		":streamGenerateContent?alt=sse", kindChat}
+	GeminiCountTokens = Endpoint{usage.Gemini, geminiPrefix + "{model}:countTokens", ":countTokens", kindCountTokens}
+	GeminiEmbed       = Endpoint{usage.Gemini, geminiPrefix + "{model}:embedContent", ":embedContent", kindEmbeddings}
+	GeminiBatchEmbed  = Endpoint{usage.Gemini, geminiPrefix + "{model}:batchEmbedContents", ":batchEmbedContents",
+		kindEmbeddings}
+)
+
+// GeminiEndpoints are the Gemini model methods that the gateway relays.
+var GeminiEndpoints = []Endpoint{GeminiGenerate, GeminiStream, GeminiCountTokens, GeminiEmbed, GeminiBatchEmbed}
+
+// target returns the provider's path for a request to model.
+func (ep Endpoint) target(model string) string {
+	if ep.Family == usage.Gemini {
+		return providers.GeminiModels + model + ep.upstream
+	}
+	return ep.upstream
+}
 
 // redactionKind is the request shape that redaction reads.
 func (ep Endpoint) redactionKind() string {
-	if ep.kind == kindEmbeddings {
+	switch {
+	case ep.kind == kindEmbeddings && ep.Family == usage.Gemini:
+		return "gemini-embeddings"
+	case ep.kind == kindEmbeddings:
 		return "embeddings"
 	}
 	return string(ep.Family)
+}
+
+// Gemini returns the handler of Gemini's model methods, whose paths name the
+// model and the method, as in
+// /gemini/v1beta/models/gemini-2.5-flash:generateContent. The model may be
+// <provider>/<model> or an alias, as on the other endpoints.
+func (g *Gateway) Gemini() http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		rest := strings.TrimPrefix(r.URL.Path, geminiPrefix)
+		if i := strings.LastIndexByte(rest, ':'); i > 0 {
+			for _, ep := range GeminiEndpoints {
+				if ep.Path == geminiPrefix+"{model}"+rest[i:] {
+					g.serve(w, r, ep, rest[:i])
+					return
+				}
+			}
+		}
+		g.NotFound(usage.Gemini).ServeHTTP(w, r)
+	})
 }
 
 // Models returns the handler of GET /v1/models: the aliases and catalog

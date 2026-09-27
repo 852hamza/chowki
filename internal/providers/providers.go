@@ -68,12 +68,16 @@ func New(cfgs []config.Provider, guard netguard.Policy) (map[string]*Provider, e
 }
 
 // Endpoints, relative to the provider's base URL. OpenAI base URLs end in
-// /v1, as in the OpenAI SDKs; Anthropic base URLs don't, as in its SDKs.
+// /v1, as in the OpenAI SDKs; Anthropic and Gemini base URLs don't, as in
+// their SDKs.
 const (
 	ChatCompletions = "/chat/completions"
 	Embeddings      = "/embeddings"
 	Messages        = "/v1/messages"
 	CountTokens     = "/v1/messages/count_tokens" //nolint:gosec // G101: an API path, not a credential
+	// GeminiModels precedes a Gemini model and method, as in
+	// /v1beta/models/gemini-2.5-flash:generateContent.
+	GeminiModels = "/v1beta/models/"
 )
 
 // forwarded are the client headers that reach the provider: the API
@@ -93,12 +97,14 @@ func Forwarded(client http.Header) http.Header {
 	return h
 }
 
-// Do sends a JSON request body to the provider's endpoint, authenticated
-// with the provider key, and returns the response. The caller must close
-// the response body.
+// Do sends a JSON request body to the provider's endpoint, a path with an
+// optional query, authenticated with the provider key, and returns the
+// response. The caller must close the response body.
 func (p *Provider) Do(ctx context.Context, endpoint string, body []byte, client http.Header) (*http.Response, error) {
 	u := *p.base
-	u.Path += endpoint
+	path, query, _ := strings.Cut(endpoint, "?")
+	u.Path += path
+	u.RawQuery = query
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, u.String(), bytes.NewReader(body))
 	if err != nil {
 		return nil, fmt.Errorf("provider %s: %w", p.Name, err)
@@ -112,6 +118,10 @@ func (p *Provider) Do(ctx context.Context, endpoint string, body []byte, client 
 		switch p.Type {
 		case config.TypeAnthropic:
 			req.Header.Set("x-api-key", key)
+		case config.TypeGemini:
+			// https://ai.google.dev/gemini-api/docs/api-key: never ?key=,
+			// which would leak the key into logs.
+			req.Header.Set("x-goog-api-key", key)
 		default:
 			req.Header.Set("Authorization", "Bearer "+key)
 		}

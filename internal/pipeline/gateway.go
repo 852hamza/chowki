@@ -76,9 +76,10 @@ type Gateway struct {
 	Timeout time.Duration
 }
 
-// Handler returns the handler of an endpoint that the gateway relays.
+// Handler returns the handler of an endpoint with a fixed path that the
+// gateway relays.
 func (g *Gateway) Handler(ep Endpoint) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { g.serve(w, r, ep) })
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { g.serve(w, r, ep, "") })
 }
 
 // NotFound returns a handler that answers unknown paths in the error
@@ -94,23 +95,24 @@ func (g *Gateway) NotFound(f usage.Family) http.Handler {
 
 // call is one request on its way through the gateway.
 type call struct {
-	ep       Endpoint
-	family   usage.Family
-	id       string
-	start    time.Time
-	w        *trackingWriter
-	key      store.Key
-	provider *providers.Provider
-	model    string // the model sent upstream
-	stream   bool
-	errType  string
-	report   usage.Report
-	tokens   *ratelimit.Ticket // nil without a limit of tokens per minute
-	ticket   *budget.Ticket    // nil until the budgets admit the request
-	cache    string            // the cache status; empty before the cache
-	cacheKey [32]byte          // for a miss, where relayBody stores the response
-	savedUSD *float64          // for a hit, what the original request cost
-	marked   bool              // the prompt-cache optimizer added a breakpoint
+	ep        Endpoint
+	family    usage.Family
+	pathModel string // the model that the path names, for Gemini
+	id        string
+	start     time.Time
+	w         *trackingWriter
+	key       store.Key
+	provider  *providers.Provider
+	model     string // the model sent upstream
+	stream    bool
+	errType   string
+	report    usage.Report
+	tokens    *ratelimit.Ticket // nil without a limit of tokens per minute
+	ticket    *budget.Ticket    // nil until the budgets admit the request
+	cache     string            // the cache status; empty before the cache
+	cacheKey  [32]byte          // for a miss, where relayBody stores the response
+	savedUSD  *float64          // for a hit, what the original request cost
+	marked    bool              // the prompt-cache optimizer added a breakpoint
 	// redactions counts what redaction found, by type, never the values.
 	redactions map[string]int
 	// upstreamStart and upstreamEnd bound the provider's part of the
@@ -119,8 +121,9 @@ type call struct {
 	fallbacks                  int // the targets that failed before the one that answered
 }
 
-func (g *Gateway) serve(w http.ResponseWriter, r *http.Request, ep Endpoint) {
-	c := &call{ep: ep, family: ep.Family, id: newRequestID(), start: time.Now(), w: &trackingWriter{ResponseWriter: w}}
+func (g *Gateway) serve(w http.ResponseWriter, r *http.Request, ep Endpoint, pathModel string) {
+	c := &call{ep: ep, family: ep.Family, pathModel: pathModel, id: newRequestID(), start: time.Now(),
+		w: &trackingWriter{ResponseWriter: w}}
 	c.w.Header().Set(RequestIDHeader, c.id)
 	if e := g.handle(r.Context(), c, r); e != nil {
 		c.errType = e.Code
@@ -156,7 +159,7 @@ func (g *Gateway) handle(ctx context.Context, c *call, r *http.Request) *apiErro
 	if err != nil {
 		return &apiError{http.StatusBadRequest, codeInvalidRequest, "Invalid request body: " + err.Error() + "."}
 	}
-	req, e := readRequest(c.ep, obj)
+	req, e := readRequest(c, obj, r)
 	if e != nil {
 		return e
 	}
@@ -198,7 +201,7 @@ func (g *Gateway) handle(ctx context.Context, c *call, r *http.Request) *apiErro
 	}
 	// Providers don't bill counting tokens, so it spends no tokens or budget.
 	if c.ep.kind != kindCountTokens {
-		if e := g.admit(c, withModel(obj, edits, req.model, c.model)); e != nil {
+		if e := g.admit(c, c.upstreamBody(obj, edits, req.model, c.model)); e != nil {
 			return e
 		}
 	}
@@ -231,7 +234,8 @@ func (g *Gateway) forward(ctx context.Context, c *call, r *http.Request, obj *ob
 			continue
 		}
 		attemptCtx, cancel := context.WithTimeout(ctx, g.Timeout)
-		resp, err := t.Provider.Do(attemptCtx, c.ep.upstream, withModel(obj, edits, requested, t.Model), r.Header)
+		resp, err := t.Provider.Do(attemptCtx, c.ep.target(t.Model), c.upstreamBody(obj, edits, requested, t.Model),
+			r.Header)
 		stream := err == nil && c.stream && resp.StatusCode == http.StatusOK && isEventStream(resp.Header)
 		var data []byte
 		if err == nil && !stream {
@@ -269,17 +273,45 @@ func (g *Gateway) forward(ctx context.Context, c *call, r *http.Request, obj *ob
 	return nil // the last target always returns
 }
 
-// withModel returns the request body with the edits, and with the model
-// name of a target when it differs from the requested one.
-func withModel(obj *object, edits map[string][]byte, requested, model string) []byte {
+// upstreamBody returns the request body for a target that serves model:
+// with the edits, and with the target's model name where the body names
+// the model and it differs from the requested one. Gemini names the model
+// in the path, except in each request of a batch.
+func (c *call) upstreamBody(obj *object, edits map[string][]byte, requested, model string) []byte {
 	if model != requested {
-		edits = maps.Clone(edits)
-		edits["model"], _ = json.Marshal(model) // a string always marshals
+		switch {
+		case c.family != usage.Gemini:
+			edits = maps.Clone(edits)
+			edits["model"], _ = json.Marshal(model) // a string always marshals
+		case c.ep == GeminiBatchEmbed:
+			if requests, ok := geminiBatchModels(obj, model); ok {
+				edits = maps.Clone(edits)
+				edits["requests"] = requests
+			}
+		}
 	}
 	if len(edits) == 0 {
 		return obj.body
 	}
 	return obj.with(edits)
+}
+
+// geminiBatchModels returns the requests of a batchEmbedContents body, each
+// naming model, as Gemini wants them to name the model of the path.
+func geminiBatchModels(obj *object, model string) ([]byte, bool) {
+	raw, ok := obj.raw("requests")
+	var requests []map[string]json.RawMessage
+	if !ok || json.Unmarshal(raw, &requests) != nil {
+		return nil, false
+	}
+	name, _ := json.Marshal("models/" + model) // a string always marshals
+	for _, r := range requests {
+		if r != nil {
+			r["model"] = name
+		}
+	}
+	out, err := json.Marshal(requests)
+	return out, err == nil
 }
 
 // statusOf describes the outcome of an upstream call for a log.
@@ -318,8 +350,11 @@ func allowed(patterns []string, model string) bool {
 }
 
 func providerType(f usage.Family) string {
-	if f == usage.Anthropic {
+	switch f {
+	case usage.Anthropic:
 		return config.TypeAnthropic
+	case usage.Gemini:
+		return config.TypeGemini
 	}
 	return config.TypeOpenAI
 }
@@ -364,9 +399,17 @@ type request struct {
 	streamOptions map[string]json.RawMessage
 }
 
-func readRequest(ep Endpoint, o *object) (request, *apiError) {
+func readRequest(c *call, o *object, r *http.Request) (request, *apiError) {
+	ep := c.ep
 	bad := func(msg string) (request, *apiError) {
 		return request{}, &apiError{http.StatusBadRequest, codeInvalidRequest, msg}
+	}
+	if ep.Family == usage.Gemini {
+		if ep == GeminiStream && r.URL.Query().Get("alt") != "sse" {
+			return bad("Add ?alt=sse to stream: the gateway streams Gemini responses as server-sent events, " +
+				"as the Google Gen AI SDKs ask for them.")
+		}
+		return request{model: c.pathModel, stream: ep == GeminiStream}, nil
 	}
 	var req request
 	raw, ok := o.raw("model")

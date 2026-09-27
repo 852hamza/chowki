@@ -3,6 +3,7 @@ package pipeline
 import (
 	"encoding/json"
 	"net/http"
+	"strings"
 
 	"github.com/852hamza/chowki/internal/usage"
 )
@@ -38,6 +39,14 @@ const (
 func writeError(w http.ResponseWriter, f usage.Family, requestID string, e apiError) {
 	var body any
 	switch f {
+	case usage.Gemini:
+		// The Google API error model, https://google.aip.dev/193, with the
+		// gateway's code as the reason of an ErrorInfo.
+		body = map[string]any{"error": map[string]any{
+			"code": e.Status, "message": e.Message, "status": grpcStatus(e.Status),
+			"details": []any{map[string]any{"@type": "type.googleapis.com/google.rpc.ErrorInfo",
+				"reason": strings.ToUpper(e.Code), "domain": "chowki"}},
+		}}
 	case usage.Anthropic:
 		// https://platform.claude.com/docs/en/api/errors
 		body = map[string]any{
@@ -69,6 +78,30 @@ func openAIType(status int) string {
 	default:
 		return "invalid_request_error"
 	}
+}
+
+// grpcStatus maps a status to the google.rpc.Code that Google APIs send
+// with it, following the HTTP mapping in google/rpc/code.proto.
+func grpcStatus(status int) string {
+	switch status {
+	case http.StatusBadRequest, http.StatusRequestEntityTooLarge:
+		return "INVALID_ARGUMENT"
+	case http.StatusUnauthorized:
+		return "UNAUTHENTICATED"
+	case http.StatusForbidden:
+		return "PERMISSION_DENIED"
+	case http.StatusNotFound:
+		return "NOT_FOUND"
+	case http.StatusTooManyRequests:
+		return "RESOURCE_EXHAUSTED"
+	case http.StatusBadGateway, http.StatusServiceUnavailable:
+		return "UNAVAILABLE"
+	case http.StatusGatewayTimeout:
+		return "DEADLINE_EXCEEDED"
+	case http.StatusInternalServerError:
+		return "INTERNAL"
+	}
+	return "UNKNOWN"
 }
 
 // anthropicType maps a status to the error types that Anthropic documents.

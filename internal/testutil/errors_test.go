@@ -61,7 +61,7 @@ func TestErrors(t *testing.T) {
 			[]string{`"status":"INVALID_ARGUMENT"`, `x-goog-api-key`}},
 		{"gemini stream without alt=sse", NewGemini, Config{}, "/v1beta/models/gemini-test:streamGenerateContent",
 			nil, geminiBody, 400, []string{`alt=sse`}},
-		{"gemini unknown method", NewGemini, Config{}, "/v1beta/models/gemini-test:countTokens", nil, geminiBody, 404,
+		{"gemini unknown method", NewGemini, Config{}, "/v1beta/models/gemini-test:predict", nil, geminiBody, 404,
 			[]string{`"status":"NOT_FOUND"`}},
 		{"gemini missing contents", NewGemini, Config{}, generate, nil, `{}`, 400,
 			[]string{`contents is not specified`}},
