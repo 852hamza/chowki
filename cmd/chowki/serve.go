@@ -22,6 +22,7 @@ import (
 	"github.com/852hamza/chowki/internal/config"
 	"github.com/852hamza/chowki/internal/netguard"
 	"github.com/852hamza/chowki/internal/pipeline"
+	"github.com/852hamza/chowki/internal/promptcache"
 	"github.com/852hamza/chowki/internal/providers"
 	"github.com/852hamza/chowki/internal/ratelimit"
 	"github.com/852hamza/chowki/internal/secretbox"
@@ -132,6 +133,9 @@ func serve(ctx context.Context, configPath string, ln net.Listener, logOut io.Wr
 		Store: st, Requests: requests, Cache: responses, Limits: ratelimit.New(), Budgets: budgets,
 		Providers: ps, Catalog: cat, Logger: logger,
 		MaxBody: int64(cfg.Server.MaxBodyMB) << 20, Timeout: cfg.Server.UpstreamTimeout,
+	}
+	if cfg.Defaults.PromptCache == "auto" {
+		gw.PromptCache = promptcache.New()
 	}
 	logger.Info("chowki started", "version", buildinfo.Version(), "providers", names, "priced_models", cat.Len())
 	return server.Run(ctx, ln, server.Routes(gw), logger)

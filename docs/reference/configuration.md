@@ -189,6 +189,20 @@ over this default. See [Cache responses](../how-to/cache-responses.md).
 
 How long the exact cache serves a response after it was stored.
 
+## `defaults.prompt_cache`
+
+| | |
+|---|---|
+| Type | String |
+| Default | `auto` |
+| Allowed values | `auto`, `off` |
+| Environment variable | `CHOWKI_DEFAULTS_PROMPT_CACHE` |
+| Since | v0.1 |
+
+Whether Chowki marks the prompt prefix of Anthropic requests for the provider's prompt cache when
+the same tools and system prompt repeat. `off` forwards every request as the client sent it. See
+[Use Anthropic prompt caching](../how-to/anthropic-prompt-caching.md).
+
 ## `providers`
 
 | | |

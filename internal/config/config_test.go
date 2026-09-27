@@ -39,6 +39,7 @@ retention_days: 30
 defaults:
   cache: exact
   cache_ttl: 10m
+  prompt_cache: "off"
 providers:
   - name: openai
     type: openai
@@ -80,7 +81,7 @@ func TestParseFile(t *testing.T) {
 		Security:      Security{MasterKeyFile: "/etc/chowki/master.key", AllowPrivateUpstreams: false},
 		Log:           Log{Level: "debug"},
 		RetentionDays: 30,
-		Defaults:      Defaults{Cache: "exact", CacheTTL: 10 * time.Minute},
+		Defaults:      Defaults{Cache: "exact", CacheTTL: 10 * time.Minute, PromptCache: "off"},
 		Providers: []Provider{
 			{Name: "openai", Type: TypeOpenAI, BaseURL: "https://api.openai.com/v1", APIKeyEnv: "OPENAI_API_KEY",
 				APIKey: "sk-EXAMPLE-openai"},
@@ -125,6 +126,7 @@ func TestEnvVars(t *testing.T) {
 		"CHOWKI_STORAGE_DRIVER", "CHOWKI_STORAGE_DSN", "CHOWKI_STORAGE_CACHE_MAX_MB",
 		"CHOWKI_SECURITY_MASTER_KEY_FILE", "CHOWKI_SECURITY_ALLOW_PRIVATE_UPSTREAMS",
 		"CHOWKI_LOG_LEVEL", "CHOWKI_RETENTION_DAYS", "CHOWKI_DEFAULTS_CACHE", "CHOWKI_DEFAULTS_CACHE_TTL",
+		"CHOWKI_DEFAULTS_PROMPT_CACHE",
 	}
 	if got := EnvVars(); !reflect.DeepEqual(got, want) {
 		t.Errorf("EnvVars() = %q, want %q", got, want)
@@ -150,8 +152,9 @@ func TestParseErrors(t *testing.T) {
 		{"storage", "storage:\n  driver: postgres\n  dsn: \"\"\n", nil, []string{"storage.driver", "storage.dsn"}},
 		{"timeout", "server:\n  upstream_timeout: -1s\n", nil, []string{"server.upstream_timeout"}},
 		{"master key file", "security:\n  master_key_file: \"\"\n", nil, []string{"security.master_key_file"}},
-		{"cache", "storage:\n  cache_max_mb: -1\ndefaults:\n  cache: always\n  cache_ttl: 0s\n", nil,
-			[]string{"storage.cache_max_mb", "defaults.cache: must be off or exact", "defaults.cache_ttl"}},
+		{"cache", "storage:\n  cache_max_mb: -1\ndefaults:\n  cache: always\n  cache_ttl: 0s\n  prompt_cache: on\n",
+			nil, []string{"storage.cache_max_mb", "defaults.cache: must be off or exact", "defaults.cache_ttl",
+				"defaults.prompt_cache: must be auto or off"}},
 		{"provider name", strings.Replace(provider(""), "name: p", "name: Open/AI", 1), nil,
 			[]string{"providers[0].name"}},
 		{"duplicate provider", provider("") + "  - name: p\n    type: openai\n    base_url: https://x.example.com\n", nil,

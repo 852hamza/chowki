@@ -22,6 +22,7 @@ import (
 	"github.com/852hamza/chowki/internal/cache"
 	"github.com/852hamza/chowki/internal/catalog"
 	"github.com/852hamza/chowki/internal/config"
+	"github.com/852hamza/chowki/internal/promptcache"
 	"github.com/852hamza/chowki/internal/providers"
 	"github.com/852hamza/chowki/internal/ratelimit"
 	"github.com/852hamza/chowki/internal/sse"
@@ -47,14 +48,17 @@ const maxResponse = 64 << 20
 // within the key's rate limits and budgets, relays the response and
 // records the request's metadata, usage and cost.
 type Gateway struct {
-	Store     store.Store
-	Requests  *store.RequestLog
-	Cache     *cache.Cache
-	Limits    *ratelimit.Limiter
-	Budgets   *budget.Tracker
-	Providers map[string]*providers.Provider
-	Catalog   *catalog.Catalog
-	Logger    *slog.Logger
+	Store    store.Store
+	Requests *store.RequestLog
+	Cache    *cache.Cache
+	Limits   *ratelimit.Limiter
+	Budgets  *budget.Tracker
+	// PromptCache marks repeated Anthropic prompt prefixes for caching;
+	// nil leaves requests as clients send them.
+	PromptCache *promptcache.Optimizer
+	Providers   map[string]*providers.Provider
+	Catalog     *catalog.Catalog
+	Logger      *slog.Logger
 	// MaxBody is the largest request body, in bytes.
 	MaxBody int64
 	// Timeout limits each upstream call, streams included.
@@ -95,6 +99,7 @@ type call struct {
 	cache    string            // the cache status; empty before the cache
 	cacheKey [32]byte          // for a miss, where relayBody stores the response
 	savedUSD *float64          // for a hit, what the original request cost
+	marked   bool              // the prompt-cache optimizer added a breakpoint
 }
 
 func (g *Gateway) serve(w http.ResponseWriter, r *http.Request, f usage.Family) {
@@ -166,6 +171,11 @@ func (g *Gateway) handle(ctx context.Context, c *call, r *http.Request) *apiErro
 	if dropUsage {
 		req.streamOptions["include_usage"] = json.RawMessage("true")
 		edits["stream_options"], _ = json.Marshal(req.streamOptions) // raw JSON values always marshal
+	}
+	if c.family == usage.Anthropic && g.PromptCache != nil {
+		if field, value, ok := g.PromptCache.Breakpoint(g.prefix(c, obj, body), time.Now()); ok {
+			edits[field], c.marked = value, true
+		}
 	}
 	if len(edits) > 0 {
 		body = obj.with(edits)
@@ -303,6 +313,20 @@ func (g *Gateway) useCache(ctx context.Context, c *call, r *http.Request, body [
 		}
 	}
 	return nil
+}
+
+// prefix returns what the prompt-cache optimizer reads from an Anthropic
+// request.
+func (g *Gateway) prefix(c *call, obj *object, body []byte) promptcache.Request {
+	r := promptcache.Request{Provider: c.provider.Name, Model: c.model, Body: body}
+	if m, ok := g.Catalog.Find(c.provider.Name, c.model); ok {
+		r.MinTokens = m.MinCacheableTokens
+	}
+	r.System, _ = obj.raw("system")
+	r.Tools, _ = obj.raw("tools")
+	r.ToolChoice, _ = obj.raw("tool_choice")
+	r.Thinking, _ = obj.raw("thinking")
+	return r
 }
 
 // admit checks the key's limit of tokens per minute and the budgets of the
@@ -559,6 +583,9 @@ func (g *Gateway) finish(c *call) {
 		"ttfb_ms", ttfb.Milliseconds())
 	if c.cache != "" {
 		attrs = append(attrs, "cache", c.cache)
+	}
+	if c.marked {
+		attrs = append(attrs, "prompt_cache_breakpoint", true)
 	}
 	if t := rec.Tokens; t != nil {
 		attrs = append(attrs, "input_tokens", t.Input, "output_tokens", t.Output, "cache_read_tokens", t.CacheRead,

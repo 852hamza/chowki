@@ -59,13 +59,16 @@ type Security struct {
 	AllowPrivateUpstreams bool `yaml:"allow_private_upstreams"`
 }
 
-// Defaults are the settings of virtual keys that don't have their own.
+// Defaults are request settings; a virtual key can override some of them.
 type Defaults struct {
 	// Cache is off or exact: whether non-streaming requests use the exact
 	// response cache.
 	Cache string `yaml:"cache"`
 	// CacheTTL is how long the exact cache serves a response.
 	CacheTTL time.Duration `yaml:"cache_ttl"`
+	// PromptCache is auto or off: whether Chowki adds a prompt-cache
+	// breakpoint to Anthropic requests whose prefix repeats.
+	PromptCache string `yaml:"prompt_cache"`
 }
 
 // Log configures logging.
@@ -107,7 +110,7 @@ func Default() Config {
 		Security:      Security{MasterKeyFile: ".chowki/master.key", AllowPrivateUpstreams: true},
 		Log:           Log{Level: "info"},
 		RetentionDays: 90,
-		Defaults:      Defaults{Cache: "off", CacheTTL: time.Hour},
+		Defaults:      Defaults{Cache: "off", CacheTTL: time.Hour, PromptCache: "auto"},
 	}
 }
 
@@ -194,6 +197,9 @@ func (c *Config) validate() error {
 	}
 	if c.Defaults.CacheTTL <= 0 {
 		add("defaults.cache_ttl", "must be positive, such as 1h")
+	}
+	if c.Defaults.PromptCache != "auto" && c.Defaults.PromptCache != "off" {
+		add("defaults.prompt_cache", "must be auto or off")
 	}
 
 	guard := netguard.Policy{AllowPrivate: c.Security.AllowPrivateUpstreams}

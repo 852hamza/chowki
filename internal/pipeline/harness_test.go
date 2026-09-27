@@ -39,7 +39,7 @@ const (
 const testCatalog = `{"models":[
  {"provider":"openai","model":"gpt-test","price":{"input":2,"output":10,"cache_read":0.2,"cache_write":2.5},
   "source":"https://example.com/pricing","updated":"2026-09-27"},
- {"provider":"anthropic","model":"claude-test","price":{"input":4,"output":20,"cache_read":0.2,"cache_write":5,
+ {"provider":"anthropic","model":"claude-test","min_cacheable_tokens":512,"price":{"input":4,"output":20,"cache_read":0.2,"cache_write":5,
   "cache_write_1h":8},"source":"https://example.com/pricing","updated":"2026-09-27"}]}`
 
 // recordingStore captures the request records that the gateway saves.
