@@ -96,6 +96,20 @@ Where the database is. For SQLite, a file path, relative to the folder where Cho
 optional `file:` prefix. Chowki creates the file and its folder, readable only by the user that
 runs Chowki.
 
+## `storage.cache_max_mb`
+
+| | |
+|---|---|
+| Type | Integer, in MiB |
+| Default | `256` |
+| Allowed values | 0 to 1048576 |
+| Environment variable | `CHOWKI_STORAGE_CACHE_MAX_MB` |
+| Since | v0.1 |
+
+The largest total size of the responses in the exact cache. When the cache grows past it, Chowki
+deletes the least recently used responses. `0` turns the cache off for every key. See
+[Cache responses](../how-to/cache-responses.md).
+
 ## `security.master_key_file`
 
 | | |
@@ -147,6 +161,33 @@ responses or keys.
 
 How many days Chowki keeps request metadata. It deletes older records when it starts and once a
 day.
+
+## `defaults.cache`
+
+| | |
+|---|---|
+| Type | String |
+| Default | `off` |
+| Allowed values | `off`, `exact` |
+| Environment variable | `CHOWKI_DEFAULTS_CACHE` |
+| Since | v0.1 |
+
+Whether the non-streaming requests of virtual keys without their own cache setting use the exact
+cache. `exact` answers a request that is identical to an earlier one with the stored response,
+without calling the provider. A key's own setting, and a request's `x-chowki-cache` header, win
+over this default. See [Cache responses](../how-to/cache-responses.md).
+
+## `defaults.cache_ttl`
+
+| | |
+|---|---|
+| Type | Duration, such as `30m` or `1h` |
+| Default | `1h` |
+| Allowed values | More than 0 |
+| Environment variable | `CHOWKI_DEFAULTS_CACHE_TTL` |
+| Since | v0.1 |
+
+How long the exact cache serves a response after it was stored.
 
 ## `providers`
 

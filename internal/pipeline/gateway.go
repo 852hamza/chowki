@@ -19,6 +19,7 @@ import (
 
 	"github.com/852hamza/chowki/internal/auth"
 	"github.com/852hamza/chowki/internal/budget"
+	"github.com/852hamza/chowki/internal/cache"
 	"github.com/852hamza/chowki/internal/catalog"
 	"github.com/852hamza/chowki/internal/config"
 	"github.com/852hamza/chowki/internal/providers"
@@ -33,18 +34,22 @@ const (
 	RequestIDHeader = "x-chowki-request-id"
 	// CostHeader carries the cost of a priced, non-streaming request in USD.
 	CostHeader = "x-chowki-cost-usd"
+	// CacheHeader says whether the exact cache answered a request: hit, miss
+	// or bypass. In a request, "on" or "off" overrides the key's setting.
+	CacheHeader = "x-chowki-cache"
 )
 
 // maxResponse limits a non-streaming response that the gateway reads.
 const maxResponse = 64 << 20
 
 // Gateway serves the API endpoints: it authenticates each request with a
-// virtual key, routes it to a provider within the key's rate limits and
-// budgets, relays the response and records the request's metadata, usage
-// and cost.
+// virtual key, answers it from the exact cache or routes it to a provider
+// within the key's rate limits and budgets, relays the response and
+// records the request's metadata, usage and cost.
 type Gateway struct {
 	Store     store.Store
 	Requests  *store.RequestLog
+	Cache     *cache.Cache
 	Limits    *ratelimit.Limiter
 	Budgets   *budget.Tracker
 	Providers map[string]*providers.Provider
@@ -87,6 +92,9 @@ type call struct {
 	report   usage.Report
 	tokens   *ratelimit.Ticket // nil without a limit of tokens per minute
 	ticket   *budget.Ticket    // nil until the budgets admit the request
+	cache    string            // the cache status; empty before the cache
+	cacheKey [32]byte          // for a miss, where relayBody stores the response
+	savedUSD *float64          // for a hit, what the original request cost
 }
 
 func (g *Gateway) serve(w http.ResponseWriter, r *http.Request, f usage.Family) {
@@ -140,6 +148,10 @@ func (g *Gateway) handle(ctx context.Context, c *call, r *http.Request) *apiErro
 		g.Logger.Error("provider key isn't set", "request_id", c.id, "provider", p.Name, "variable", env)
 		return &apiError{http.StatusInternalServerError, codeProviderKeyMissing,
 			fmt.Sprintf("The provider %q has no key; the gateway's admin must set %s.", p.Name, env)}
+	}
+
+	if e := g.useCache(ctx, c, r, body); e != nil || c.cache == cache.StatusHit {
+		return e
 	}
 
 	// Change the body only where needed; everything else reaches the
@@ -257,6 +269,42 @@ func readRequest(f usage.Family, o *object) (request, *apiError) {
 	return req, nil
 }
 
+// useCache answers a request from the exact cache when it can, which also
+// spares it the token limit and the budgets: a hit costs nothing. It sets
+// the request's cache status and its header; for a miss, relayBody stores
+// the response. Only non-streaming requests use the cache.
+func (g *Gateway) useCache(ctx context.Context, c *call, r *http.Request, body []byte) *apiError {
+	header := strings.ToLower(strings.TrimSpace(r.Header.Get(CacheHeader)))
+	if header != "" && header != "on" && header != "off" {
+		return &apiError{http.StatusBadRequest, codeInvalidRequest, `The x-chowki-cache header must be "on" or "off".`}
+	}
+	c.cache = cache.StatusBypass
+	var hit cache.Response
+	if !c.stream && g.Cache.On(c.key.CacheMode, header) {
+		key, err := cache.Key(cache.Request{Family: string(c.family), Endpoint: endpointPath(c.family),
+			Provider: c.provider.Name, Model: c.model, Project: c.key.ProjectID,
+			Headers: providers.Forwarded(r.Header), Body: body})
+		if err == nil { // the body parsed already, so it always does
+			var ok bool
+			if hit, ok = g.Cache.Get(ctx, key, time.Now()); ok {
+				c.cache, c.savedUSD = cache.StatusHit, hit.CostUSD
+			} else {
+				c.cache, c.cacheKey = cache.StatusMiss, key
+			}
+		}
+	}
+	c.w.Header().Set(CacheHeader, c.cache)
+	if c.cache == cache.StatusHit {
+		c.w.Header().Set("Content-Type", hit.ContentType)
+		c.w.Header().Set(CostHeader, fmt.Sprintf("%.8f", 0.0))
+		c.w.WriteHeader(http.StatusOK)
+		if _, err := c.w.Write(hit.Body); err != nil {
+			c.errType = "client_closed"
+		}
+	}
+	return nil
+}
+
 // admit checks the key's limit of tokens per minute and the budgets of the
 // key and its project. The request holds its estimated input tokens and
 // their cost until finish settles what it actually used, so that parallel
@@ -366,11 +414,12 @@ func (g *Gateway) relayBody(c *call, resp *http.Response) *apiError {
 			fmt.Sprintf("The response of the provider %q couldn't be read.", c.provider.Name)}
 	}
 	copyHeaders(c.w.Header(), resp.Header)
+	var cost usage.Cost
 	if resp.StatusCode == http.StatusOK {
 		if rep, err := usage.ParseResponse(c.family, data); err == nil {
 			c.report = rep
 		}
-		if cost := g.cost(c); cost.USD != nil {
+		if cost = g.cost(c); cost.USD != nil {
 			c.w.Header().Set(CostHeader, fmt.Sprintf("%.8f", *cost.USD))
 		}
 	} else {
@@ -379,6 +428,10 @@ func (g *Gateway) relayBody(c *call, resp *http.Response) *apiError {
 	c.w.WriteHeader(resp.StatusCode)
 	if _, err := c.w.Write(data); err != nil {
 		c.errType = "client_closed"
+	}
+	if c.cache == cache.StatusMiss && resp.StatusCode == http.StatusOK {
+		g.Cache.Put(c.cacheKey, cache.Response{Body: data, ContentType: resp.Header.Get("Content-Type"),
+			CostUSD: cost.USD}, time.Now())
 	}
 	return nil
 }
@@ -485,7 +538,11 @@ func (g *Gateway) finish(c *call) {
 			CacheWrite: u.CacheWrite, Reasoning: u.Reasoning}
 	}
 	cost := g.cost(c)
+	if c.cache == cache.StatusHit {
+		cost = hitCost(c.savedUSD)
+	}
 	rec.CostUSD, rec.SavingsUSD, rec.SavingsMethod = cost.USD, cost.SavingsUSD, cost.SavingsMethod
+	rec.CacheStatus = c.cache
 	g.Requests.Add(rec)
 	var spent float64 // an unpriced request counts as free: its cost is unknown
 	if cost.USD != nil {
@@ -500,6 +557,9 @@ func (g *Gateway) finish(c *call) {
 
 	attrs = append(attrs, "key_id", c.key.ID, "provider", rec.Provider, "model", rec.Model, "stream", c.stream,
 		"ttfb_ms", ttfb.Milliseconds())
+	if c.cache != "" {
+		attrs = append(attrs, "cache", c.cache)
+	}
 	if t := rec.Tokens; t != nil {
 		attrs = append(attrs, "input_tokens", t.Input, "output_tokens", t.Output, "cache_read_tokens", t.CacheRead,
 			"cache_write_tokens", t.CacheWrite)
@@ -510,6 +570,17 @@ func (g *Gateway) finish(c *call) {
 		attrs = append(attrs, "unpriced", cost.Reason)
 	}
 	g.Logger.Info("request", attrs...)
+}
+
+// hitCost is the cost of an answer from the exact cache: nothing, and it
+// saves what the original request cost, when that is known.
+func hitCost(original *float64) usage.Cost {
+	free := 0.0
+	cost := usage.Cost{USD: &free, SavingsMethod: usage.SavingsExactCache}
+	if original != nil {
+		cost.SavingsUSD = *original
+	}
+	return cost
 }
 
 func endpointPath(f usage.Family) string {

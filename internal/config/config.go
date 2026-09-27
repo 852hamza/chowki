@@ -24,6 +24,7 @@ type Config struct {
 	Security      Security   `yaml:"security"`
 	Log           Log        `yaml:"log"`
 	RetentionDays int        `yaml:"retention_days"`
+	Defaults      Defaults   `yaml:"defaults"`
 	Providers     []Provider `yaml:"providers"`
 }
 
@@ -43,6 +44,9 @@ type Storage struct {
 	Driver string `yaml:"driver"`
 	// DSN locates the database, such as "file:data/chowki.db".
 	DSN string `yaml:"dsn"`
+	// CacheMaxMB limits the size of the exact response cache, in MiB; 0
+	// turns the cache off.
+	CacheMaxMB int `yaml:"cache_max_mb"`
 }
 
 // Security configures keys and network access.
@@ -53,6 +57,15 @@ type Security struct {
 	// AllowPrivateUpstreams allows provider base URLs on loopback and
 	// private networks, such as a local Ollama server.
 	AllowPrivateUpstreams bool `yaml:"allow_private_upstreams"`
+}
+
+// Defaults are the settings of virtual keys that don't have their own.
+type Defaults struct {
+	// Cache is off or exact: whether non-streaming requests use the exact
+	// response cache.
+	Cache string `yaml:"cache"`
+	// CacheTTL is how long the exact cache serves a response.
+	CacheTTL time.Duration `yaml:"cache_ttl"`
 }
 
 // Log configures logging.
@@ -90,10 +103,11 @@ const (
 func Default() Config {
 	return Config{
 		Server:        Server{Listen: ":8080", MaxBodyMB: 20, UpstreamTimeout: 10 * time.Minute},
-		Storage:       Storage{Driver: "sqlite", DSN: "file:data/chowki.db"},
+		Storage:       Storage{Driver: "sqlite", DSN: "file:data/chowki.db", CacheMaxMB: 256},
 		Security:      Security{MasterKeyFile: ".chowki/master.key", AllowPrivateUpstreams: true},
 		Log:           Log{Level: "info"},
 		RetentionDays: 90,
+		Defaults:      Defaults{Cache: "off", CacheTTL: time.Hour},
 	}
 }
 
@@ -163,6 +177,9 @@ func (c *Config) validate() error {
 	if c.Storage.DSN == "" {
 		add("storage.dsn", "must not be empty")
 	}
+	if c.Storage.CacheMaxMB < 0 || c.Storage.CacheMaxMB > 1<<20 {
+		add("storage.cache_max_mb", "must be between 0, which turns the cache off, and 1048576")
+	}
 	if c.Security.MasterKeyFile == "" {
 		add("security.master_key_file", "must not be empty")
 	}
@@ -171,6 +188,12 @@ func (c *Config) validate() error {
 	}
 	if c.RetentionDays < 1 {
 		add("retention_days", "must be at least 1")
+	}
+	if c.Defaults.Cache != "off" && c.Defaults.Cache != "exact" {
+		add("defaults.cache", "must be off or exact")
+	}
+	if c.Defaults.CacheTTL <= 0 {
+		add("defaults.cache_ttl", "must be positive, such as 1h")
 	}
 
 	guard := netguard.Policy{AllowPrivate: c.Security.AllowPrivateUpstreams}

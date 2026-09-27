@@ -4,8 +4,13 @@ import (
 	"github.com/852hamza/chowki/internal/catalog"
 )
 
-// SavingsPromptCache is the savings method of provider prompt caching.
-const SavingsPromptCache = "prompt_cache"
+// Savings methods.
+const (
+	// SavingsPromptCache is provider prompt caching.
+	SavingsPromptCache = "prompt_cache"
+	// SavingsExactCache is Chowki's exact response cache.
+	SavingsExactCache = "exact_cache"
+)
 
 // Cost is the price of one request.
 type Cost struct {

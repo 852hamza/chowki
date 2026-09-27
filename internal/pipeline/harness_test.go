@@ -15,12 +15,14 @@ import (
 
 	"github.com/852hamza/chowki/internal/auth"
 	"github.com/852hamza/chowki/internal/budget"
+	"github.com/852hamza/chowki/internal/cache"
 	"github.com/852hamza/chowki/internal/catalog"
 	"github.com/852hamza/chowki/internal/config"
 	"github.com/852hamza/chowki/internal/netguard"
 	"github.com/852hamza/chowki/internal/pipeline"
 	"github.com/852hamza/chowki/internal/providers"
 	"github.com/852hamza/chowki/internal/ratelimit"
+	"github.com/852hamza/chowki/internal/secretbox"
 	"github.com/852hamza/chowki/internal/server"
 	"github.com/852hamza/chowki/internal/store"
 	"github.com/852hamza/chowki/internal/testutil"
@@ -78,6 +80,7 @@ type harness struct {
 	gw        *pipeline.Gateway
 	url       string
 	key       string // a valid virtual key
+	dbPath    string
 	st        *recordingStore
 	logs      *syncBuffer
 	openai    *testutil.Server
@@ -92,7 +95,8 @@ func newHarness(t testing.TB, oa, an testutil.Config, opts ...option) *harness {
 	oa.APIKey, an.APIKey = openAIKey, anthropicKey
 	h := &harness{t: t, openai: testutil.NewOpenAI(t, oa), anthropic: testutil.NewAnthropic(t, an), logs: &syncBuffer{}}
 
-	sq, err := store.OpenSQLite(t.Context(), "file:"+filepath.Join(t.TempDir(), "chowki.db"))
+	h.dbPath = filepath.Join(t.TempDir(), "chowki.db")
+	sq, err := store.OpenSQLite(t.Context(), "file:"+h.dbPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -109,8 +113,8 @@ func newHarness(t testing.TB, oa, an testutil.Config, opts ...option) *harness {
 	if err != nil {
 		t.Fatal(err)
 	}
-	h.gw = &pipeline.Gateway{Store: h.st, Limits: ratelimit.New(), Budgets: budgets, Catalog: cat, Logger: logger,
-		MaxBody: 1 << 20, Timeout: 10 * time.Second}
+	h.gw = &pipeline.Gateway{Store: h.st, Cache: h.openCache(logger), Limits: ratelimit.New(), Budgets: budgets,
+		Catalog: cat, Logger: logger, MaxBody: 1 << 20, Timeout: 10 * time.Second}
 	cfgs := []config.Provider{
 		{Name: "openai", Type: config.TypeOpenAI, BaseURL: h.openai.URL + "/v1", APIKeyEnv: "OPENAI_API_KEY", APIKey: openAIKey},
 		{Name: "anthropic", Type: config.TypeAnthropic, BaseURL: h.anthropic.URL, APIKeyEnv: "ANTHROPIC_API_KEY",
@@ -133,12 +137,29 @@ func newHarness(t testing.TB, oa, an testutil.Config, opts ...option) *harness {
 	return h
 }
 
-// flush saves the queued request records. The harness takes no more
-// requests after it.
+// openCache returns an exact cache on the harness's database, off unless a
+// key or a request turns it on.
+func (h *harness) openCache(logger *slog.Logger) *cache.Cache {
+	h.t.Helper()
+	box, err := secretbox.New(bytes.Repeat([]byte{7}, secretbox.KeySize), "cache")
+	if err != nil {
+		h.t.Fatal(err)
+	}
+	c, err := cache.New(context.Background(), h.st, box, cache.Options{Default: cache.ModeOff, TTL: time.Hour,
+		MaxBytes: 1 << 20}, logger)
+	if err != nil {
+		h.t.Fatal(err)
+	}
+	return c
+}
+
+// flush saves the queued request records and cache entries. The harness
+// takes no more requests after it.
 func (h *harness) flush() {
 	if !h.closed {
 		h.closed = true
 		h.gw.Requests.Close()
+		h.gw.Cache.Close()
 	}
 }
 
@@ -149,6 +170,7 @@ func (h *harness) restart() {
 	h.flush()
 	gw := *h.gw
 	gw.Limits = ratelimit.New()
+	gw.Cache = h.openCache(gw.Logger)
 	var err error
 	if gw.Budgets, err = budget.Load(context.Background(), h.st, time.Now(), gw.Logger); err != nil {
 		h.t.Fatal(err)

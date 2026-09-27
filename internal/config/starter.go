@@ -21,6 +21,7 @@ server:
 storage:
   driver: sqlite
   dsn: "file:data/chowki.db"
+  cache_max_mb: 256        # size of the exact response cache, in MiB; 0 turns the cache off
 
 security:
   master_key_file: ".chowki/master.key"   # created by chowki init; keep it private
@@ -30,6 +31,11 @@ log:
   level: info              # debug, info, warn or error
 
 retention_days: 90         # days to keep request metadata
+
+# Settings of virtual keys that don't have their own.
+defaults:
+  cache: off               # off or exact: answer repeated non-streaming requests from the cache
+  cache_ttl: 1h            # how long a cached answer is reused
 
 # The providers that Chowki forwards requests to. Keys never go in this file:
 # api_key_env names the environment variable, or .env entry, that holds each key.
