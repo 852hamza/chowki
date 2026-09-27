@@ -54,6 +54,8 @@ make build
   Gen AI SDKs through Chowki.
 - [Call Anthropic and Gemini models with OpenAI SDKs](docs/how-to/call-any-model-with-openai-sdks.md):
   use any provider's models from OpenAI-format clients.
+- [Connect OpenAI-compatible providers](docs/how-to/connect-openai-compatible-providers.md): add
+  DeepSeek, xAI, Mistral, Groq, OpenRouter and others.
 - [Use the dashboard](docs/how-to/use-the-dashboard.md): see spend, savings, redactions and
   budgets in a browser.
 - [API reference](docs/reference/api.md): endpoints, headers and error codes.

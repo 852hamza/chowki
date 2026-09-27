@@ -95,5 +95,8 @@ All notable changes to Chowki are recorded in this file. The format is based on
   `GET /v1/models` lists their models.
 - The model catalog lists each model's context window, maximum output and capabilities: tools,
   vision, JSON output, caching and thinking.
+- A guide to DeepSeek, xAI, Mistral, Groq and OpenRouter as providers, with their base URLs.
+  Usage from xAI, whose completion tokens exclude reasoning, now counts the reasoning as output,
+  and Groq's usage in `x_groq` counts in streams.
 
 [Unreleased]: https://github.com/852hamza/chowki/commits/main
