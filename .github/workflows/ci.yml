@@ -26,6 +26,8 @@ jobs:
           go-version-file: go.mod
           check-latest: true
           cache-dependency-path: go.mod
+      # The downloaded modules match go.sum, so no dependency changed in transit.
+      - run: go mod verify
       - run: make build
       - run: ./bin/chowki version
       - run: go vet ./...
