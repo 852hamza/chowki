@@ -122,5 +122,8 @@ All notable changes to Chowki are recorded in this file. The format is based on
 - A CLI reference, and summaries in the configuration, metrics and API references, generated from
   the code; `make docs` rewrites them, and the tests fail while they're out of date. Every command
   prints its usage with `--help`.
+- `make loadtest` measures the gateway's overhead at 200 requests per second on 2 CPUs, against a
+  fake provider, and fails when the p99 is over 25 ms or a gateway built with `-race` reports a
+  race.
 
 [Unreleased]: https://github.com/852hamza/chowki/commits/main
