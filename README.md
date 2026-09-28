@@ -43,6 +43,8 @@ make build
 - [Install Chowki](docs/get-started/install.md): run it with Docker Compose or Docker, or build it
   from source.
 - [Manage virtual keys](docs/how-to/manage-virtual-keys.md): create, list and revoke keys.
+- [Store provider keys in Chowki](docs/how-to/manage-provider-keys.md): keep provider keys in the
+  database, encrypted, instead of in environment variables.
 - [Set monthly budgets](docs/how-to/set-budgets.md): limit what a key or a project spends each
   month.
 - [Set rate limits](docs/how-to/set-rate-limits.md): limit a key's requests and tokens per minute.

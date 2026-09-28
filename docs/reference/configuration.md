@@ -21,8 +21,9 @@ Chowki builds its configuration in this order, and a later source wins:
 Chowki also reads a `.env` file from the folder where it runs. Variables that are set in the real
 environment win over `.env`.
 
-An unknown setting in `chowki.yaml`, such as a misspelled name, is an error. So is a provider key in
-the file: keys come only from environment variables.
+An unknown setting in `chowki.yaml`, such as a misspelled name, is an error. So is a provider key
+in the file: keys come from environment variables, or from the database, where
+[`chowki provider set-key`](../how-to/manage-provider-keys.md) stores them encrypted.
 
 <!-- Written by hand for now; a test checks that it lists every environment variable. -->
 
@@ -233,7 +234,7 @@ The APIs that Chowki forwards requests to. Each provider has these fields:
 | `name` | Yes | A unique name of lowercase letters, digits, `-` and `_`. Clients name a provider in the model, such as `openai/gpt-6-luna`. |
 | `type` | Yes | The API the provider speaks: `openai` for OpenAI and every OpenAI-compatible API, `anthropic`, or `gemini`. |
 | `base_url` | Yes | The API's base URL, as its SDKs use it: with `/v1` for OpenAI-compatible APIs, without a version for Anthropic and Gemini. |
-| `api_key_env` | No | The environment variable, or `.env` entry, that holds the provider key. Leave it out for a provider that needs no key, such as a local Ollama server. |
+| `api_key_env` | No | The environment variable, or `.env` entry, that holds the provider key. When it isn't set, Chowki uses the key that `chowki provider set-key` stored, if any. Leave it out for a provider that needs no key, such as a local Ollama server. |
 | `free_tier` | No | `true` when the provider doesn't bill your requests, such as on the free tier of the Gemini API. Chowki then records their cost as $0, and they spend no budget. Default `false`. |
 
 Example:

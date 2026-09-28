@@ -35,7 +35,7 @@ it sends no request to a provider.
    warn  provider anthropic  ANTHROPIC_API_KEY isn't set, so its requests fail until it is; 4 models priced
    warn  provider gemini     GEMINI_API_KEY isn't set, so its requests fail until it is; 12 models priced
    ok    catalog             19 models, with prices checked on 2026-09-27 or later
-   ok    database            data/chowki.db, schema version 8, up to date
+   ok    database            data/chowki.db, schema version 9, up to date
    ok    keys                1 active virtual key
    ok    admin tokens        none; chowki admin create --name <NAME> makes one for the dashboard and the admin API
    ok    listen              :8080 is free for chowki serve
@@ -47,8 +47,9 @@ it sends no request to a provider.
 
    - `ok`: nothing to do.
    - `warn`: the gateway runs, but something doesn't work, or isn't safe. Here, requests to
-     Anthropic and Gemini models fail until their keys are set; if you don't use those providers,
-     remove them from `chowki.yaml`.
+     Anthropic and Gemini models fail until their keys are set, in the environment or with
+     [`chowki provider set-key`](manage-provider-keys.md); if you don't use those providers, remove
+     them from `chowki.yaml`.
    - `fail`: `chowki serve` can't start until you fix it.
 
 2. Fix what the lines say, then run `chowki doctor` again.
@@ -65,7 +66,7 @@ it before `chowki serve`.
 | `.env` | The file can't be parsed, or other users can read it. |
 | `config` | The configuration file is missing or invalid. Every problem is listed, each with its setting. |
 | `master key` | The master key is missing, isn't 32 bytes in base64, or other users can read its file. |
-| `provider <NAME>` | The provider's key variable isn't set; its `base_url` sends a key over plain `http` to a host that isn't local; or the catalog has no prices for a provider of that name. |
+| `provider <NAME>` | The provider has no key, from its variable or stored; its stored key doesn't open with the master key; its `base_url` sends a key over plain `http` to a host that isn't local; or the catalog has no prices for a provider of that name. |
 | `catalog` | Some prices were checked more than 90 days ago. A newer Chowki has newer prices. |
 | `database` | The database is newer than this Chowki, is in memory, or other users can read its file. |
 | `keys` | There's no active virtual key, so no app can use the gateway. |
