@@ -66,6 +66,8 @@ const config = {
   themeConfig:
     /** @type {import('@docusaurus/preset-classic').ThemeConfig} */
     ({
+      // The picture that link previews show, such as on LinkedIn or Slack.
+      image: 'img/social-card.png',
       navbar: {
         title: 'Chowki',
         logo: {alt: 'Chowki', src: 'img/icon.svg'},
