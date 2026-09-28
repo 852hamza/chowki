@@ -54,6 +54,8 @@ providers:
     type: openai
     base_url: https://api.example.com/v1
     api_key_env: UNSET_KEY
+aliases:
+  fast: ["missing-key/small", "openai/gpt-x"]
 `
 
 func TestParseDefaults(t *testing.T) {
@@ -90,6 +92,7 @@ func TestParseFile(t *testing.T) {
 				APIKey: "sk-ant-EXAMPLE"},
 			{Name: "missing-key", Type: TypeOpenAI, BaseURL: "https://api.example.com/v1", APIKeyEnv: "UNSET_KEY"},
 		},
+		Aliases: map[string][]string{"fast": {"missing-key/small", "openai/gpt-x"}},
 	}
 	if !reflect.DeepEqual(*cfg, want) {
 		t.Errorf("Parse() =\n%+v\nwant\n%+v", *cfg, want)
@@ -153,6 +156,8 @@ func TestParseErrors(t *testing.T) {
 		{"storage", "storage:\n  driver: postgres\n  dsn: \"\"\n", nil, []string{"storage.driver", "storage.dsn"}},
 		{"timeout", "server:\n  upstream_timeout: -1s\n", nil, []string{"server.upstream_timeout"}},
 		{"master key file", "security:\n  master_key_file: \"\"\n", nil, []string{"security.master_key_file"}},
+		{"aliases", provider("") + "aliases:\n  fast: []\n  \"a/b\": [p/m]\n  ok: [p/m, nobody/m, p]\n", nil,
+			[]string{"aliases.fast: must list", "aliases.a/b: an alias name", "aliases.ok[1]", "aliases.ok[2]"}},
 		{"cache", "storage:\n  cache_max_mb: -1\ndefaults:\n  cache: always\n  cache_ttl: 0s\n  prompt_cache: on\n" +
 			"  redaction: strict\n", nil, []string{"storage.cache_max_mb", "defaults.cache: must be off or exact",
 			"defaults.cache_ttl", "defaults.prompt_cache: must be auto or off", "defaults.redaction"}},

@@ -15,20 +15,24 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/852hamza/chowki/internal/admin"
 	"github.com/852hamza/chowki/internal/budget"
 	"github.com/852hamza/chowki/internal/buildinfo"
 	"github.com/852hamza/chowki/internal/cache"
 	"github.com/852hamza/chowki/internal/catalog"
 	"github.com/852hamza/chowki/internal/config"
+	"github.com/852hamza/chowki/internal/metrics"
 	"github.com/852hamza/chowki/internal/netguard"
 	"github.com/852hamza/chowki/internal/pipeline"
 	"github.com/852hamza/chowki/internal/promptcache"
 	"github.com/852hamza/chowki/internal/providers"
 	"github.com/852hamza/chowki/internal/ratelimit"
 	"github.com/852hamza/chowki/internal/redact"
+	"github.com/852hamza/chowki/internal/router"
 	"github.com/852hamza/chowki/internal/secretbox"
 	"github.com/852hamza/chowki/internal/server"
 	"github.com/852hamza/chowki/internal/store"
+	"github.com/852hamza/chowki/internal/web"
 )
 
 func runServe(args []string, _, stderr io.Writer) int {
@@ -79,6 +83,10 @@ func serve(ctx context.Context, configPath string, ln net.Listener, logOut io.Wr
 		return err
 	}
 	ps, err := providers.New(cfg.Providers, netguard.Policy{AllowPrivate: cfg.Security.AllowPrivateUpstreams})
+	if err != nil {
+		return err
+	}
+	routes, err := router.New(ps, cat, cfg.Aliases)
 	if err != nil {
 		return err
 	}
@@ -135,8 +143,9 @@ func serve(ctx context.Context, configPath string, ln net.Listener, logOut io.Wr
 	}()
 
 	gw := &pipeline.Gateway{
-		Store: st, Requests: requests, Redactor: redact.New(redactionKey, cfg.Defaults.Redaction),
-		Cache: responses, Limits: ratelimit.New(), Budgets: budgets,
+		Store: st, Requests: requests, Router: routes, Metrics: metrics.New(),
+		Redactor: redact.New(redactionKey, cfg.Defaults.Redaction),
+		Cache:    responses, Limits: ratelimit.New(), Budgets: budgets,
 		Providers: ps, Catalog: cat, Logger: logger,
 		MaxBody: int64(cfg.Server.MaxBodyMB) << 20, Timeout: cfg.Server.UpstreamTimeout,
 	}
@@ -144,7 +153,9 @@ func serve(ctx context.Context, configPath string, ln net.Listener, logOut io.Wr
 		gw.PromptCache = promptcache.New()
 	}
 	logger.Info("chowki started", "version", buildinfo.Version(), "providers", names, "priced_models", cat.Len())
-	return server.Run(ctx, ln, server.Routes(gw), logger)
+	api := &admin.API{Store: st, Logger: logger}
+	ui := &web.UI{Store: st, Logger: logger}
+	return server.Run(ctx, ln, server.Routes(gw, api.Handler(), ui.Handler()), logger)
 }
 
 func logLevel(name string) slog.Level {

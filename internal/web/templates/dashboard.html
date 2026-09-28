@@ -1,0 +1,119 @@
+{{template "head" "Dashboard"}}
+<body>
+<header class="topbar">
+  <div class="wrap">
+    <a class="brand" href="/ui/">{{template "logo"}}<span>Chowki</span></a>
+    <form method="post" action="/ui/logout">
+      <input type="hidden" name="csrf" value="{{.CSRF}}">
+      <button class="button quiet" type="submit">Sign out</button>
+    </form>
+  </div>
+</header>
+<main class="wrap">
+  <div class="toolbar">
+    <div>
+      <h1>Dashboard</h1>
+      <p class="period">{{.Period}}</p>
+    </div>
+    <div class="filters">
+      <nav class="seg" aria-label="Range">
+        {{- range .Ranges}}<a href="{{.Href}}"{{if .Current}} aria-current="page"{{end}}>{{.Label}}</a>{{end -}}
+      </nav>
+      <nav class="seg" aria-label="Measure">
+        {{- range .Metrics}}<a href="{{.Href}}"{{if .Current}} aria-current="page"{{end}}>{{.Label}}</a>{{end -}}
+      </nav>
+    </div>
+  </div>
+
+  <section class="stats" aria-label="Totals">
+    <div class="card tile hero"><h2>{{.Hero.Label}}</h2><p class="value">{{.Hero.Value}}</p><p class="note">{{.Hero.Note}}</p></div>
+    {{- range .Tiles}}
+    <div class="card tile"><h2>{{.Label}}</h2><p class="value">{{.Value}}</p><p class="note">{{.Note}}</p></div>
+    {{- end}}
+  </section>
+
+  <section class="card" aria-labelledby="chart-title">
+    <h2 id="chart-title">{{.Chart.Title}}</h2>
+    {{- with .Chart.Empty}}
+    <p class="empty">{{.}}</p>
+    {{- else}}
+    <div class="chart">
+      <div class="grid" aria-hidden="true">
+        {{- range .Chart.Ticks}}<div class="tick"><span>{{.}}</span></div>{{end -}}
+      </div>
+      <ol class="cols" aria-label="{{.Chart.Title}}">
+        {{- range $i, $c := .Chart.Columns}}
+        <li class="col" tabindex="{{if $i}}-1{{else}}0{{end}}" aria-label="{{.Tip}}"><span class="bar h{{.Height}}"></span>
+          {{- with .Label}}<span class="day{{if $c.Minor}} minor{{end}}" aria-hidden="true">{{.}}</span>{{end}}</li>
+        {{- end}}
+      </ol>
+    </div>
+    {{- end}}
+    <details class="table-view">
+      <summary>Show as a table</summary>
+      <div class="scroll">
+        <table>
+          <thead><tr><th scope="col">Day</th><th scope="col">Requests</th><th scope="col">Tokens</th><th scope="col">Spend</th><th scope="col">Net savings</th></tr></thead>
+          <tbody>
+            {{- range .Chart.Columns}}
+            <tr><th scope="row">{{.Day}}</th><td>{{.Requests}}</td><td>{{.Tokens}}</td><td>{{.Spend}}</td><td>{{.Savings}}</td></tr>
+            {{- end}}
+          </tbody>
+        </table>
+      </div>
+    </details>
+  </section>
+
+  <div class="split">
+    <section class="card" aria-labelledby="keys-title">
+      <h2 id="keys-title">Top keys by {{.Measure}}</h2>
+      {{template "bars" .Keys}}
+    </section>
+    <section class="card" aria-labelledby="models-title">
+      <h2 id="models-title">Top models by {{.Measure}}</h2>
+      {{template "bars" .Models}}
+    </section>
+  </div>
+
+  <div class="split thirds">
+    <section class="card" aria-labelledby="budgets-title">
+      <h2 id="budgets-title">Budgets in {{.Month}}</h2>
+      {{- if .Budgets}}
+      <ul class="meters">
+        {{- range .Budgets}}
+        <li class="{{.Status}}">
+          <div class="label"><span class="name">{{.Name}}</span><span class="detail">{{.Kind}}</span></div>
+          <span class="num">{{.Spent}} of {{.Budget}}</span>
+          <div class="track"><span class="fill w{{.Width}}"></span></div>
+          <p class="status">{{template "status-icon" .Status}}<span>{{.Label}}</span></p>
+        </li>
+        {{- end}}
+      </ul>
+      {{- else}}
+      <p class="empty">No key or project has a budget. Set one with <code>chowki key update --budget-usd</code> or <code>chowki project update --budget-usd</code>.</p>
+      {{- end}}
+    </section>
+    <section class="card" aria-labelledby="redactions-title">
+      <h2 id="redactions-title">Redactions by type</h2>
+      {{template "bars" .Redactions}}
+    </section>
+    <section class="card" aria-labelledby="savings-title">
+      <h2 id="savings-title">Net savings by method</h2>
+      {{- if .Savings}}
+      <table class="plain">
+        <tbody>
+          {{- range .Savings}}
+          <tr><th scope="row">{{.Label}}</th><td>{{.Value}}</td></tr>
+          {{- end}}
+        </tbody>
+      </table>
+      {{- else}}
+      <p class="empty">None in this range.</p>
+      {{- end}}
+    </section>
+  </div>
+</main>
+<div class="tip" id="tip" hidden></div>
+<script src="/ui/static/dashboard.js"></script>
+</body>
+</html>

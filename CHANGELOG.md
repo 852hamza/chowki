@@ -55,5 +55,27 @@ All notable changes to Chowki are recorded in this file. The format is based on
   all keys with `defaults.redaction`. Placeholders are deterministic, such as
   `[REDACTED:email:b443e741]`; the `x-chowki-redactions` header, logs and records count findings by
   type and never hold the values.
+- Health checks and metrics: `GET /healthz` (liveness), `GET /readyz` (the database answers) and
+  `GET /metrics` in the Prometheus text format, with requests, tokens, cost, savings, redactions,
+  and histograms of provider latency and the gateway's own overhead.
+- Aliases and fallback: `aliases` in `chowki.yaml` gives a list of `<provider>/<model>` targets one
+  name. On a 429, a 5xx, a connection error or a timeout, and only before the first byte reaches
+  the client, Chowki tries the next target, at most two more. A target that fails three times in a
+  row is skipped for 30 seconds.
+- Model allowlists per virtual key: `chowki key create|update --models "fast,openai/*"`. Other
+  models get 403 `model_not_allowed`. The key settings now show the models.
+- More endpoints: `POST /v1/embeddings` (with redaction of the input and the exact cache),
+  `GET /v1/models` (the aliases and catalog models that a key may use), and
+  `POST /anthropic/v1/messages/count_tokens` (free: no budget or token limit).
+- An API reference with the endpoints, Chowki's headers and every error code.
+- An admin JSON API under `/admin/v1/`: a summary, breakdowns by key, model or day, request
+  records, and managing keys and projects. It takes admin tokens (`chowki_admin_…`), which
+  `chowki admin create|list|revoke` manage; redaction finds them too. Reports count whole days in
+  UTC, from sums that Chowki keeps for each day, so they stay fast as requests pile up and outlive
+  the retention of request records. The summary counts unpriced requests.
+- A dashboard at `/ui/`, for admin tokens: spend, requests, tokens, failures, net savings, the
+  exact-cache hit rate and redactions over a range of days, a chart by day with a table view, the
+  top keys and models, and the state of every budget. It needs no external scripts, fonts or
+  styles, and it has a dark mode.
 
 [Unreleased]: https://github.com/852hamza/chowki/commits/main

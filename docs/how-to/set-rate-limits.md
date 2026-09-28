@@ -55,23 +55,25 @@ or agent can't use up your provider's rate limits or crowd out your other keys.
      Tokens per minute:    100000
      Exact cache:          default
      Redaction:            default
+     Models:               all
    ```
 
 2. To change the limits of an existing key, pass its prefix, as `chowki key list` shows it:
 
    ```sh
-   chowki key update --rpm 120 chowki_E615T
+   chowki key update --rpm 120 chowki_VFK1E
    ```
 
    Output:
 
    ```text
-   Updated the settings of virtual key chowki_E615T ("ci-bot"):
+   Updated the settings of virtual key chowki_VFK1E ("ci-bot"):
      Monthly budget:       none
      Requests per minute:  120
      Tokens per minute:    100000
      Exact cache:          default
      Redaction:            default
+     Models:               all
    ```
 
 To remove a limit, set it to `0`. You can set rate limits and a budget together; see
@@ -83,9 +85,9 @@ To remove a limit, set it to `0`. You can set rate limits and a budget together;
 
 ```text
 PREFIX        NAME      PROJECT  SPENT 2026-09  BUDGET  RPM   TPM     CACHE    REDACTION  CREATED               STATUS
-chowki_nKaBn  alice     team-a   $3.00          $50.00  none  none    default  default    2026-09-27 09:45 UTC  active
-chowki_E615T  ci-bot    team-a   $1.00          none    60    100000  default  default    2026-09-27 09:45 UTC  active
-chowki_jlIEY  docs-bot  team-a   $0.00          none    none  none    exact    default    2026-09-27 09:45 UTC  active
+chowki_nklNv  alice     team-a   $3.00          $50.00  none  none    default  default    2026-09-27 10:03 UTC  active
+chowki_VFK1E  ci-bot    team-a   $1.00          none    60    100000  default  default    2026-09-27 10:03 UTC  active
+chowki_y2pj7  docs-bot  team-a   $0.00          none    none  none    exact    default    2026-09-27 10:03 UTC  active
 ```
 
 When a key reaches a limit, requests fail with HTTP status 429 in the error format of the API that

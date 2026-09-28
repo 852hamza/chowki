@@ -98,17 +98,18 @@ func TestKeyErrors(t *testing.T) {
 		{[]string{"key", "list", "extra"}, exitUsage, ""},
 		{[]string{"key", "revoke"}, exitUsage, "Usage:"},
 		{[]string{"key", "revoke", "chowki_nope1"}, exitError, `no virtual key has the prefix "chowki_nope1"`},
-		{[]string{"key", "create", "--name", "a", "--budget-usd", "-1"}, exitUsage, "must be an amount of 0 or more"},
-		{[]string{"key", "create", "--name", "a", "--budget-usd", "NaN"}, exitUsage, "must be an amount of 0 or more"},
+		{[]string{"key", "create", "--name", "a", "--budget-usd", "-1"}, exitUsage, "budget must be an amount of 0 or more"},
+		{[]string{"key", "create", "--name", "a", "--budget-usd", "NaN"}, exitUsage, "budget must be an amount of 0 or more"},
 		{[]string{"key", "create", "--name", "a", "--budget-usd", "ten"}, exitUsage, "invalid value"},
 		{[]string{"key", "update", "chowki_nope1"}, exitUsage, "nothing to change"},
-		{[]string{"key", "create", "--name", "a", "--rpm", "-1"}, exitUsage, "--rpm must be 0 or more"},
+		{[]string{"key", "create", "--name", "a", "--rpm", "-1"}, exitUsage, "requests per minute must be 0 or more"},
 		{[]string{"key", "create", "--name", "a", "--tpm", "1.5"}, exitUsage, "invalid value"},
-		{[]string{"key", "update", "--tpm", "-5", "chowki_nope1"}, exitUsage, "--tpm must be 0 or more"},
-		{[]string{"key", "create", "--name", "a", "--cache", "always"}, exitUsage, "--cache must be exact, off or default"},
-		{[]string{"key", "create", "--name", "a", "--redaction", "hide"}, exitUsage, "--redaction must be mask, block"},
+		{[]string{"key", "update", "--tpm", "-5", "chowki_nope1"}, exitUsage, "tokens per minute must be 0 or more"},
+		{[]string{"key", "create", "--name", "a", "--cache", "always"}, exitUsage, "cache mode must be exact, off or default"},
+		{[]string{"key", "create", "--name", "a", "--redaction", "hide"}, exitUsage, "redaction mode must be mask, block"},
+		{[]string{"key", "create", "--name", "a", "--models", "openai/[x"}, exitUsage, `"openai/[x" isn't a valid model`},
 		{[]string{"key", "update", "--budget-usd", "5"}, exitUsage, "Usage:"},
-		{[]string{"key", "update", "--budget-usd", "Inf", "chowki_nope1"}, exitUsage, "must be an amount"},
+		{[]string{"key", "update", "--budget-usd", "Inf", "chowki_nope1"}, exitUsage, "budget must be an amount"},
 		{[]string{"key", "update", "--budget-usd", "5", "chowki_nope1"}, exitError,
 			`no virtual key has the prefix "chowki_nope1"`},
 		{[]string{"key", "list", "--config", "missing.yaml"}, exitError, "read config"},
@@ -214,6 +215,13 @@ func TestKeyCacheMode(t *testing.T) {
 	}
 	if fields := strings.Fields(strings.Split(runOK(t, "key", "list"), "\n")[1]); len(fields) < 9 || fields[8] != "block" {
 		t.Errorf("list row = %q; want the redaction mode block", fields)
+	}
+	if out := runOK(t, "key", "update", "--models", "fast, openai/*", prefix); !strings.Contains(out,
+		"  Models:               fast, openai/*\n") {
+		t.Errorf("update output = %q", out)
+	}
+	if out := runOK(t, "key", "update", "--models", "all", prefix); !strings.Contains(out, "  Models:               all\n") {
+		t.Errorf("update output = %q", out)
 	}
 	// A key without settings doesn't print them.
 	if out := runOK(t, "key", "create", "--name", "plain"); strings.Contains(out, "Settings:") {

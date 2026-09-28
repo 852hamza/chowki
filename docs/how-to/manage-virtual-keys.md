@@ -64,27 +64,57 @@ Output:
 
 ```text
 PREFIX        NAME      PROJECT  SPENT 2026-09  BUDGET  RPM   TPM     CACHE    REDACTION  CREATED               STATUS
-chowki_nKaBn  alice     team-a   $3.00          $50.00  none  none    default  default    2026-09-27 09:45 UTC  active
-chowki_E615T  ci-bot    team-a   $1.00          none    60    100000  default  default    2026-09-27 09:45 UTC  active
-chowki_jlIEY  docs-bot  team-a   $0.00          none    none  none    exact    default    2026-09-27 09:45 UTC  active
+chowki_nklNv  alice     team-a   $3.00          $50.00  none  none    default  default    2026-09-27 10:03 UTC  active
+chowki_VFK1E  ci-bot    team-a   $1.00          none    60    100000  default  default    2026-09-27 10:03 UTC  active
+chowki_y2pj7  docs-bot  team-a   $0.00          none    none  none    exact    default    2026-09-27 10:03 UTC  active
 ```
 
 The list shows each key's prefix, never the key itself. It also shows what the key spent this
 month (UTC), its monthly budget, its limits of requests (`RPM`) and tokens (`TPM`) per minute,
 whether it uses the exact cache (`CACHE`), and its redaction mode (`REDACTION`).
 
+## Restrict a key to some models
+
+By default, a key may use every model and alias. To allow only some, pass a comma-separated list
+of models, aliases and patterns, where `*` matches any name within a provider:
+
+```sh
+chowki key update --models "fast,openai/*" chowki_VFK1E
+```
+
+Output:
+
+```text
+Updated the settings of virtual key chowki_VFK1E ("ci-bot"):
+  Monthly budget:       none
+  Requests per minute:  120
+  Tokens per minute:    100000
+  Exact cache:          default
+  Redaction:            default
+  Models:               fast, openai/*
+```
+
+A request for another model fails with HTTP status 403 and the models that the key may use:
+
+```json
+{"error":{"code":"model_not_allowed","message":"This key may not use the model \"backup/gpt-6-luna\". It may use: fast, openai/*.","param":null,"type":"permission_error"}}
+```
+
+Chowki checks the name that the client asks for, so an allowed alias allows all of its targets.
+`--models all` allows every model again.
+
 ## Revoke a key
 
 1. Revoke a key by its prefix:
 
    ```sh
-   chowki key revoke chowki_E615T
+   chowki key revoke chowki_VFK1E
    ```
 
    Output:
 
    ```text
-   Revoked virtual key chowki_E615T ("ci-bot"). Requests with it now fail.
+   Revoked virtual key chowki_VFK1E ("ci-bot"). Requests with it now fail.
    ```
 
 You can also pass the full key instead of the prefix. Revoking is permanent, and revoking a key
@@ -109,6 +139,7 @@ the key as `revoked` with the time.
 | `no virtual key has the prefix "…"` | The prefix is mistyped, or the key belongs to another Chowki database. | Copy the prefix from `chowki key list`. |
 | Requests fail with `invalid_api_key` | The key is incomplete, mistyped, or from another Chowki installation. | Check the whole key, or create a new one. |
 | Requests fail with `missing_api_key` | The client sent no key, or sent it in another header. | Set the key as the client's API key. |
+| Requests fail with `model_not_allowed` | The key's model list doesn't include the model. | Add it with `chowki key update --models`, or ask for an allowed model. |
 
 ## Related
 

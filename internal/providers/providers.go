@@ -71,7 +71,9 @@ func New(cfgs []config.Provider, guard netguard.Policy) (map[string]*Provider, e
 // /v1, as in the OpenAI SDKs; Anthropic base URLs don't, as in its SDKs.
 const (
 	ChatCompletions = "/chat/completions"
+	Embeddings      = "/embeddings"
 	Messages        = "/v1/messages"
+	CountTokens     = "/v1/messages/count_tokens" //nolint:gosec // G101: an API path, not a credential
 )
 
 // forwarded are the client headers that reach the provider: the API

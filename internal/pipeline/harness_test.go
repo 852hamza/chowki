@@ -18,11 +18,13 @@ import (
 	"github.com/852hamza/chowki/internal/cache"
 	"github.com/852hamza/chowki/internal/catalog"
 	"github.com/852hamza/chowki/internal/config"
+	"github.com/852hamza/chowki/internal/metrics"
 	"github.com/852hamza/chowki/internal/netguard"
 	"github.com/852hamza/chowki/internal/pipeline"
 	"github.com/852hamza/chowki/internal/providers"
 	"github.com/852hamza/chowki/internal/ratelimit"
 	"github.com/852hamza/chowki/internal/redact"
+	"github.com/852hamza/chowki/internal/router"
 	"github.com/852hamza/chowki/internal/secretbox"
 	"github.com/852hamza/chowki/internal/server"
 	"github.com/852hamza/chowki/internal/store"
@@ -38,6 +40,8 @@ const (
 
 // testCatalog prices the fakes' models with round numbers.
 const testCatalog = `{"models":[
+ {"provider":"openai","model":"embed-test","price":{"input":0.5,"output":0},
+  "source":"https://example.com/pricing","updated":"2026-09-27"},
  {"provider":"openai","model":"gpt-test","price":{"input":2,"output":10,"cache_read":0.2,"cache_write":2.5},
   "source":"https://example.com/pricing","updated":"2026-09-27"},
  {"provider":"anthropic","model":"claude-test","min_cacheable_tokens":512,"price":{"input":4,"output":20,"cache_read":0.2,"cache_write":5,
@@ -84,12 +88,15 @@ type harness struct {
 	dbPath    string
 	st        *recordingStore
 	logs      *syncBuffer
+	aliases   map[string][]string // set by options
 	openai    *testutil.Server
 	anthropic *testutil.Server
 	closed    bool
 }
 
-type option func(*pipeline.Gateway, *[]config.Provider)
+// option changes a harness before it starts: its gateway, providers and
+// aliases.
+type option func(*harness, *[]config.Provider)
 
 func newHarness(t testing.TB, oa, an testutil.Config, opts ...option) *harness {
 	t.Helper()
@@ -114,8 +121,9 @@ func newHarness(t testing.TB, oa, an testutil.Config, opts ...option) *harness {
 	if err != nil {
 		t.Fatal(err)
 	}
-	h.gw = &pipeline.Gateway{Store: h.st, Redactor: redact.New([]byte("redaction secret"), redact.ModeMask),
-		Cache: h.openCache(logger), Limits: ratelimit.New(), Budgets: budgets, Catalog: cat, Logger: logger,
+	h.gw = &pipeline.Gateway{Store: h.st, Metrics: metrics.New(),
+		Redactor: redact.New([]byte("redaction secret"), redact.ModeMask),
+		Cache:    h.openCache(logger), Limits: ratelimit.New(), Budgets: budgets, Catalog: cat, Logger: logger,
 		MaxBody: 1 << 20, Timeout: 10 * time.Second}
 	cfgs := []config.Provider{
 		{Name: "openai", Type: config.TypeOpenAI, BaseURL: h.openai.URL + "/v1", APIKeyEnv: "OPENAI_API_KEY", APIKey: openAIKey},
@@ -123,13 +131,16 @@ func newHarness(t testing.TB, oa, an testutil.Config, opts ...option) *harness {
 			APIKey: anthropicKey},
 	}
 	for _, o := range opts {
-		o(h.gw, &cfgs)
+		o(h, &cfgs)
 	}
 	if h.gw.Providers, err = providers.New(cfgs, netguard.Policy{AllowPrivate: true}); err != nil {
 		t.Fatal(err)
 	}
+	if h.gw.Router, err = router.New(h.gw.Providers, cat, h.aliases); err != nil {
+		t.Fatal(err)
+	}
 	h.gw.Requests = store.NewRequestLog(h.st, logger)
-	srv := httptest.NewServer(server.Routes(h.gw))
+	srv := httptest.NewServer(server.Routes(h.gw, nil, nil))
 	h.url = srv.URL
 	t.Cleanup(func() {
 		srv.Close()
@@ -179,7 +190,7 @@ func (h *harness) restart() {
 	}
 	gw.Requests = store.NewRequestLog(h.st, gw.Logger)
 	h.gw, h.closed = &gw, false
-	srv := httptest.NewServer(server.Routes(h.gw))
+	srv := httptest.NewServer(server.Routes(h.gw, nil, nil))
 	h.t.Cleanup(srv.Close)
 	h.url = srv.URL
 }

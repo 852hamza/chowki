@@ -246,9 +246,10 @@ func nullIfZero[T int64 | float64 | string](v T) any {
 // CreateKey implements Store.
 func (s *SQLite) CreateKey(ctx context.Context, k Key) (Key, error) {
 	res, err := s.db.ExecContext(ctx, `INSERT INTO virtual_keys (project_id, name, prefix, key_hash,
-		monthly_budget_usd, rpm, tpm, cache_mode, redaction_mode, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		monthly_budget_usd, rpm, tpm, cache_mode, redaction_mode, allowed_models, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		k.ProjectID, k.Name, k.Prefix, k.Hash[:], nullIfZero(k.BudgetUSD), nullIfZero(k.RPM), nullIfZero(k.TPM),
-		nullIfZero(k.CacheMode), nullIfZero(k.RedactionMode), k.CreatedAt.UnixMilli())
+		nullIfZero(k.CacheMode), nullIfZero(k.RedactionMode), modelList(k.AllowedModels), k.CreatedAt.UnixMilli())
 	var se *sqlite.Error
 	if errors.As(err, &se) && se.Code() == sqlite3.SQLITE_CONSTRAINT_UNIQUE {
 		return Key{}, fmt.Errorf("create key: prefix %s: %w", k.Prefix, ErrExists)
@@ -269,7 +270,7 @@ func (s *SQLite) KeyByPrefix(ctx context.Context, prefix string) (Key, error) {
 }
 
 const keyColumns = `SELECT k.id, k.project_id, p.name, k.name, k.prefix, k.key_hash, k.monthly_budget_usd,
-	p.monthly_budget_usd, k.rpm, k.tpm, k.cache_mode, k.redaction_mode, k.created_at, k.revoked_at
+	p.monthly_budget_usd, k.rpm, k.tpm, k.cache_mode, k.redaction_mode, k.allowed_models, k.created_at, k.revoked_at
 	FROM virtual_keys k JOIN projects p ON p.id = k.project_id`
 
 func (s *SQLite) keyWhere(ctx context.Context, where string, arg any) (Key, error) {
@@ -309,11 +310,16 @@ func scanKey(row interface{ Scan(...any) error }) (Key, error) {
 	var hash []byte
 	var budget, projectBudget sql.NullFloat64
 	var rpm, tpm, revoked sql.NullInt64
-	var cacheMode, redactionMode sql.NullString
+	var cacheMode, redactionMode, models sql.NullString
 	var created int64
 	if err := row.Scan(&k.ID, &k.ProjectID, &k.Project, &k.Name, &k.Prefix, &hash, &budget, &projectBudget,
-		&rpm, &tpm, &cacheMode, &redactionMode, &created, &revoked); err != nil {
+		&rpm, &tpm, &cacheMode, &redactionMode, &models, &created, &revoked); err != nil {
 		return Key{}, err
+	}
+	if models.Valid {
+		if err := json.Unmarshal([]byte(models.String), &k.AllowedModels); err != nil {
+			return Key{}, fmt.Errorf("key %s has invalid allowed models: %w", k.Prefix, err)
+		}
 	}
 	if len(hash) != len(k.Hash) {
 		return Key{}, fmt.Errorf("key %s has a %d-byte hash", k.Prefix, len(hash))
@@ -345,14 +351,32 @@ func (s *SQLite) UpdateKey(ctx context.Context, prefix string, u KeyUpdate) (Key
 		rpm = CASE WHEN ? THEN ? ELSE rpm END,
 		tpm = CASE WHEN ? THEN ? ELSE tpm END,
 		cache_mode = CASE WHEN ? THEN ? ELSE cache_mode END,
-		redaction_mode = CASE WHEN ? THEN ? ELSE redaction_mode END
+		redaction_mode = CASE WHEN ? THEN ? ELSE redaction_mode END,
+		allowed_models = CASE WHEN ? THEN ? ELSE allowed_models END
 		WHERE prefix = ?`,
 		u.BudgetUSD != nil, optional(u.BudgetUSD), u.RPM != nil, optional(u.RPM), u.TPM != nil, optional(u.TPM),
 		u.CacheMode != nil, optional(u.CacheMode), u.RedactionMode != nil, optional(u.RedactionMode),
-		prefix); err != nil {
+		u.AllowedModels != nil, allowedModels(u.AllowedModels), prefix); err != nil {
 		return Key{}, fmt.Errorf("update key: %w", err)
 	}
 	return s.KeyByPrefix(ctx, prefix)
+}
+
+// modelList stores a list of models as a JSON array, or NULL when it's
+// empty and every model is allowed.
+func modelList(models []string) any {
+	if len(models) == 0 {
+		return nil
+	}
+	b, _ := json.Marshal(models) // strings always marshal
+	return string(b)
+}
+
+func allowedModels(models *[]string) any {
+	if models == nil {
+		return nil
+	}
+	return modelList(*models)
 }
 
 // optional returns what to store for a setting that may be unset: NULL when
@@ -376,6 +400,7 @@ func (s *SQLite) InsertRequests(ctx context.Context, rs []Request) error {
 			spend[month{r.KeyID, Period(r.Time)}] += *r.CostUSD
 		}
 	}
+	d := sumDaily(rs)
 	err := s.inTx(ctx, func(tx *sql.Tx) error {
 		for m, usd := range spend {
 			if _, err := tx.ExecContext(ctx, `INSERT INTO spend (key_id, period, spent_usd) VALUES (?, ?, ?)
@@ -383,6 +408,9 @@ func (s *SQLite) InsertRequests(ctx context.Context, rs []Request) error {
 				m.key, m.period, usd); err != nil {
 				return err
 			}
+		}
+		if err := d.save(ctx, tx); err != nil {
+			return err
 		}
 		stmt, err := tx.PrepareContext(ctx, `INSERT INTO requests (id, ts, key_id, project_id, api_family,
 			endpoint, provider, model, stream, status, error_type, latency_ms, ttfb_ms, input_tokens,
@@ -469,6 +497,15 @@ func (s *SQLite) AddAudit(ctx context.Context, e AuditEvent) error {
 	if _, err := s.db.ExecContext(ctx, `INSERT INTO audit_log (ts, actor, action, target, details)
 		VALUES (?, ?, ?, ?, ?)`, e.Time.UnixMilli(), e.Actor, e.Action, e.Target, string(details)); err != nil {
 		return fmt.Errorf("audit: %w", err)
+	}
+	return nil
+}
+
+// Ping implements Store.
+func (s *SQLite) Ping(ctx context.Context) error {
+	var one int
+	if err := s.db.QueryRowContext(ctx, `SELECT 1`).Scan(&one); err != nil {
+		return fmt.Errorf("ping database: %w", err)
 	}
 	return nil
 }

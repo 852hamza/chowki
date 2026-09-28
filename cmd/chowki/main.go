@@ -39,6 +39,7 @@ func commands() []command {
 		{"provider", "Manage provider keys", notImplemented("provider")},
 		{"key", "Create, list, update and revoke virtual keys", runKey},
 		{"project", "List projects and set their budgets", runProject},
+		{"admin", "Create, list and revoke admin tokens", runAdmin},
 		{"usage", "Report token usage, cost and savings", notImplemented("usage")},
 		{"scan", "Find secrets in a repository, .env files or MCP configurations", notImplemented("scan")},
 		{"setup", "Connect an app or coding agent to the gateway", notImplemented("setup")},

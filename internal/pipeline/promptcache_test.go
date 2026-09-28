@@ -8,12 +8,11 @@ import (
 	"testing"
 
 	"github.com/852hamza/chowki/internal/config"
-	"github.com/852hamza/chowki/internal/pipeline"
 	"github.com/852hamza/chowki/internal/promptcache"
 	"github.com/852hamza/chowki/internal/testutil"
 )
 
-func withPromptCache(g *pipeline.Gateway, _ *[]config.Provider) { g.PromptCache = promptcache.New() }
+func withPromptCache(h *harness, _ *[]config.Provider) { h.gw.PromptCache = promptcache.New() }
 
 // longSystem is a system prompt of about 1000 tokens, above the test
 // model's minimum of 512.

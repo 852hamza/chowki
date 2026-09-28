@@ -13,6 +13,7 @@ import (
 	"maps"
 	"mime"
 	"net/http"
+	"path"
 	"slices"
 	"strconv"
 	"strings"
@@ -23,10 +24,12 @@ import (
 	"github.com/852hamza/chowki/internal/cache"
 	"github.com/852hamza/chowki/internal/catalog"
 	"github.com/852hamza/chowki/internal/config"
+	"github.com/852hamza/chowki/internal/metrics"
 	"github.com/852hamza/chowki/internal/promptcache"
 	"github.com/852hamza/chowki/internal/providers"
 	"github.com/852hamza/chowki/internal/ratelimit"
 	"github.com/852hamza/chowki/internal/redact"
+	"github.com/852hamza/chowki/internal/router"
 	"github.com/852hamza/chowki/internal/sse"
 	"github.com/852hamza/chowki/internal/store"
 	"github.com/852hamza/chowki/internal/usage"
@@ -55,6 +58,8 @@ const maxResponse = 64 << 20
 type Gateway struct {
 	Store    store.Store
 	Requests *store.RequestLog
+	Router   *router.Router
+	Metrics  *metrics.Registry
 	Redactor *redact.Redactor
 	Cache    *cache.Cache
 	Limits   *ratelimit.Limiter
@@ -71,10 +76,9 @@ type Gateway struct {
 	Timeout time.Duration
 }
 
-// Handler returns the handler of the chat endpoint of API family f:
-// OpenAI chat completions or Anthropic messages.
-func (g *Gateway) Handler(f usage.Family) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { g.serve(w, r, f) })
+// Handler returns the handler of an endpoint that the gateway relays.
+func (g *Gateway) Handler(ep Endpoint) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { g.serve(w, r, ep) })
 }
 
 // NotFound returns a handler that answers unknown paths in the error
@@ -90,6 +94,7 @@ func (g *Gateway) NotFound(f usage.Family) http.Handler {
 
 // call is one request on its way through the gateway.
 type call struct {
+	ep       Endpoint
 	family   usage.Family
 	id       string
 	start    time.Time
@@ -108,14 +113,18 @@ type call struct {
 	marked   bool              // the prompt-cache optimizer added a breakpoint
 	// redactions counts what redaction found, by type, never the values.
 	redactions map[string]int
+	// upstreamStart and upstreamEnd bound the provider's part of the
+	// request, its response included; zero when it didn't reach one.
+	upstreamStart, upstreamEnd time.Time
+	fallbacks                  int // the targets that failed before the one that answered
 }
 
-func (g *Gateway) serve(w http.ResponseWriter, r *http.Request, f usage.Family) {
-	c := &call{family: f, id: newRequestID(), start: time.Now(), w: &trackingWriter{ResponseWriter: w}}
+func (g *Gateway) serve(w http.ResponseWriter, r *http.Request, ep Endpoint) {
+	c := &call{ep: ep, family: ep.Family, id: newRequestID(), start: time.Now(), w: &trackingWriter{ResponseWriter: w}}
 	c.w.Header().Set(RequestIDHeader, c.id)
 	if e := g.handle(r.Context(), c, r); e != nil {
 		c.errType = e.Code
-		writeError(c.w, f, c.id, *e)
+		writeError(c.w, ep.Family, c.id, *e)
 	}
 	g.finish(c)
 }
@@ -147,7 +156,7 @@ func (g *Gateway) handle(ctx context.Context, c *call, r *http.Request) *apiErro
 	if err != nil {
 		return &apiError{http.StatusBadRequest, codeInvalidRequest, "Invalid request body: " + err.Error() + "."}
 	}
-	req, e := readRequest(c.family, obj)
+	req, e := readRequest(c.ep, obj)
 	if e != nil {
 		return e
 	}
@@ -155,27 +164,26 @@ func (g *Gateway) handle(ctx context.Context, c *call, r *http.Request) *apiErro
 		return e
 	}
 
-	p, model, e := g.route(c.family, req.model)
-	if e != nil {
-		return e
+	if !allowed(c.key.AllowedModels, req.model) {
+		return &apiError{http.StatusForbidden, codeModelNotAllowed, fmt.Sprintf(
+			"This key may not use the model %q. It may use: %s.", req.model, strings.Join(c.key.AllowedModels, ", "))}
 	}
-	c.provider, c.model, c.stream = p, model, req.stream
-	if env := p.MissingKey(); env != "" {
-		g.Logger.Error("provider key isn't set", "request_id", c.id, "provider", p.Name, "variable", env)
-		return &apiError{http.StatusInternalServerError, codeProviderKeyMissing,
-			fmt.Sprintf("The provider %q has no key; the gateway's admin must set %s.", p.Name, env)}
+	targets, err := g.Router.Resolve(providerType(c.family), req.model, time.Now())
+	var re *router.Error
+	if errors.As(err, &re) {
+		return &apiError{http.StatusBadRequest, re.Code, re.Message}
 	}
+	c.provider, c.model, c.stream = targets[0].Provider, targets[0].Model, req.stream
 
-	if e := g.useCache(ctx, c, r, body); e != nil || c.cache == cache.StatusHit {
-		return e
+	if c.ep.kind != kindCountTokens {
+		if e := g.useCache(ctx, c, r, body); e != nil || c.cache == cache.StatusHit {
+			return e
+		}
 	}
 
 	// Change the body only where needed; everything else reaches the
-	// provider byte for byte.
+	// provider byte for byte. Each target also gets its own model name.
 	edits := map[string][]byte{}
-	if model != req.model {
-		edits["model"], _ = json.Marshal(model) // a string always marshals
-	}
 	// OpenAI streams report usage only on request. The extra chunk that
 	// carries it is hidden from clients that didn't ask for it.
 	dropUsage := c.family == usage.OpenAI && req.stream && !req.includeUsage
@@ -183,45 +191,137 @@ func (g *Gateway) handle(ctx context.Context, c *call, r *http.Request) *apiErro
 		req.streamOptions["include_usage"] = json.RawMessage("true")
 		edits["stream_options"], _ = json.Marshal(req.streamOptions) // raw JSON values always marshal
 	}
-	if c.family == usage.Anthropic && g.PromptCache != nil {
+	if c.ep == AnthropicMessages && g.PromptCache != nil {
 		if field, value, ok := g.PromptCache.Breakpoint(g.prefix(c, obj, body), time.Now()); ok {
 			edits[field], c.marked = value, true
 		}
 	}
-	if len(edits) > 0 {
-		body = obj.with(edits)
+	// Providers don't bill counting tokens, so it spends no tokens or budget.
+	if c.ep.kind != kindCountTokens {
+		if e := g.admit(c, withModel(obj, edits, req.model, c.model)); e != nil {
+			return e
+		}
 	}
 
-	if e := g.admit(c, body); e != nil {
-		return e
-	}
+	c.upstreamStart = time.Now()
+	defer func() { c.upstreamEnd = time.Now() }()
+	return g.forward(ctx, c, r, obj, edits, req.model, targets, dropUsage)
+}
 
-	upstreamCtx, cancel := context.WithTimeout(ctx, g.Timeout)
-	defer cancel()
-	endpoint := providers.ChatCompletions
-	if c.family == usage.Anthropic {
-		endpoint = providers.Messages
-	}
-	resp, err := p.Do(upstreamCtx, endpoint, body, r.Header)
-	if err != nil {
-		switch {
-		case ctx.Err() != nil:
+// maxAttempts is the first target and at most two fallbacks.
+const maxAttempts = 3
+
+// forward sends the request to its targets in order until one of them
+// answers. It moves on to the next target only when the current one fails
+// with a rate limit, a server error, a connection error or a timeout, and
+// only before any byte of an answer has reached the client: a stream that
+// fails after it started ends there.
+func (g *Gateway) forward(ctx context.Context, c *call, r *http.Request, obj *object, edits map[string][]byte,
+	requested string, targets []router.Target, dropUsage bool) *apiError {
+	targets = targets[:min(len(targets), maxAttempts)]
+	for i, t := range targets {
+		last := i == len(targets)-1
+		c.provider, c.model = t.Provider, t.Model
+		if env := t.Provider.MissingKey(); env != "" {
+			g.Logger.Error("provider key isn't set", "request_id", c.id, "provider", t.Provider.Name, "variable", env)
+			if last {
+				return &apiError{http.StatusInternalServerError, codeProviderKeyMissing, fmt.Sprintf(
+					"The provider %q has no key; the gateway's admin must set %s.", t.Provider.Name, env)}
+			}
+			continue
+		}
+		attemptCtx, cancel := context.WithTimeout(ctx, g.Timeout)
+		resp, err := t.Provider.Do(attemptCtx, c.ep.upstream, withModel(obj, edits, requested, t.Model), r.Header)
+		stream := err == nil && c.stream && resp.StatusCode == http.StatusOK && isEventStream(resp.Header)
+		var data []byte
+		if err == nil && !stream {
+			// A complete answer is read before any of it is sent, so a
+			// failure while reading still allows a fallback.
+			data, err = readBody(resp)
+			_ = resp.Body.Close()
+		}
+		if ctx.Err() != nil {
+			cancel()
 			c.errType = "client_closed"
 			return nil
-		case errors.Is(err, context.DeadlineExceeded):
-			return &apiError{http.StatusGatewayTimeout, codeUpstreamTimeout,
-				fmt.Sprintf("The provider %q didn't answer within %s.", p.Name, g.Timeout)}
 		}
-		g.Logger.Warn("upstream call failed", "request_id", c.id, "provider", p.Name, "error", err)
-		return &apiError{http.StatusBadGateway, codeUpstreamFailed, fmt.Sprintf("The provider %q couldn't be reached.", p.Name)}
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	if c.stream && resp.StatusCode == http.StatusOK && isEventStream(resp.Header) {
-		g.relayStream(upstreamCtx, c, resp, dropUsage)
+		failed := err != nil || resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= 500
+		g.Router.Report(t, !failed, time.Now())
+		if failed && !last { // a stream that started never counts as failed
+			cancel()
+			c.fallbacks++
+			g.Logger.Warn("falling back to the next target", "request_id", c.id, "target", t.String(),
+				"status", statusOf(resp, err))
+			continue
+		}
+		defer cancel()
+		switch {
+		case err != nil:
+			return g.upstreamError(c, err)
+		case stream:
+			defer func() { _ = resp.Body.Close() }()
+			g.relayStream(attemptCtx, c, resp, dropUsage)
+			return nil
+		}
+		g.relayBody(c, resp, data)
 		return nil
 	}
-	return g.relayBody(c, resp)
+	return nil // the last target always returns
+}
+
+// withModel returns the request body with the edits, and with the model
+// name of a target when it differs from the requested one.
+func withModel(obj *object, edits map[string][]byte, requested, model string) []byte {
+	if model != requested {
+		edits = maps.Clone(edits)
+		edits["model"], _ = json.Marshal(model) // a string always marshals
+	}
+	if len(edits) == 0 {
+		return obj.body
+	}
+	return obj.with(edits)
+}
+
+// statusOf describes the outcome of an upstream call for a log.
+func statusOf(resp *http.Response, err error) string {
+	if err != nil {
+		return err.Error()
+	}
+	return resp.Status
+}
+
+// upstreamError is the error for a provider that didn't answer, or whose
+// answer couldn't be read.
+func (g *Gateway) upstreamError(c *call, err error) *apiError {
+	if errors.Is(err, context.DeadlineExceeded) {
+		return &apiError{http.StatusGatewayTimeout, codeUpstreamTimeout,
+			fmt.Sprintf("The provider %q didn't answer within %s.", c.provider.Name, g.Timeout)}
+	}
+	g.Logger.Warn("upstream call failed", "request_id", c.id, "provider", c.provider.Name, "error", err)
+	return &apiError{http.StatusBadGateway, codeUpstreamFailed,
+		fmt.Sprintf("The provider %q couldn't be reached.", c.provider.Name)}
+}
+
+// allowed reports whether a key whose allowlist is patterns may request a
+// model; an empty list allows every model. Patterns match as path.Match
+// does, so "openai/*" allows every model of the provider openai.
+func allowed(patterns []string, model string) bool {
+	if len(patterns) == 0 {
+		return true
+	}
+	for _, p := range patterns {
+		if ok, _ := path.Match(p, model); ok {
+			return true
+		}
+	}
+	return false
+}
+
+func providerType(f usage.Family) string {
+	if f == usage.Anthropic {
+		return config.TypeAnthropic
+	}
+	return config.TypeOpenAI
 }
 
 func (g *Gateway) authenticate(ctx context.Context, c *call, r *http.Request) *apiError {
@@ -264,7 +364,7 @@ type request struct {
 	streamOptions map[string]json.RawMessage
 }
 
-func readRequest(f usage.Family, o *object) (request, *apiError) {
+func readRequest(ep Endpoint, o *object) (request, *apiError) {
 	bad := func(msg string) (request, *apiError) {
 		return request{}, &apiError{http.StatusBadRequest, codeInvalidRequest, msg}
 	}
@@ -273,10 +373,13 @@ func readRequest(f usage.Family, o *object) (request, *apiError) {
 	if !ok || json.Unmarshal(raw, &req.model) != nil || req.model == "" {
 		return bad(`The "model" field must be a model name, such as <provider>/<model>.`)
 	}
+	if ep.kind != kindChat {
+		return req, nil // only chat streams
+	}
 	if raw, ok := o.raw("stream"); ok && json.Unmarshal(raw, &req.stream) != nil {
 		return bad(`The "stream" field must be true or false.`)
 	}
-	if f == usage.OpenAI {
+	if ep.Family == usage.OpenAI {
 		req.streamOptions = map[string]json.RawMessage{}
 		if raw, ok := o.raw("stream_options"); ok && string(raw) != "null" {
 			if json.Unmarshal(raw, &req.streamOptions) != nil {
@@ -300,7 +403,7 @@ func (g *Gateway) redact(c *call, body []byte, obj *object) ([]byte, *object, *a
 	if mode == redact.ModeOff {
 		return body, obj, nil
 	}
-	out, counts, err := g.Redactor.Request(string(c.family), body, mode == redact.ModeMask)
+	out, counts, err := g.Redactor.Request(c.ep.redactionKind(), body, mode == redact.ModeMask)
 	if err != nil {
 		return nil, nil, &apiError{http.StatusBadRequest, codeInvalidRequest, "The request body couldn't be read."}
 	}
@@ -340,7 +443,7 @@ func (g *Gateway) useCache(ctx context.Context, c *call, r *http.Request, body [
 	c.cache = cache.StatusBypass
 	var hit cache.Response
 	if !c.stream && g.Cache.On(c.key.CacheMode, header) {
-		key, err := cache.Key(cache.Request{Family: string(c.family), Endpoint: endpointPath(c.family),
+		key, err := cache.Key(cache.Request{Family: string(c.family), Endpoint: c.ep.Path,
 			Provider: c.provider.Name, Model: c.model, Project: c.key.ProjectID,
 			Headers: providers.Forwarded(r.Header), Body: body})
 		if err == nil { // the body parsed already, so it always does
@@ -424,72 +527,23 @@ func rateLimited(c *call, err error) *apiError {
 	return &apiError{http.StatusTooManyRequests, codeRateLimited, err.Error()}
 }
 
-// route picks the provider for a model: "<provider>/<model>" names it;
-// otherwise the provider that the catalog lists for the model, or the only
-// provider of the API family.
-func (g *Gateway) route(f usage.Family, requested string) (*providers.Provider, string, *apiError) {
-	wantType := config.TypeOpenAI
-	if f == usage.Anthropic {
-		wantType = config.TypeAnthropic
-	}
-	check := func(p *providers.Provider, model string) (*providers.Provider, string, *apiError) {
-		if p.Type != wantType {
-			return nil, "", &apiError{http.StatusBadRequest, codeWrongEndpoint, fmt.Sprintf(
-				"The provider %q speaks the %s API; send requests for it to that API's endpoint.", p.Name, p.Type)}
-		}
-		return p, model, nil
-	}
-	if name, model, ok := strings.Cut(requested, "/"); ok && model != "" {
-		if p, ok := g.Providers[name]; ok {
-			return check(p, model)
-		}
-	}
-	var listed []*providers.Provider
-	for _, name := range g.Catalog.Providers(requested) {
-		if p, ok := g.Providers[name]; ok && p.Type == wantType {
-			listed = append(listed, p)
-		}
-	}
-	if len(listed) == 1 {
-		return listed[0], requested, nil
-	}
-	var family []string
-	for name, p := range g.Providers {
-		if p.Type == wantType {
-			family = append(family, name)
-		}
-	}
-	if len(family) == 1 {
-		return g.Providers[family[0]], requested, nil
-	}
-	slices.Sort(family)
-	hint := "Add a provider of this API to chowki.yaml."
-	if len(family) > 1 {
-		hint = fmt.Sprintf("Name it as <provider>/<model>, with a provider from: %s.", strings.Join(family, ", "))
-	}
-	return nil, "", &apiError{http.StatusBadRequest, codeUnknownProvider,
-		fmt.Sprintf("The gateway can't tell which provider serves the model %q. %s", requested, hint)}
-}
-
-// relayBody forwards a complete response: a non-streaming one, or an error.
-func (g *Gateway) relayBody(c *call, resp *http.Response) *apiError {
+// readBody reads a complete response, up to maxResponse.
+func readBody(resp *http.Response) ([]byte, error) {
 	data, err := io.ReadAll(io.LimitReader(resp.Body, maxResponse+1))
 	if err == nil && len(data) > maxResponse {
 		err = errors.New("response too large")
 	}
-	if err != nil {
-		g.Logger.Warn("read upstream response", "request_id", c.id, "provider", c.provider.Name, "error", err)
-		if errors.Is(err, context.DeadlineExceeded) {
-			return &apiError{http.StatusGatewayTimeout, codeUpstreamTimeout,
-				fmt.Sprintf("The provider %q didn't answer within %s.", c.provider.Name, g.Timeout)}
-		}
-		return &apiError{http.StatusBadGateway, codeUpstreamFailed,
-			fmt.Sprintf("The response of the provider %q couldn't be read.", c.provider.Name)}
-	}
+	return data, err
+}
+
+// relayBody forwards a complete response, data: a non-streaming one, or an
+// error.
+func (g *Gateway) relayBody(c *call, resp *http.Response, data []byte) {
 	copyHeaders(c.w.Header(), resp.Header)
 	var cost usage.Cost
 	if resp.StatusCode == http.StatusOK {
-		if rep, err := usage.ParseResponse(c.family, data); err == nil {
+		// A token count is an answer, not usage.
+		if rep, err := usage.ParseResponse(c.family, data); err == nil && c.ep.kind != kindCountTokens {
 			c.report = rep
 		}
 		if cost = g.cost(c); cost.USD != nil {
@@ -506,7 +560,6 @@ func (g *Gateway) relayBody(c *call, resp *http.Response) *apiError {
 		g.Cache.Put(c.cacheKey, cache.Response{Body: data, ContentType: resp.Header.Get("Content-Type"),
 			CostUSD: cost.USD}, time.Now())
 	}
-	return nil
 }
 
 // relayStream forwards a streamed response event by event.
@@ -594,13 +647,20 @@ func (g *Gateway) finish(c *call) {
 	if c.errType != "" {
 		attrs = append(attrs, "error", c.errType)
 	}
+	m := metrics.Request{Family: string(c.family), Status: status, Cache: c.cache, Redactions: c.redactions,
+		Overhead: latency}
+	if !c.upstreamStart.IsZero() {
+		m.Upstream = c.upstreamEnd.Sub(c.upstreamStart)
+		m.Overhead -= m.Upstream
+	}
 	if c.key.ID == 0 {
+		g.Metrics.Record(m)
 		g.Logger.Info("request rejected", attrs...)
 		return
 	}
 	rec := store.Request{
 		ID: c.id, Time: c.start, KeyID: c.key.ID, ProjectID: c.key.ProjectID, APIFamily: string(c.family),
-		Endpoint: endpointPath(c.family), Model: c.model, Stream: c.stream, Status: status, ErrorType: c.errType,
+		Endpoint: c.ep.Path, Model: c.model, Stream: c.stream, Status: status, ErrorType: c.errType,
 		Latency: latency, TTFB: ttfb,
 	}
 	if c.provider != nil {
@@ -611,12 +671,25 @@ func (g *Gateway) finish(c *call) {
 			CacheWrite: u.CacheWrite, Reasoning: u.Reasoning}
 	}
 	cost := g.cost(c)
-	if c.cache == cache.StatusHit {
+	switch {
+	case c.cache == cache.StatusHit:
 		cost = hitCost(c.savedUSD)
+	case c.ep.kind == kindCountTokens && c.errType == "":
+		free := 0.0
+		cost = usage.Cost{USD: &free}
 	}
 	rec.CostUSD, rec.SavingsUSD, rec.SavingsMethod = cost.USD, cost.SavingsUSD, cost.SavingsMethod
 	rec.CacheStatus, rec.Redactions = c.cache, c.redactions
 	g.Requests.Add(rec)
+	m.Provider, m.Model, m.SavingsUSD, m.SavingsMethod = rec.Provider, rec.Model, cost.SavingsUSD, cost.SavingsMethod
+	if cost.USD != nil {
+		m.CostUSD = *cost.USD
+	}
+	if t := rec.Tokens; t != nil {
+		m.Tokens = metrics.Tokens{Input: t.Input, Output: t.Output, CacheRead: t.CacheRead, CacheWrite: t.CacheWrite,
+			Reasoning: t.Reasoning}
+	}
+	g.Metrics.Record(m)
 	var spent float64 // an unpriced request counts as free: its cost is unknown
 	if cost.USD != nil {
 		spent = *cost.USD
@@ -635,6 +708,9 @@ func (g *Gateway) finish(c *call) {
 	}
 	if c.marked {
 		attrs = append(attrs, "prompt_cache_breakpoint", true)
+	}
+	if c.fallbacks > 0 {
+		attrs = append(attrs, "fallbacks", c.fallbacks)
 	}
 	if len(c.redactions) > 0 {
 		attrs = append(attrs, "redactions", c.redactions)
@@ -660,13 +736,6 @@ func hitCost(original *float64) usage.Cost {
 		cost.SavingsUSD = *original
 	}
 	return cost
-}
-
-func endpointPath(f usage.Family) string {
-	if f == usage.Anthropic {
-		return "/anthropic/v1/messages"
-	}
-	return "/v1/chat/completions"
 }
 
 func newRequestID() string {

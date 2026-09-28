@@ -73,8 +73,8 @@ var detectors = []*detector{
 		re: regexp.MustCompile(`\b(?:sk|rk)_live_[A-Za-z0-9]{20,250}\b`)},
 	{typ: TypeJWT, keywords: []string{"eyJ"}, before: 1, after: 16384,
 		re: regexp.MustCompile(`\beyJ[A-Za-z0-9_-]{5,}\.eyJ[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]{10,}`)},
-	{typ: TypeChowkiKey, keywords: []string{"chowki_"}, before: 1, after: 57,
-		re: regexp.MustCompile(`\bchowki_[0-9A-Za-z]{49}\b`)},
+	{typ: TypeChowkiKey, keywords: []string{"chowki_"}, before: 1, after: 63,
+		re: regexp.MustCompile(`\bchowki_(?:admin_)?[0-9A-Za-z]{49}\b`)},
 	{typ: TypeSecret, keywords: []string{"pass", "pwd", "secret", "token", "key"}, lower: true, before: 20, after: 120,
 		group: 1, valid: looksRandom,
 		re: regexp.MustCompile(`(?i)\b(?:password|passwd|pwd|secret|token|api[_-]?key|access[_-]?key|secret[_-]?key|` +

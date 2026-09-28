@@ -57,23 +57,25 @@ can't run up a surprise bill.
      Tokens per minute:    none
      Exact cache:          default
      Redaction:            default
+     Models:               all
    ```
 
 2. To change the budget of an existing key, pass its prefix, as `chowki key list` shows it:
 
    ```sh
-   chowki key update --budget-usd 100 chowki_nKaBn
+   chowki key update --budget-usd 100 chowki_nklNv
    ```
 
    Output:
 
    ```text
-   Updated the settings of virtual key chowki_nKaBn ("alice"):
+   Updated the settings of virtual key chowki_nklNv ("alice"):
      Monthly budget:       $100.00
      Requests per minute:  none
      Tokens per minute:    none
      Exact cache:          default
      Redaction:            default
+     Models:               all
    ```
 
 To remove a budget, set it to `0`. Chowki records every budget change in its audit log. To limit
@@ -108,9 +110,9 @@ Output:
 
 ```text
 PREFIX        NAME      PROJECT  SPENT 2026-09  BUDGET  RPM   TPM     CACHE    REDACTION  CREATED               STATUS
-chowki_nKaBn  alice     team-a   $3.00          $50.00  none  none    default  default    2026-09-27 09:45 UTC  active
-chowki_E615T  ci-bot    team-a   $1.00          none    60    100000  default  default    2026-09-27 09:45 UTC  active
-chowki_jlIEY  docs-bot  team-a   $0.00          none    none  none    exact    default    2026-09-27 09:45 UTC  active
+chowki_nklNv  alice     team-a   $3.00          $50.00  none  none    default  default    2026-09-27 10:03 UTC  active
+chowki_VFK1E  ci-bot    team-a   $1.00          none    60    100000  default  default    2026-09-27 10:03 UTC  active
+chowki_y2pj7  docs-bot  team-a   $0.00          none    none  none    exact    default    2026-09-27 10:03 UTC  active
 ```
 
 List the projects with the spend of their keys:
@@ -131,7 +133,7 @@ An amount below one cent shows as `<$0.01`.
 ## Verify
 
 When a budget is used up, requests fail with HTTP status 429 in the error format of the API that
-the client speaks. For example, after `chowki key update --budget-usd 2 chowki_nKaBn` for a key
+the client speaks. For example, after `chowki key update --budget-usd 2 chowki_nklNv` for a key
 that has spent $3.00 this month, an OpenAI-format request gets:
 
 ```json

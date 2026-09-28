@@ -273,7 +273,7 @@ func TestNoKeyMaterialInLogs(t *testing.T) {
 }
 
 func TestRouting(t *testing.T) {
-	twoOpenAI := func(_ *pipeline.Gateway, cfgs *[]config.Provider) {
+	twoOpenAI := func(_ *harness, cfgs *[]config.Provider) {
 		*cfgs = append(*cfgs, config.Provider{Name: "local", Type: config.TypeOpenAI, BaseURL: "http://127.0.0.1:1/v1"})
 	}
 	t.Run("provider prefix is removed", func(t *testing.T) {
@@ -314,8 +314,8 @@ func TestRouting(t *testing.T) {
 }
 
 func TestRequestErrors(t *testing.T) {
-	h := newHarness(t, testutil.Config{}, testutil.Config{}, func(g *pipeline.Gateway, _ *[]config.Provider) {
-		g.MaxBody = 256
+	h := newHarness(t, testutil.Config{}, testutil.Config{}, func(h *harness, _ *[]config.Provider) {
+		h.gw.MaxBody = 256
 	})
 	tests := []struct {
 		name, path, body string
@@ -329,7 +329,7 @@ func TestRequestErrors(t *testing.T) {
 		{"bad stream options", "/v1/chat/completions", `{"model":"gpt-test","stream_options":3}`, 400, "stream_options"},
 		{"too large", "/v1/chat/completions", `{"model":"gpt-test","x":"` + strings.Repeat("a", 300) + `"}`, 413,
 			"request_too_large"},
-		{"unknown path", "/v1/embeddings", `{}`, 404, "not_found"},
+		{"unknown path", "/v1/completions", `{}`, 404, "not_found"},
 		{"unknown Anthropic path", "/anthropic/v1/complete", `{}`, 404, "not_found_error"},
 	}
 	for _, tt := range tests {
@@ -356,7 +356,7 @@ func TestUpstreamErrors(t *testing.T) {
 	t.Run("unreachable provider", func(t *testing.T) {
 		gone := httptest.NewServer(http.NotFoundHandler())
 		gone.Close()
-		h := newHarness(t, testutil.Config{}, testutil.Config{}, func(_ *pipeline.Gateway, cfgs *[]config.Provider) {
+		h := newHarness(t, testutil.Config{}, testutil.Config{}, func(_ *harness, cfgs *[]config.Provider) {
 			(*cfgs)[1].BaseURL = gone.URL
 		})
 		resp := h.post(t.Context(), "/anthropic/v1/messages", anthropicBody)
@@ -374,8 +374,8 @@ func TestUpstreamErrors(t *testing.T) {
 			}
 		}))
 		t.Cleanup(slow.Close)
-		h := newHarness(t, testutil.Config{}, testutil.Config{}, func(g *pipeline.Gateway, cfgs *[]config.Provider) {
-			g.Timeout = 100 * time.Millisecond
+		h := newHarness(t, testutil.Config{}, testutil.Config{}, func(h *harness, cfgs *[]config.Provider) {
+			h.gw.Timeout = 100 * time.Millisecond
 			(*cfgs)[0].BaseURL = slow.URL + "/v1"
 		})
 		resp := h.post(t.Context(), "/v1/chat/completions", openAIBody)
@@ -384,7 +384,7 @@ func TestUpstreamErrors(t *testing.T) {
 		}
 	})
 	t.Run("missing provider key", func(t *testing.T) {
-		h := newHarness(t, testutil.Config{}, testutil.Config{}, func(_ *pipeline.Gateway, cfgs *[]config.Provider) {
+		h := newHarness(t, testutil.Config{}, testutil.Config{}, func(_ *harness, cfgs *[]config.Provider) {
 			(*cfgs)[0].APIKey = ""
 		})
 		resp := h.post(t.Context(), "/v1/chat/completions", openAIBody)
@@ -395,4 +395,29 @@ func TestUpstreamErrors(t *testing.T) {
 			t.Error("the request reached the provider without a key")
 		}
 	})
+}
+
+// The gateway counts each request in its metrics, and serves health checks.
+func TestMetricsAndHealth(t *testing.T) {
+	h := newHarness(t, testutil.Config{Usage: fakeUsage}, testutil.Config{})
+	readBody(t, h.post(t.Context(), "/v1/chat/completions", openAIBody))
+	readBody(t, h.send(t.Context(), http.MethodPost, h.url+"/v1/chat/completions", nil, openAIBody)) // no key
+	for path, want := range map[string]string{
+		"/metrics": `chowki_requests_total{family="openai",provider="openai",model="gpt-test",status="200",cache="bypass"} 1` +
+			"\n",
+		"/healthz": `{"status":"ok"}`,
+		"/readyz":  `{"status":"ready"}`,
+	} {
+		resp := h.send(t.Context(), http.MethodGet, h.url+path, nil, "")
+		if body := readBody(t, resp); resp.StatusCode != http.StatusOK || !strings.Contains(body, want) {
+			t.Errorf("GET %s = %d\n%s\nwant %s", path, resp.StatusCode, body, want)
+		}
+	}
+	resp := h.send(t.Context(), http.MethodGet, h.url+"/metrics", nil, "")
+	body := readBody(t, resp)
+	for _, want := range []string{`status="401"`, `chowki_tokens_total{type="input"} 1200`, "chowki_overhead_seconds_count 2"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("/metrics lacks %s:\n%s", want, body)
+		}
+	}
 }

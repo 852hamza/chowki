@@ -25,8 +25,7 @@ const (
 	codeBudgetExceeded     = "budget_exceeded"
 	codeRateLimited        = "rate_limit_exceeded"
 	codeSensitiveData      = "sensitive_data_blocked"
-	codeUnknownProvider    = "unknown_provider"
-	codeWrongEndpoint      = "wrong_endpoint"
+	codeModelNotAllowed    = "model_not_allowed"
 	codeProviderKeyMissing = "provider_key_missing"
 	codeUpstreamFailed     = "upstream_unavailable"
 	codeUpstreamTimeout    = "upstream_timeout"
@@ -61,6 +60,8 @@ func openAIType(status int) string {
 	switch {
 	case status == http.StatusUnauthorized:
 		return "authentication_error"
+	case status == http.StatusForbidden:
+		return "permission_error"
 	case status == http.StatusTooManyRequests:
 		return "rate_limit_error"
 	case status >= 500:

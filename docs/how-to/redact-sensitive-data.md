@@ -47,7 +47,7 @@ model made.
 
 | Mode | What happens |
 |---|---|
-| `mask` | The default. Chowki replaces each value with a placeholder, such as `[REDACTED:email:b443e741]`, and forwards the request. The same value always gets the same placeholder, so the model can tell values apart and provider prompt caching keeps working; the placeholder doesn't reveal the value. |
+| `mask` | The default. Chowki replaces each value with a placeholder, such as `[REDACTED:email:9b7c27f3]`, and forwards the request. The same value always gets the same placeholder, so the model can tell values apart and provider prompt caching keeps working; the placeholder doesn't reveal the value. |
 | `block` | Chowki rejects the request with HTTP status 400 and an error that names the types it found, never the values. |
 | `alert` | Chowki forwards the request unchanged, and logs a warning with the number of findings of each type. |
 | `off` | Chowki doesn't check the request. |
@@ -55,18 +55,19 @@ model made.
 1. To set the mode of a key, pass its prefix, as `chowki key list` shows it:
 
    ```sh
-   chowki key update --redaction block chowki_jlIEY
+   chowki key update --redaction block chowki_y2pj7
    ```
 
    Output:
 
    ```text
-   Updated the settings of virtual key chowki_jlIEY ("docs-bot"):
+   Updated the settings of virtual key chowki_y2pj7 ("docs-bot"):
      Monthly budget:       none
      Requests per minute:  none
      Tokens per minute:    none
      Exact cache:          exact
      Redaction:            block
+     Models:               all
    ```
 
    `chowki key create` takes `--redaction` too. `--redaction default` makes the key follow
@@ -87,14 +88,14 @@ Content-Type: application/json
 X-Chowki-Cache: miss
 X-Chowki-Cost-Usd: 1.00000000
 X-Chowki-Redactions: 2
-X-Chowki-Request-Id: req_de0f0f9aabac480d5630a215
+X-Chowki-Request-Id: req_073192b324d90b6c0fb19cad
 ```
 
 For the message `Email the report to jane.doe@company.io. The deploy key is <AWS ACCESS KEY ID>.`,
 the provider gets:
 
 ```json
-{"model":"gpt-6-sol","messages":[{"role":"user","content":"Email the report to [REDACTED:email:b443e741]. The deploy key is [REDACTED:aws_access_key:14bd61f2]."}]}
+{"model":"gpt-6-sol","messages":[{"role":"user","content":"Email the report to [REDACTED:email:9b7c27f3]. The deploy key is [REDACTED:aws_access_key:1d433eb3]."}]}
 ```
 
 The request's line in the gateway's log counts the findings by type, and never holds the values:

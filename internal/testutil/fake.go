@@ -68,6 +68,9 @@ type Config struct {
 	// FailStatus, when set, makes every authenticated request fail with this
 	// HTTP status (400-599) and an error body in the provider's format.
 	FailStatus int
+	// Delay is a pause before the fake answers at all, headers included.
+	// Tests use it to make a provider slower than the gateway's timeout.
+	Delay time.Duration
 }
 
 func (c Config) text() string {
@@ -167,6 +170,11 @@ func (s *Server) record(next http.Handler) http.Handler {
 			Body:   body,
 		})
 		s.mu.Unlock()
+		select {
+		case <-time.After(s.cfg.Delay):
+		case <-r.Context().Done():
+			return
+		}
 		next.ServeHTTP(w, r)
 	})
 }

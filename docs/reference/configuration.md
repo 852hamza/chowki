@@ -255,6 +255,26 @@ providers:
 When a provider's key variable isn't set, Chowki starts but logs a warning, and requests for that
 provider fail with a `provider_key_missing` error.
 
+## `aliases`
+
+| | |
+|---|---|
+| Type | Map of names to lists of `<provider>/<model>` targets |
+| Default | None |
+| Environment variable | None; set it in the file |
+| Since | v0.1 |
+
+Model names that stand for lists of targets, tried in order: when a target fails with a rate
+limit, a server error or a timeout, Chowki tries the next one. Every target must name a provider
+from `providers`.
+
+```yaml
+aliases:
+  fast: ["openai/gpt-6-luna", "backup/gpt-6-luna"]
+```
+
+See [Route requests with aliases and fallback](../how-to/routing-and-fallback.md).
+
 ## Other environment variables
 
 | Variable | Description |

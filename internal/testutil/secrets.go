@@ -28,6 +28,7 @@ func Secrets() []Secret {
 		{"jwt", "", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9" + ".eyJzdWIiOiIxMjM0NTY3ODkwIn0" +
 			".dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U"},
 		{"chowki_key", "", "chowki" + "_" + strings.Repeat("aB3", 16) + "x"},
+		{"chowki_key", "", "chowki" + "_admin_" + strings.Repeat("aB3", 16) + "x"},
 		{"secret", "password = ", "S3cr3tValue9x"},
 		{"email", "", "jane.doe@company.io"},
 		{"card_number", "", "4111 1111 1111 1111"},

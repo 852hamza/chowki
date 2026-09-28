@@ -115,7 +115,7 @@ func TestKeys(t *testing.T) {
 	}
 	want := Key{ID: k.ID, ProjectID: p.ID, Project: "team", Name: "alice", Prefix: "chowki_abcde",
 		Hash: [32]byte{1, 2, 3}, CreatedAt: created}
-	if k != want || k.Revoked() {
+	if !reflect.DeepEqual(k, want) || k.Revoked() {
 		t.Errorf("CreateKey() = %+v, want %+v", k, want)
 	}
 	if _, err := s.CreateKey(ctx, Key{ProjectID: p.ID, Name: "bob", Prefix: "chowki_abcde", CreatedAt: created}); !errors.Is(err, ErrExists) {
@@ -124,7 +124,7 @@ func TestKeys(t *testing.T) {
 	if _, err := s.CreateKey(ctx, Key{ProjectID: 999, Name: "x", Prefix: "chowki_other", CreatedAt: created}); err == nil {
 		t.Error("CreateKey() accepted an unknown project")
 	}
-	if got, err := s.KeyByPrefix(ctx, "chowki_abcde"); err != nil || got != want {
+	if got, err := s.KeyByPrefix(ctx, "chowki_abcde"); err != nil || !reflect.DeepEqual(got, want) {
 		t.Errorf("KeyByPrefix() = %+v, %v", got, err)
 	}
 	if _, err := s.KeyByPrefix(ctx, "chowki_zzzzz"); !errors.Is(err, ErrNotFound) {
@@ -236,6 +236,15 @@ func TestKeyRateLimits(t *testing.T) {
 	if k, err := s.UpdateKey(ctx, "chowki_abcde", KeyUpdate{RedactionMode: mode("block")}); err != nil ||
 		k.RedactionMode != "block" || k.TPM != 5000 {
 		t.Errorf("UpdateKey() of the redaction mode = %+v, %v", k, err)
+	}
+	models := []string{"fast", "openai/*"}
+	if k, err := s.UpdateKey(ctx, "chowki_abcde", KeyUpdate{AllowedModels: &models}); err != nil ||
+		!reflect.DeepEqual(k.AllowedModels, models) || k.RedactionMode != "block" {
+		t.Errorf("UpdateKey() of the allowed models = %+v, %v", k, err)
+	}
+	if k, err := s.UpdateKey(ctx, "chowki_abcde", KeyUpdate{AllowedModels: &[]string{}}); err != nil ||
+		k.AllowedModels != nil {
+		t.Errorf("UpdateKey() allowing every model = %+v, %v", k, err)
 	}
 }
 
@@ -403,6 +412,14 @@ func TestClosedDatabaseErrors(t *testing.T) {
 	_, checks["CacheSize"] = s.CacheSize(ctx)
 	_, checks["DeleteRequestsBefore"] = s.DeleteRequestsBefore(ctx, time.Now())
 	checks["AddAudit"] = s.AddAudit(ctx, AuditEvent{})
+	checks["Ping"] = s.Ping(ctx)
+	_, checks["CreateAdminToken"] = s.CreateAdminToken(ctx, AdminToken{})
+	_, checks["AdminTokenByPrefix"] = s.AdminTokenByPrefix(ctx, "x")
+	_, checks["ListAdminTokens"] = s.ListAdminTokens(ctx)
+	_, checks["RevokeAdminToken"] = s.RevokeAdminToken(ctx, "x", time.Now())
+	_, checks["Totals"] = s.Totals(ctx, time.Now(), time.Now())
+	_, checks["Breakdown"] = s.Breakdown(ctx, ByKey, time.Now(), time.Now())
+	_, checks["RecentRequests"] = s.RecentRequests(ctx, time.Now(), 1)
 	for name, err := range checks {
 		if err == nil {
 			t.Errorf("%s() on a closed database succeeded", name)

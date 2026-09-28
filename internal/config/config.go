@@ -5,11 +5,13 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"net"
 	"net/url"
 	"os"
 	"regexp"
 	"slices"
+	"strings"
 	"time"
 
 	"go.yaml.in/yaml/v3"
@@ -26,6 +28,10 @@ type Config struct {
 	RetentionDays int        `yaml:"retention_days"`
 	Defaults      Defaults   `yaml:"defaults"`
 	Providers     []Provider `yaml:"providers"`
+	// Aliases are model names that stand for provider/model targets, tried
+	// in order: when one fails with a rate limit, a server error or a
+	// timeout, the next one gets the request.
+	Aliases map[string][]string `yaml:"aliases"`
 }
 
 // Server configures the HTTP server.
@@ -227,6 +233,21 @@ func (c *Config) validate() error {
 		}
 		if p.APIKeyEnv != "" && !envNameRE.MatchString(p.APIKeyEnv) {
 			add(field+".api_key_env", "must be an environment variable name, such as OPENAI_API_KEY")
+		}
+	}
+	for _, name := range slices.Sorted(maps.Keys(c.Aliases)) {
+		field := "aliases." + name
+		switch {
+		case name == "" || strings.ContainsAny(name, "/ "):
+			add(field, "an alias name must not be empty or hold / or spaces")
+		case len(c.Aliases[name]) == 0:
+			add(field, "must list at least one <provider>/<model> target")
+		}
+		for i, target := range c.Aliases[name] {
+			p, model, ok := strings.Cut(target, "/")
+			if !ok || model == "" || !seen[p] {
+				add(fmt.Sprintf("%s[%d]", field, i), "must be <provider>/<model> with a provider from providers")
+			}
 		}
 	}
 	return errors.Join(errs...)

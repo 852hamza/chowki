@@ -39,20 +39,33 @@ var (
 // NewKey generates a new virtual key and returns it with the prefix and
 // hash to store. Only the caller ever sees the key itself.
 func NewKey() (key, prefix string, hash [32]byte, err error) {
+	return generate(KeyPrefix, PrefixLen)
+}
+
+// generate makes a secret: kind, 32 random bytes and a checksum. It returns
+// the secret with the first prefixLen characters, which identify it, and
+// its hash.
+func generate(kind string, prefixLen int) (secret, prefix string, hash [32]byte, err error) {
 	b := make([]byte, 32)
 	if _, err := rand.Read(b); err != nil {
 		return "", "", hash, fmt.Errorf("generate key: %w", err)
 	}
 	random := base62(new(big.Int).SetBytes(b), randomLen)
-	key = KeyPrefix + random + checksum(random)
-	return key, key[:PrefixLen], sha256.Sum256([]byte(key)), nil
+	secret = kind + random + checksum(random)
+	return secret, secret[:prefixLen], sha256.Sum256([]byte(secret)), nil
 }
 
 // Check reports whether key has the format and checksum of a virtual key,
 // without a database lookup. It returns ErrInvalid otherwise.
 func Check(key string) error {
-	random, ok := strings.CutPrefix(key, KeyPrefix)
-	if !ok || len(key) != KeyLen {
+	return checkFormat(key, KeyPrefix)
+}
+
+// checkFormat reports whether secret is kind followed by a random part and
+// its checksum.
+func checkFormat(secret, kind string) error {
+	random, ok := strings.CutPrefix(secret, kind)
+	if !ok || len(random) != randomLen+checksumLen {
 		return ErrInvalid
 	}
 	for i := range len(random) {
