@@ -75,5 +75,6 @@ and Chowki records them that way.
 
 ## Related
 
-- [Cache responses](cache-responses.md) · [Configuration reference](../reference/configuration.md) ·
+- [Cache responses](cache-responses.md) ·
+  [Configuration reference](../reference/configuration.md) ·
   [Architecture](../concepts/architecture.md)

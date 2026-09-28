@@ -9,8 +9,8 @@ last_reviewed: 2026-09-28
 
 `chowki doctor` checks what `chowki serve` needs: the `.env` file, the configuration, the master
 key, the providers' keys and prices, the model catalog, the database, the keys, the TLS certificate
-and the listen address. It says what to fix, and changes nothing: it doesn't create or migrate the database, and
-it sends no request to a provider.
+and the listen address. It says what to fix, and changes nothing: it doesn't create or migrate the
+database, and it sends no request to a provider.
 
 ## Before you begin
 

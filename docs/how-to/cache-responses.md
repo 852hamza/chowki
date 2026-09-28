@@ -143,4 +143,5 @@ cache answered has `"cache":"hit"`.
 ## Related
 
 - [Manage virtual keys](manage-virtual-keys.md) ·
-  [Configuration reference](../reference/configuration.md) · [Architecture](../concepts/architecture.md)
+  [Configuration reference](../reference/configuration.md) ·
+  [Architecture](../concepts/architecture.md)

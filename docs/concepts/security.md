@@ -86,13 +86,13 @@ SQLite and a YAML parser. With the modules that they need, 9 to 11 modules are l
 platform, all under the MIT, BSD or Apache 2.0 licenses, or in the public domain, as SQLite is.
 Each release ships their licenses, and its build fails on a module under another license.
 Continuous integration verifies downloaded modules against `go.sum`, checks for known
-vulnerabilities with `govulncheck`, and pins every GitHub Action to a commit. The container image is built on a
-distroless base, pinned by digest, and runs as a non-root user.
+vulnerabilities with `govulncheck`, and pins every GitHub Action to a commit. The container image
+is built on a distroless base, pinned by digest, and runs as a non-root user.
 
 ## Reporting a vulnerability
 
-See [SECURITY.md](https://github.com/852hamza/chowki/blob/main/SECURITY.md) for how to report a vulnerability
-privately.
+See [SECURITY.md](https://github.com/852hamza/chowki/blob/main/SECURITY.md) for how to report a
+vulnerability privately.
 
 ## Related
 

@@ -106,8 +106,8 @@ short commit hash, followed by `-dirty` when you have uncommitted changes.
 ## Next steps
 
 - Find where your change belongs in [Code structure](code-structure.md).
-- Read the [contributing guide](https://github.com/852hamza/chowki/blob/main/CONTRIBUTING.md) before
-  you open a pull request.
+- Read the [contributing guide](https://github.com/852hamza/chowki/blob/main/CONTRIBUTING.md)
+  before you open a pull request.
 
 ## Related
 

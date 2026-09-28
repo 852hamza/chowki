@@ -119,5 +119,6 @@ An Anthropic-format request gets the same message with the type `invalid_request
 
 ## Related
 
-- [Manage virtual keys](manage-virtual-keys.md) · [Configuration reference](../reference/configuration.md) ·
+- [Manage virtual keys](manage-virtual-keys.md) ·
+  [Configuration reference](../reference/configuration.md) ·
   [Architecture](../concepts/architecture.md)

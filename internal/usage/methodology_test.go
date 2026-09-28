@@ -32,8 +32,8 @@ func TestSavingsExample(t *testing.T) {
 		return "$" + fmt.Sprintf("%.6f", v)
 	}
 	var b strings.Builder
-	fmt.Fprintf(&b, "\nPrices of `anthropic/%s`, per million tokens: input $%g, output $%g, 5-minute cache write $%g, "+
-		"cache read $%g.\n\n", model, p.Input, p.Output, *p.CacheWrite, *p.CacheRead)
+	fmt.Fprintf(&b, "\nPrices of `anthropic/%s`, per million tokens: input $%g, output $%g,\n"+
+		"5-minute cache write $%g, cache read $%g.\n\n", model, p.Input, p.Output, *p.CacheWrite, *p.CacheRead)
 	b.WriteString("| Request | Input tokens | Written to the cache | Read from the cache | Output tokens | Cost | " +
 		"Savings |\n|---|---|---|---|---|---|---|\n")
 	var total, saved, second float64

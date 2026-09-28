@@ -123,4 +123,5 @@ In other CI systems, run `chowki scan` as a step: it fails the job when it finds
 
 ## Related
 
-- [Redact secrets and personal data](redact-sensitive-data.md): mask them in prompts, at the gateway
+- [Redact secrets and personal data](redact-sensitive-data.md): mask them in prompts, at the
+  gateway

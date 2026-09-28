@@ -22,5 +22,5 @@ It's a single binary with a SQLite database, and runs on a laptop, a server or i
 
 - [Send your first request](/docs/get-started/quickstart), in a few minutes.
 - [Install Chowki](/docs/get-started/install) with Docker Compose, Docker or from source.
-- [Connect Claude Code](/docs/how-to/connect-claude-code), [the Codex CLI](/docs/how-to/connect-codex),
-  [the Gemini CLI](/docs/how-to/connect-gemini-cli) or [your SDKs](/docs/how-to/connect-sdks).
+- [Connect Claude Code](/docs/how-to/connect-claude-code),
+  [the Codex CLI](/docs/how-to/connect-codex), [the Gemini CLI](/docs/how-to/connect-gemini-cli) or [your SDKs](/docs/how-to/connect-sdks).

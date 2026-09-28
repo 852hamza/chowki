@@ -27,8 +27,8 @@ a single Go binary that stores its data in SQLite.
 ## Quickstart
 
 Build Chowki from source with Go 1.27 or later, Git and GNU Make, then follow
-[Send your first request](docs/get-started/quickstart.md) to create a virtual key and send a request
-through the gateway:
+[Send your first request](docs/get-started/quickstart.md) to create a virtual key and send a
+request through the gateway:
 
 ```sh
 git clone https://github.com/852hamza/chowki.git
@@ -56,8 +56,8 @@ make build
   keys and personal data in prompts.
 - [Use Google Gemini](docs/how-to/use-google-gemini.md): send Gemini requests from the Google
   Gen AI SDKs through Chowki.
-- [Call Anthropic and Gemini models with OpenAI SDKs](docs/how-to/call-any-model-with-openai-sdks.md):
-  use any provider's models from OpenAI-format clients.
+- [Call Anthropic and Gemini models with OpenAI SDKs][openai-sdks]: use any provider's models from
+  OpenAI-format clients.
 - [Connect OpenAI-compatible providers](docs/how-to/connect-openai-compatible-providers.md): add
   DeepSeek, xAI, Mistral, Groq, OpenRouter and others.
 - [Use the dashboard](docs/how-to/use-the-dashboard.md): see spend, savings, redactions and
@@ -109,3 +109,5 @@ change, and follow the [code of conduct](CODE_OF_CONDUCT.md). To report a vulner
 ## License
 
 Chowki is licensed under the [Apache License 2.0](LICENSE).
+
+[openai-sdks]: docs/how-to/call-any-model-with-openai-sdks.md
