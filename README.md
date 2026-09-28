@@ -87,6 +87,8 @@ make build
   reverse proxy.
 - [Measure the gateway's overhead](docs/operations/performance.md): run the load test on your
   hardware.
+- [Back up and restore Chowki](docs/operations/backup-and-restore.md) and
+  [upgrade it](docs/operations/upgrade.md): keep the database and the master key safe.
 - [Architecture](docs/concepts/architecture.md): how a request flows through Chowki.
 - [Security model](docs/concepts/security.md): what Chowki stores, encrypts and logs, and what it
   guards against.
