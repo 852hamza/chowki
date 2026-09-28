@@ -1,11 +1,16 @@
 package store
 
 import (
+	"cmp"
 	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
+	"slices"
+	"strconv"
+	"strings"
 	"time"
 
 	"modernc.org/sqlite"
@@ -187,12 +192,57 @@ func (s *SQLite) Breakdown(ctx context.Context, by string, from, to time.Time) (
 	return out, nil
 }
 
+// requestColumns are the columns of a request record, in the order that
+// queryRequests scans them.
+const requestColumns = `id, ts, key_id, project_id, api_family, endpoint, provider, model, stream, status,
+	error_type, latency_ms, ttfb_ms, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens,
+	reasoning_tokens, cost_usd, savings_usd, savings_method, cache_status, redactions`
+
 // RecentRequests implements Store.
 func (s *SQLite) RecentRequests(ctx context.Context, before time.Time, limit int) ([]Request, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT id, ts, key_id, project_id, api_family, endpoint, provider, model,
-		stream, status, error_type, latency_ms, ttfb_ms, input_tokens, output_tokens, cache_read_tokens,
-		cache_write_tokens, reasoning_tokens, cost_usd, savings_usd, savings_method, cache_status, redactions
-		FROM requests WHERE ts < ? ORDER BY ts DESC, id LIMIT ?`, before.UnixMilli(), limit)
+	return s.queryRequests(ctx, `SELECT `+requestColumns+` FROM requests WHERE ts < ? ORDER BY ts DESC, id LIMIT ?`,
+		before.UnixMilli(), limit)
+}
+
+// ListRequests implements Store.
+func (s *SQLite) ListRequests(ctx context.Context, f RequestFilter) ([]Request, error) {
+	var where []string
+	var args []any
+	add := func(clause string, values ...any) {
+		where = append(where, clause)
+		args = append(args, values...)
+	}
+	if f.KeyID != 0 {
+		add("key_id = ?", f.KeyID)
+	}
+	if f.Provider != "" {
+		add("provider = ?", f.Provider)
+	}
+	if f.Model != "" {
+		add("model = ?", f.Model)
+	}
+	switch f.Status {
+	case StatusFailed:
+		add("status >= 400")
+	case StatusSucceeded:
+		add("status < 400")
+	}
+	if f.Before != nil {
+		ms := f.Before.Time.UnixMilli()
+		// ts <= ? gives SQLite a range of the ts index to read; without
+		// it, the OR makes it scan every record.
+		add("ts <= ? AND (ts < ? OR id < ?)", ms, ms, f.Before.ID)
+	}
+	query := `SELECT ` + requestColumns + ` FROM requests`
+	if len(where) > 0 {
+		query += ` WHERE ` + strings.Join(where, " AND ")
+	}
+	// The clauses are constants; every value is a bound argument.
+	return s.queryRequests(ctx, query+` ORDER BY ts DESC, id DESC LIMIT ?`, append(args, f.Limit)...)
+}
+
+func (s *SQLite) queryRequests(ctx context.Context, query string, args ...any) ([]Request, error) {
+	rows, err := s.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("read requests: %w", err)
 	}
@@ -229,4 +279,81 @@ func (s *SQLite) RecentRequests(ctx context.Context, before time.Time, limit int
 		return nil, fmt.Errorf("read requests: %w", err)
 	}
 	return out, nil
+}
+
+// ProviderStats implements Store. It reads the request records, not the
+// daily sums, because percentiles don't add up. Answers from the exact
+// cache, and requests that the gateway refused after routing them, such as
+// over a budget, never reached the provider, and don't count.
+func (s *SQLite) ProviderStats(ctx context.Context, from, to time.Time) ([]ProviderStat, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT provider, status, error_type, latency_ms FROM requests
+		WHERE ts >= ? AND ts < ? AND provider != '' AND cache_status != 'hit'`, from.UnixMilli(), to.UnixMilli())
+	if err != nil {
+		return nil, fmt.Errorf("read provider stats: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	stats := map[string]*ProviderStat{}
+	latencies := map[string][]int64{}
+	for rows.Next() {
+		var provider, errType string
+		var status int
+		var latency int64
+		if err := rows.Scan(&provider, &status, &errType, &latency); err != nil {
+			return nil, fmt.Errorf("read provider stats: %w", err)
+		}
+		upstream := strings.HasPrefix(errType, "upstream_")
+		if !upstream && (status >= 400 || errType != "") {
+			continue // the gateway refused it
+		}
+		st := stats[provider]
+		if st == nil {
+			st = &ProviderStat{Provider: provider}
+			stats[provider] = st
+		}
+		st.Requests++
+		switch {
+		case providerFailed(errType):
+			st.Failed++
+		case !upstream:
+			latencies[provider] = append(latencies[provider], latency)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("read provider stats: %w", err)
+	}
+	out := make([]ProviderStat, 0, len(stats))
+	for name, st := range stats {
+		ls := latencies[name]
+		slices.Sort(ls)
+		st.P50, st.P95 = nearestRank(ls, 0.50), nearestRank(ls, 0.95)
+		out = append(out, *st)
+	}
+	slices.SortFunc(out, func(a, b ProviderStat) int {
+		return cmp.Or(cmp.Compare(b.Requests, a.Requests), strings.Compare(a.Provider, b.Provider))
+	})
+	return out, nil
+}
+
+// providerFailed reports whether a request's error type is a failure of its
+// provider: no answer, a broken one, or a status of 429 or 5xx. Its other
+// 4xx statuses reject the request itself, as the gateway's own errors do.
+func providerFailed(errType string) bool {
+	rest, ok := strings.CutPrefix(errType, "upstream_")
+	if !ok {
+		return false
+	}
+	if status, err := strconv.Atoi(rest); err == nil {
+		return status == 429 || status >= 500
+	}
+	return true
+}
+
+// nearestRank returns the q-quantile of sorted latencies in milliseconds,
+// or 0 when there are none.
+func nearestRank(sorted []int64, q float64) time.Duration {
+	if len(sorted) == 0 {
+		return 0
+	}
+	i := max(int(math.Ceil(q*float64(len(sorted))))-1, 0)
+	return time.Duration(sorted[i]) * time.Millisecond
 }

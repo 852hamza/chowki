@@ -58,6 +58,8 @@ func (u *UI) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.Handle("GET /ui", http.RedirectHandler("/ui/", http.StatusSeeOther))
 	mux.HandleFunc("GET /ui/{$}", u.dashboard)
+	mux.HandleFunc("GET /ui/requests", u.requests)
+	mux.HandleFunc("GET /ui/requests.csv", u.requestsCSV)
 	mux.HandleFunc("GET /ui/login", u.loginPage)
 	mux.HandleFunc("POST /ui/login", u.login)
 	mux.HandleFunc("POST /ui/logout", u.logout)

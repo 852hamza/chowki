@@ -294,7 +294,8 @@ func seed(t *testing.T, st store.Store) {
 		{ID: "r3", Time: now.AddDate(0, 0, -2), KeyID: ids[1], Provider: "anthropic", Model: "claude", Status: 200,
 			Tokens: &store.Tokens{Input: 3000, Output: 500}, CostUSD: usdPtr(0.5), SavingsUSD: 0.25,
 			SavingsMethod: "prompt_cache", Redactions: map[string]int{"email": 2}},
-		{ID: "r4", Time: hour, KeyID: ids[1], Provider: "ollama", Model: "<script>alert(1)</script>", Status: 500},
+		{ID: "r4", Time: hour, KeyID: ids[1], Provider: "ollama", Model: "<script>alert(1)</script>", Status: 500,
+			ErrorType: "upstream_500", Latency: 40 * time.Millisecond},
 		{ID: "r5", Time: hour, Status: 401},
 		{ID: "august", Time: now.AddDate(0, -1, 0), KeyID: ids[1], Provider: "openai", Model: "gpt-x", Status: 200,
 			CostUSD: usdPtr(3)},
@@ -329,7 +330,7 @@ func TestDashboard(t *testing.T) {
 		`<h2>Redactions</h2><p class="value">2</p>`,
 		`<h2 id="chart-title">Spend by day</h2>`,
 		`aria-label="Sun, Sep 27: 4 requests, 1.2k tokens, $8.50"`,
-		`<span class="name">alice</span>`, `$8.50 of $10.00`, `85% used`, `<li class="warning">`,
+		`<span class="name"><a href="/ui/requests?key=chowki_`, `">alice</a></span>`, `$8.50 of $10.00`, `85% used`, `<li class="warning">`,
 		`<span class="name">team</span><span class="detail">Project</span>`, `$9.00 of $100.00`,
 		`<span class="name">No valid key</span>`,
 		`<th scope="row">Exact cache</th><td>$1.25</td>`, `<th scope="row">Provider prompt caching</th><td>$0.25</td>`,
@@ -340,7 +341,7 @@ func TestDashboard(t *testing.T) {
 	if strings.Contains(body, "<script>alert(1)</script>") {
 		t.Error("the dashboard shows a model name unescaped")
 	}
-	if strings.Index(body, `<span class="name">alice</span>`) > strings.Index(body, `<span class="name">bob</span>`) {
+	if strings.Index(body, `">alice</a></span>`) > strings.Index(body, `">bob</a></span>`) {
 		t.Error("the top keys by spend don't start with alice")
 	}
 

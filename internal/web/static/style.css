@@ -214,6 +214,57 @@ table.plain th, table.plain td { padding: 8px 0; }
 .warning .icon .glyph { stroke: #0b0b0b; }
 .critical .icon, .alert .icon { color: var(--critical); }
 
+/* Page tabs in the top bar. */
+.tabs { display: flex; gap: 2px; margin: 0 auto 0 16px; }
+.tabs a { padding: 6px 12px; border-radius: 6px; color: var(--ink-2); text-decoration: none; font-weight: 500; }
+.tabs a:hover { background: var(--wash); color: var(--ink); }
+.tabs a[aria-current] { background: var(--selected); color: var(--ink); font-weight: 600; }
+@media (max-width: 480px) {
+  .brand span { display: none; }
+  .tabs { margin-left: 8px; }
+  .tabs a { padding: 6px 8px; }
+}
+
+/* Links in lists and tables: quiet until hovered, as the text they are. */
+.bars .name a, tbody th a { color: var(--ink); text-decoration: none; }
+.bars .name a:hover, tbody th a:hover { color: var(--accent-strong); text-decoration: underline; }
+.flag { display: inline-flex; align-items: center; gap: 6px; color: inherit; text-decoration: none; }
+a.flag:hover span { text-decoration: underline; }
+.footnote { margin-top: 12px; font-size: 12px; color: var(--ink-2); }
+.table-wrap { overflow-x: auto; }
+
+/* The Requests page. */
+.filter-bar { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px 16px; }
+.filter-bar label { display: grid; gap: 4px; flex: 1 1 200px; min-width: 0; font-size: 12px; font-weight: 500; color: var(--ink-2); }
+.filter-bar select {
+  width: 100%;
+  font: 14px var(--font);
+  padding: 7px 10px;
+  border: 1px solid var(--baseline);
+  border-radius: 8px;
+  background: var(--page);
+  color: var(--ink);
+}
+.chip { color: var(--ink-2); }
+.chip a { margin-left: 4px; color: var(--accent-strong); }
+table.log th, table.log td { vertical-align: top; }
+table.log .text { text-align: left; }
+table.log .name { display: block; font-weight: 500; }
+table.log .detail { white-space: nowrap; }
+.pager { margin-top: 16px; }
+/* On narrow screens, each request is a card of two columns, its time on
+   top, rather than a row too wide to read without scrolling. */
+@media (max-width: 720px) {
+  table.log thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+  table.log, table.log tbody { display: block; }
+  table.log tr { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px 16px; padding: 12px 0; border-bottom: 1px solid var(--grid); }
+  table.log tbody tr:first-child { padding-top: 0; }
+  table.log th, table.log td { display: block; padding: 0; border: 0; text-align: left; white-space: normal; }
+  table.log th { grid-column: 1 / -1; font-weight: 600; }
+  table.log td::before { content: attr(data-label); display: block; font-size: 12px; color: var(--ink-2); }
+  table.log .detail { white-space: normal; }
+}
+
 @media (forced-colors: active) {
   .bar, .fill { background: CanvasText; }
   .col:hover .bar, .col:focus-visible .bar { background: Highlight; }

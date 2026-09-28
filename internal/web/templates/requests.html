@@ -1,0 +1,55 @@
+{{template "head" "Requests"}}
+<body>
+{{template "topbar" .}}
+<main class="wrap">
+  <div class="toolbar">
+    <div>
+      <h1>Requests</h1>
+      <p class="period">The newest first, in UTC. Chowki keeps what each request was, never what it said.</p>
+    </div>
+    <a class="button quiet" href="{{.CSV}}" download>Download CSV</a>
+  </div>
+
+  <form class="card filter-bar" method="get" action="/ui/requests">
+    <label><span>Key</span>
+      <select name="key">{{range .Keys}}<option value="{{.Value}}"{{if .Selected}} selected{{end}}>{{.Label}}</option>{{end}}</select></label>
+    <label><span>Model</span>
+      <select name="model">{{range .Models}}<option value="{{.Value}}"{{if .Selected}} selected{{end}}>{{.Label}}</option>{{end}}</select></label>
+    <label><span>Result</span>
+      <select name="status">{{range .Results}}<option value="{{.Value}}"{{if .Selected}} selected{{end}}>{{.Label}}</option>{{end}}</select></label>
+    {{- with .Provider}}<input type="hidden" name="provider" value="{{.}}">{{end}}
+    <button class="button" type="submit">Show</button>
+  </form>
+  {{- with .Provider}}
+  <p class="chip">Only the provider <strong>{{.}}</strong>. <a href="{{$.ClearProvider}}">Show every provider</a></p>
+  {{- end}}
+
+  <section class="card" aria-label="Requests">
+    {{- if .Rows}}
+    <div class="table-wrap">
+      {{- /* The roles keep the table a table for screen readers when narrow screens lay its rows out as cards. */}}
+      <table class="log" role="table">
+        <thead role="rowgroup"><tr role="row"><th scope="col" role="columnheader">Time</th><th scope="col" role="columnheader" class="text">Key</th><th scope="col" role="columnheader" class="text">Model</th><th scope="col" role="columnheader" class="text">Status</th><th scope="col" role="columnheader">Latency</th><th scope="col" role="columnheader">Tokens</th><th scope="col" role="columnheader">Cost</th><th scope="col" role="columnheader" class="text">Cache</th><th scope="col" role="columnheader" class="text">Redactions</th></tr></thead>
+        <tbody role="rowgroup">
+          {{- range .Rows}}
+          <tr role="row">
+            <th scope="row" role="rowheader">{{.Time}}</th>
+            <td role="cell" class="text" data-label="Key"><span class="name">{{.Key}}</span><span class="detail">{{.KeyDetail}}</span></td>
+            <td role="cell" class="text" data-label="Model"><span class="name">{{.Model}}</span>{{with .Provider}}<span class="detail">{{.}}</span>{{end}}</td>
+            <td role="cell" class="text" data-label="Status"><span class="flag {{.StatusKind}}">{{template "status-icon" .StatusKind}}<span>{{.Status}}</span></span>{{with .Error}}<span class="detail">{{.}}</span>{{end}}</td>
+            <td role="cell" data-label="Latency">{{.Latency}}</td><td role="cell" data-label="Tokens">{{.Tokens}}</td><td role="cell" data-label="Cost">{{.Cost}}</td><td role="cell" class="text" data-label="Cache">{{.Cache}}</td><td role="cell" class="text" data-label="Redactions">{{.Redaction}}</td>
+          </tr>
+          {{- end}}
+        </tbody>
+      </table>
+    </div>
+    {{- with .Older}}
+    <p class="pager"><a class="button quiet" href="{{.}}">Older requests</a></p>
+    {{- end}}
+    {{- else}}
+    <p class="empty">{{if .Filtered}}No request matches these filters.{{else}}No requests yet. Send one through the gateway, and it shows here.{{end}}</p>
+    {{- end}}
+  </section>
+</main>
+</body>
+</html>

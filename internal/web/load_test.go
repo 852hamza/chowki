@@ -71,7 +71,8 @@ func TestLoadsFast(t *testing.T) {
 	}
 	seedMany(t, h.st, n)
 	h.signIn()
-	for _, path := range []string{"/ui/", "/ui/?range=90d&metric=tokens"} {
+	for _, path := range []string{"/ui/", "/ui/?range=90d&metric=tokens", "/ui/requests",
+		"/ui/requests?model=p/llama&status=failed"} {
 		var times []time.Duration
 		var body string
 		for range 3 {
@@ -93,6 +94,18 @@ func TestLoadsFast(t *testing.T) {
 				t.Errorf("GET %s: the page refers to %q, outside the dashboard", path, m[1])
 			}
 		}
+	}
+	// The largest download, 10,000 requests, streams in batches.
+	start := time.Now()
+	resp, body := h.do(http.MethodGet, "/ui/requests.csv", nil)
+	took := time.Since(start)
+	t.Logf("GET /ui/requests.csv: %v, %d lines", took, strings.Count(body, "\n"))
+	if resp.StatusCode != http.StatusOK || strings.Count(body, "\n") != min(n, csvLimit)+1 {
+		t.Errorf("GET /ui/requests.csv = %d with %d lines, want %d", resp.StatusCode, strings.Count(body, "\n"),
+			min(n, csvLimit)+1)
+	}
+	if took > 2*time.Second && !raceEnabled {
+		t.Errorf("GET /ui/requests.csv took %v; want under 2 s", took)
 	}
 	for _, path := range []string{"/ui/static/style.css", "/ui/static/dashboard.js"} {
 		if _, body := h.do(http.MethodGet, path, nil); strings.Contains(body, "//") && strings.Contains(body, "http") ||

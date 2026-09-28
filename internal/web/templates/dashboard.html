@@ -1,14 +1,6 @@
 {{template "head" "Dashboard"}}
 <body>
-<header class="topbar">
-  <div class="wrap">
-    <a class="brand" href="/ui/">{{template "logo"}}<span>Chowki</span></a>
-    <form method="post" action="/ui/logout">
-      <input type="hidden" name="csrf" value="{{.CSRF}}">
-      <button class="button quiet" type="submit">Sign out</button>
-    </form>
-  </div>
-</header>
+{{template "topbar" .}}
 <main class="wrap">
   <div class="toolbar">
     <div>
@@ -74,6 +66,27 @@
       {{template "bars" .Models}}
     </section>
   </div>
+
+  <section class="card" aria-labelledby="providers-title">
+    <h2 id="providers-title">Providers</h2>
+    {{- if .Providers}}
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th scope="col">Provider</th><th scope="col">Requests</th><th scope="col">Failed</th><th scope="col">Median latency</th><th scope="col">95th percentile</th></tr></thead>
+        <tbody>
+          {{- range .Providers}}
+          <tr><th scope="row"><a href="{{.Href}}">{{.Name}}</a></th><td>{{.Requests}}</td>
+            <td>{{if .FailedHref}}<a class="flag {{.Status}}" href="{{.FailedHref}}">{{if ne .Status "ok"}}{{template "status-icon" .Status}}{{end}}<span>{{.Failed}}</span></a>{{else}}{{.Failed}}{{end}}</td>
+            <td>{{.P50}}</td><td>{{.P95}}</td></tr>
+          {{- end}}
+        </tbody>
+      </table>
+    </div>
+    <p class="footnote">Failed counts the requests that a provider didn't answer, broke off, or answered with 429 or a 5xx status, after any fallback. Latency is that of successful requests, the gateway's time included.</p>
+    {{- else}}
+    <p class="empty">No request reached a provider in this range.</p>
+    {{- end}}
+  </section>
 
   <div class="split thirds">
     <section class="card" aria-labelledby="budgets-title">

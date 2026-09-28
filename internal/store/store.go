@@ -94,6 +94,12 @@ type Store interface {
 	// RecentRequests returns up to limit records of requests that started
 	// before t, newest first.
 	RecentRequests(ctx context.Context, before time.Time, limit int) ([]Request, error)
+	// ListRequests returns up to f.Limit records of requests that match f,
+	// newest first.
+	ListRequests(ctx context.Context, f RequestFilter) ([]Request, error)
+	// ProviderStats sums up, for each provider, the requests that reached
+	// it in [from, to), the most first.
+	ProviderStats(ctx context.Context, from, to time.Time) ([]ProviderStat, error)
 	// SetProviderKey saves the sealed key of a provider, replacing the one
 	// it had.
 	SetProviderKey(ctx context.Context, k ProviderKey) error
@@ -244,6 +250,48 @@ type Request struct {
 	CacheStatus string
 	// Redactions counts what redaction found, by type; nil when nothing.
 	Redactions map[string]int
+}
+
+// RequestFilter selects the request records that ListRequests returns. Its
+// zero values select every record.
+type RequestFilter struct {
+	KeyID int64
+	// Provider and Model select the requests of one model, as recorded.
+	Provider, Model string
+	// Status is StatusFailed, StatusSucceeded, or empty for both.
+	Status string
+	// Before, when set, selects the records after it in the list, newest
+	// first: the next page after the one that ended with it.
+	Before *RequestCursor
+	Limit  int
+}
+
+// Request statuses for RequestFilter. A request failed when the gateway
+// answered it with a status of 400 or higher.
+const (
+	StatusFailed    = "failed"
+	StatusSucceeded = "succeeded"
+)
+
+// RequestCursor is a place in the list of requests: the time and ID of a
+// record, which together order the list, even within a millisecond.
+type RequestCursor struct {
+	Time time.Time
+	ID   string
+}
+
+// ProviderStat sums up the requests that reached a provider: not the
+// answers of the exact cache, nor the requests that the gateway refused.
+type ProviderStat struct {
+	Provider string
+	Requests int64
+	// Failed counts the requests that failed because of the provider: it
+	// didn't answer, broke off its answer, or answered 429 or 5xx, even
+	// after any fallback. Its other 4xx answers reject the request itself.
+	Failed int64
+	// P50 and P95 are the latencies of the provider's successful requests,
+	// the gateway's time included; zero without any.
+	P50, P95 time.Duration
 }
 
 // CacheEntry is a response in the exact cache.

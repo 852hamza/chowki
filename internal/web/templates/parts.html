@@ -8,6 +8,20 @@
 <link rel="stylesheet" href="/ui/static/style.css">
 </head>{{end}}
 
+{{define "topbar"}}<header class="topbar">
+  <div class="wrap">
+    <a class="brand" href="/ui/">{{template "logo"}}<span>Chowki</span></a>
+    <nav class="tabs" aria-label="Pages">
+      <a href="/ui/"{{if eq .Tab "overview"}} aria-current="page"{{end}}>Overview</a>
+      <a href="/ui/requests"{{if eq .Tab "requests"}} aria-current="page"{{end}}>Requests</a>
+    </nav>
+    <form method="post" action="/ui/logout">
+      <input type="hidden" name="csrf" value="{{.CSRF}}">
+      <button class="button quiet" type="submit">Sign out</button>
+    </form>
+  </div>
+</header>{{end}}
+
 {{define "logo"}}<svg class="logo" viewBox="0 0 24 24" aria-hidden="true"><rect width="24" height="24" rx="6"/><path d="M7.5 17V7m9 10V7m-9 4.5h9"/></svg>{{end}}
 
 {{define "status-icon"}}
@@ -18,6 +32,6 @@
 
 {{define "bars"}}{{if .}}<ul class="bars">
 {{- range .}}
-<li><div class="label"><span class="name">{{.Label}}</span>{{with .Detail}}<span class="detail">{{.}}</span>{{end}}</div><span class="num">{{.Value}}</span><div class="track"><span class="fill w{{.Width}}"></span></div></li>
+<li><div class="label"><span class="name">{{if .Href}}<a href="{{.Href}}">{{.Label}}</a>{{else}}{{.Label}}{{end}}</span>{{with .Detail}}<span class="detail">{{.}}</span>{{end}}</div><span class="num">{{.Value}}</span><div class="track"><span class="fill w{{.Width}}"></span></div></li>
 {{- end}}
 </ul>{{else}}<p class="empty">None in this range.</p>{{end}}{{end}}

@@ -6,6 +6,15 @@ All notable changes to Chowki are recorded in this file. The format is based on
 
 ## [Unreleased]
 
+### Added
+
+- The dashboard's **Requests** tab lists requests, the newest first, with their key, model,
+  status and error, latency, tokens, cost, cache and redactions, never their content. It filters by
+  key, model and result, and **Download CSV** downloads the requests that the filters select, up to
+  10,000. Top keys and models on the overview link to their requests.
+- The dashboard's **Providers** card shows, for each provider, its requests, how many failed
+  because of it, and the median and 95th percentile of its latency, with a warning from 5% failed.
+
 ### Changed
 
 - New gateways listen on `localhost:8080`, which takes connections from this machine only, on both

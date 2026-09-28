@@ -1,15 +1,15 @@
 ---
 title: Use the dashboard
-description: See spend, requests, tokens, savings, redactions and budgets in a browser.
+description: See spend, savings, budgets and each request in a browser, and download requests as CSV.
 type: how-to
 since: v0.1
 edition: community
-last_reviewed: 2026-09-27
+last_reviewed: 2026-09-28
 ---
 
 The dashboard shows what flows through Chowki: spend, requests, tokens, savings, cache hits,
-redactions and budgets, by day, key and model. It runs inside the gateway at `/ui/`, so there's
-nothing else to install.
+redactions, budgets and the health of your providers, by day, key and model, and it lists each
+request. It runs inside the gateway at `/ui/`, so there's nothing else to install.
 
 ## Before you begin
 
@@ -65,6 +65,35 @@ A session lasts 12 hours. **Sign out** ends it. Revoking the admin token with
    chart with Tab, then use the arrow keys.
 4. To see every day as numbers, select **Show as a table** under the chart.
 
+## See each request
+
+The **Requests** tab lists requests, the newest first: when each one came, its key and model, its
+status and error, how long it took, its tokens and cost, and what the exact cache and redaction
+did. It shows what each request was, never what it said: Chowki doesn't keep prompts or answers.
+
+1. Select **Requests** at the top of the page.
+2. To narrow the list, choose a **Key**, a **Model** or a **Result**, **Failed** or **Succeeded**,
+   and select **Show**.
+3. To see older requests, select **Older requests** at the end of the list.
+
+The overview links to the list, too: select a key or a model in **Top keys** or **Top models** to
+see its requests, or a provider in **Providers** to see its requests, or its number of failed
+requests to see those.
+
+## Download requests as CSV
+
+On the **Requests** tab, select **Download CSV**. The file has the requests that the filters
+select, up to the newest 10,000, with these columns:
+
+```text
+time,request_id,key_name,key_prefix,provider,model,endpoint,stream,status,error,latency_ms,ttfb_ms,input_tokens,output_tokens,cache_read_tokens,cache_write_tokens,reasoning_tokens,cost_usd,savings_usd,savings_method,cache,redactions
+```
+
+Times are in UTC. `cost_usd` is empty for a request to a model without a price, and the token
+columns are empty when the provider reported no usage. A text that starts with `=`, `+`, `-` or
+`@`, such as a model name that a client made up, starts with an apostrophe in the file, so that a
+spreadsheet shows it rather than running it as a formula.
+
 ## What the dashboard shows
 
 | Part | Shows |
@@ -76,11 +105,19 @@ A session lasts 12 hours. **Sign out** ends it. Revoking the admin token with
 | Cache hit rate | The share of exact-cache lookups that found an answer |
 | Redactions | The secrets and personal data that redaction found |
 | Top keys, Top models | The eight keys and models with the most of the chosen measure |
+| Providers | For each provider, its requests, how many failed because of it, and the median and 95th percentile of its latency |
 | Budgets | Each key and project with a monthly budget, and what it spent this month |
 | Redactions by type, Net savings by method | Where those totals come from |
 
 Budgets show their state with an icon and a label as well as a color: under 80% used, 80% used
 or more, and used up, when Chowki rejects new requests until the next month.
+
+**Providers** counts only the requests that reached a provider: not the answers of the exact
+cache, nor the requests that Chowki refused, such as over a budget. A request failed because of
+its provider when the provider didn't answer, broke off its answer, or answered with 429 or a 5xx
+status, even after a fallback. A provider gets a warning icon when 5% of its requests failed, and
+a critical one from 25%. Its latency is that of its successful requests, Chowki's own time
+included.
 
 How Chowki counts:
 

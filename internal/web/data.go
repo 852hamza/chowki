@@ -17,7 +17,7 @@ import (
 
 // page is what the dashboard shows, formatted already.
 type page struct {
-	CSRF            string
+	CSRF, Tab       string
 	Ranges, Metrics []link
 	Period          string
 	Measure         string // the chosen metric, as in "Top keys by spend"
@@ -30,6 +30,13 @@ type page struct {
 	Redactions   []bar
 	Savings      []row
 	Budgets      []meter
+	Providers    []providerRow
+}
+
+// providerRow is a provider's line of the Providers card. Status is ok,
+// warning or critical, by the share of its requests that failed.
+type providerRow struct {
+	Name, Href, Requests, Failed, FailedHref, P50, P95, Status string
 }
 
 // link is one choice of a filter.
@@ -45,8 +52,9 @@ type row struct{ Label, Value string }
 // bar is a row of a bar list: its bar is as long as its value's share of
 // the list's largest.
 type bar struct {
-	Label, Detail, Value string
-	Width                int // percent
+	// Href, when set, links the label to the requests it counts.
+	Label, Detail, Value, Href string
+	Width                      int // percent
 }
 
 // meter is a budget and what was spent of it this month.
@@ -117,7 +125,7 @@ func (u *UI) build(ctx context.Context, q url.Values) (*page, error) {
 		metric = "requests"
 	}
 
-	p := &page{Period: from.Format("January 2") + " to " + to.Format("January 2, 2006") + ", UTC"}
+	p := &page{Tab: "overview", Period: from.Format("January 2") + " to " + to.Format("January 2, 2006") + ", UTC"}
 	for _, r := range ranges {
 		p.Ranges = append(p.Ranges, link{r.label, href(r.name, chosen), r.name == rangeName})
 	}
@@ -150,6 +158,7 @@ func (u *UI) build(ctx context.Context, q url.Values) (*page, error) {
 		}
 		return g.Label, g.ID
 	})
+	linkBars(p.Keys, keys, metric, "key")
 	models, err := u.Store.Breakdown(ctx, store.ByModel, from, to)
 	if err != nil {
 		return nil, err
@@ -160,9 +169,55 @@ func (u *UI) build(ctx context.Context, q url.Values) (*page, error) {
 		}
 		return g.ID, ""
 	})
+	linkBars(p.Models, models, metric, "model")
+
+	stats, err := u.Store.ProviderStats(ctx, from, to)
+	if err != nil {
+		return nil, err
+	}
+	for _, st := range stats {
+		p.Providers = append(p.Providers, providerLine(st))
+	}
 
 	p.Budgets, err = u.budgets(ctx, now)
 	return p, err
+}
+
+// linkBars links the bars of the top list of groups to their requests, by
+// the query parameter name. groupBars sorted the bars from gs; the groups
+// without an ID, rejected requests, get no link.
+func linkBars(bars []bar, gs []store.Group, metric, name string) {
+	gs = slices.Clone(gs)
+	slices.SortStableFunc(gs, func(a, b store.Group) int { return cmp.Compare(value(b, metric), value(a, metric)) })
+	for i := range bars {
+		if id := gs[i].ID; id != "" {
+			bars[i].Href = "/ui/requests?" + url.Values{name: {id}}.Encode()
+		}
+	}
+}
+
+// providerLine formats a provider's stats. A provider with 5% of its
+// requests failed gets a warning, and one with 25% a critical status.
+func providerLine(st store.ProviderStat) providerRow {
+	q := url.Values{"provider": {st.Provider}}
+	row := providerRow{Name: st.Provider, Href: "/ui/requests?" + q.Encode(), Requests: count(st.Requests),
+		Failed: "0", P50: "—", P95: "—", Status: "ok"}
+	if st.Failed > 0 {
+		share := float64(st.Failed) / float64(st.Requests)
+		row.Failed = count(st.Failed) + " · " + strconv.FormatFloat(100*share, 'f', 1, 64) + "%"
+		q.Set("status", store.StatusFailed)
+		row.FailedHref = "/ui/requests?" + q.Encode()
+		switch {
+		case share >= 0.25:
+			row.Status = "critical"
+		case share >= 0.05:
+			row.Status = "warning"
+		}
+	}
+	if st.P50 > 0 {
+		row.P50, row.P95 = duration(st.P50), duration(st.P95)
+	}
+	return row
 }
 
 // tiles returns the total of metric, the hero figure, and the tiles of
