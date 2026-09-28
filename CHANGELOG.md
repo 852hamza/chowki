@@ -6,6 +6,10 @@ All notable changes to Chowki are recorded in this file. The format is based on
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-09-28
+
+The first release.
+
 ### Added
 
 - The `chowki` command. `chowki version` prints the version, commit, build date and repository
@@ -146,4 +150,5 @@ All notable changes to Chowki are recorded in this file. The format is based on
   fake provider, and fails when the p99 is over 25 ms or a gateway built with `-race` reports a
   race.
 
-[Unreleased]: https://github.com/852hamza/chowki/commits/main
+[Unreleased]: https://github.com/852hamza/chowki/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/852hamza/chowki/releases/tag/v0.1.0

@@ -92,8 +92,10 @@ go:     go1.27.1 linux/amd64
 repo:   https://github.com/852hamza/chowki
 ```
 
-Your version, commit and date match your checkout. Until the first release, the version is the
-short commit hash, followed by `-dirty` when you have uncommitted changes.
+Your version, commit and date match your checkout. The version comes from `git describe`: the
+short commit hash in a clone without tags, as above; the tag on a release's commit, such as
+`v0.1.0`; and after it, the tag, the number of commits since it and the hash, such as
+`v0.1.0-3-g1a2b3c4`. It ends in `-dirty` when you have uncommitted changes.
 
 ## Troubleshooting
 

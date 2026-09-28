@@ -17,12 +17,12 @@ a single Go binary that stores its data in SQLite.
 
 *Chowki* (چوکی) means "checkpoint" in Urdu.
 
-> **Status:** early development. Chowki relays OpenAI, Anthropic and Google Gemini requests with
-> virtual keys, translates OpenAI-format requests for Anthropic and Gemini models, records their
-> cost, enforces budgets and rate limits, caches repeated answers, marks repeated Anthropic prompts
-> for caching, redacts secrets and personal data, falls back between providers, shows it all in a
-> dashboard, and scans repositories for secrets. Don't use it in production before v0.1.0. Follow
-> the [changelog](CHANGELOG.md) to see what has landed.
+> **Status:** v0.1.0, the first release. Chowki relays OpenAI, Anthropic and Google Gemini requests
+> with virtual keys, translates OpenAI-format requests for Anthropic and Gemini models, records
+> their cost, enforces budgets and rate limits, caches repeated answers, marks repeated Anthropic
+> prompts for caching, redacts secrets and personal data, falls back between providers, shows it
+> all in a dashboard, and scans repositories for secrets. Before v1.0, a minor release can change
+> the configuration or the APIs; the [changelog](CHANGELOG.md) says what changed and how to upgrade.
 
 ## Quickstart
 
