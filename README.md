@@ -97,6 +97,7 @@ make build
 - [Set up a development environment](docs/contributing/development-setup.md): build and test
   Chowki.
 - [Code structure](docs/contributing/code-structure.md): where each part of the code lives.
+- [Release Chowki](docs/contributing/releasing.md): tag a version, and verify a release.
 - [Architecture decision records](docs/adr/): why Chowki is built the way it is.
 
 ## Contributing
