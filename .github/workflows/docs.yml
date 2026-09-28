@@ -10,6 +10,7 @@ on:
     paths: ["docs/**", "website/**", "project.env", ".github/workflows/docs.yml"]
   pull_request:
     paths: ["docs/**", "website/**", "project.env", ".github/workflows/docs.yml"]
+  workflow_dispatch: # publish by hand, such as after the repository becomes public
 
 permissions:
   contents: read
@@ -37,7 +38,7 @@ jobs:
           cache: npm
           cache-dependency-path: website/package-lock.json
       - id: pages
-        if: github.event_name == 'push' && !github.event.repository.private
+        if: github.event_name != 'pull_request' && !github.event.repository.private
         uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
       - run: npm ci --no-audit --no-fund
         working-directory: website
@@ -45,14 +46,14 @@ jobs:
         working-directory: website
         env:
           DOCS_SITE_URL: ${{ steps.pages.outputs.base_url }}
-      - if: github.event_name == 'push' && !github.event.repository.private
+      - if: github.event_name != 'pull_request' && !github.event.repository.private
         uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
         with:
           path: website/build
 
   deploy:
     name: Publish to GitHub Pages
-    if: github.event_name == 'push' && !github.event.repository.private
+    if: github.event_name != 'pull_request' && !github.event.repository.private
     needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 10
