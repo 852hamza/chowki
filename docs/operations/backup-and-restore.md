@@ -43,8 +43,8 @@ versioning. Run the backup on a schedule, for example daily with cron.
 
 ### With Docker Compose
 
-In the `deploy` folder, stream the backup out of the running container to a file that only you can
-read, and copy the master key out once:
+In the folder with `compose.yaml`, stream the backup out of the running container to a file that
+only you can read, and copy the master key out once:
 
 ```sh
 (umask 077; docker compose exec -T chowki chowki backup - > chowki-2026-09-28.db)

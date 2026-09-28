@@ -14,8 +14,8 @@ Docker, or build it from source.
 | Way | You need | Good for |
 |---|---|---|
 | [Install script](#install-the-binary) | Linux or macOS, and curl | The quickest start, on your computer or a server |
-| [Docker Compose](#run-with-docker-compose) | Docker Engine with the Compose plugin, and Git | A gateway on a server or on your computer |
-| [Docker](#run-with-docker) | Docker Engine, and Git | Your own container setup |
+| [Docker Compose](#run-with-docker-compose) | Docker Engine with the Compose plugin | A gateway on a server or on your computer |
+| [Docker](#run-with-docker) | Docker Engine | Your own container setup |
 | [From source](#build-from-source) | Go 1.27 or later, Git and GNU Make | Development, or a machine without Docker |
 
 ## Install the binary
@@ -54,14 +54,15 @@ Then set up a folder for the gateway, as [Send your first request](quickstart.md
 
 ## Run with Docker Compose
 
-The Compose file in `deploy/` builds the image, keeps the database and the master key in a volume,
-and publishes the gateway on port 8080 of this machine only.
+The [Compose file](https://github.com/852hamza/chowki/blob/main/deploy/compose.yaml) runs the
+published image, `ghcr.io/852hamza/chowki`, keeps the database and the master key in a volume, and
+publishes the gateway on port 8080 of this machine only.
 
-1. Get the repository, and go to its `deploy` folder:
+1. Make a folder for the gateway, and download the Compose file into it:
 
    ```sh
-   git clone https://github.com/852hamza/chowki.git
-   cd chowki/deploy
+   mkdir chowki && cd chowki
+   curl -fsSLO https://github.com/852hamza/chowki/raw/main/deploy/compose.yaml
    ```
 
 2. Put your provider keys in a `.env` file in this folder, readable only by you:
@@ -74,10 +75,9 @@ and publishes the gateway on port 8080 of this machine only.
    Replace `<OPENAI_API_KEY>` with your key. Add `ANTHROPIC_API_KEY` and `GEMINI_API_KEY` the same
    way for those providers.
 
-3. Build the image, and create the master key and the database in the volume:
+3. Create the master key and the database in the volume. The first command downloads the image:
 
    ```sh
-   docker compose build
    docker compose run --rm chowki init
    ```
 
@@ -135,20 +135,30 @@ Send requests to `http://localhost:8080` with the virtual key, as in
 
 After you edit `.env`, run `docker compose up -d` again, so that the container gets the change.
 
+Besides provider keys, `.env` can hold two settings for Compose itself:
+
+| Variable | Effect |
+|---|---|
+| `CHOWKI_IMAGE` | The image to run; `ghcr.io/852hamza/chowki:latest` by default. Name a version, such as `ghcr.io/852hamza/chowki:0.1.0`, to stay on it until you [upgrade](../operations/upgrade.md). |
+| `CHOWKI_PORT` | The port on this machine that the gateway listens on; `8080` by default. |
+
 ## Run with Docker
 
-Build the image from the repository's root folder, then run each command with the data volume:
+Run each command with the data volume:
 
 ```sh
-docker build -f deploy/Dockerfile -t chowki:dev .
 docker volume create chowki-data
-docker run --rm -v chowki-data:/var/lib/chowki chowki:dev init
-docker run --rm -v chowki-data:/var/lib/chowki chowki:dev key create --name my-app
+docker run --rm -v chowki-data:/var/lib/chowki ghcr.io/852hamza/chowki init
+docker run --rm -v chowki-data:/var/lib/chowki ghcr.io/852hamza/chowki key create --name my-app
 docker run -d --name chowki --env-file .env -p 127.0.0.1:8080:8080 \
-  -v chowki-data:/var/lib/chowki chowki:dev
+  -v chowki-data:/var/lib/chowki ghcr.io/852hamza/chowki
 ```
 
-With GNU Make, `make docker` builds the same image, with the version and commit in it.
+The image has a tag for each version, such as `ghcr.io/852hamza/chowki:0.1.0`, and `latest` for
+the newest release. It's built for `linux/amd64` and `linux/arm64`.
+
+To build the image from a clone of the repository instead, run `make docker`, which tags it
+`chowki:dev`. To run that image with Compose, set `CHOWKI_IMAGE=chowki:dev` in `.env`.
 
 ## What the image holds
 
@@ -163,11 +173,13 @@ as the user 65532, not as root. It listens on port 8080.
 
 To change the configuration, mount your own file on `/etc/chowki/chowki.yaml`. The container's
 user must be able to read it, so make it readable by all with `chmod 644`: it holds no keys. With
-Compose, add the mount to the `chowki` service:
+Compose, put the mount in a `compose.override.yaml` file next to `compose.yaml`. Compose reads both
+files, so the Compose file that you downloaded stays as it is:
 
 ```yaml
+services:
+  chowki:
     volumes:
-      - data:/var/lib/chowki
       - ./chowki.yaml:/etc/chowki/chowki.yaml:ro
 ```
 
@@ -194,7 +206,7 @@ folder in your `PATH`, such as `/usr/local/bin`. Then set up a folder for the ga
 |---|---|---|
 | `master key file /var/lib/chowki/master.key doesn't exist; run chowki init, or set CHOWKI_MASTER_KEY` | The volume is new. | Run `docker compose run --rm chowki init`. |
 | `read config: open /etc/chowki/chowki.yaml: permission denied` | The mounted configuration is readable only by its owner. | Run `chmod 644` on it. |
-| `docker compose up` fails with `port is already allocated` or `address already in use` | Another program or container uses port 8080. | Change the published port in `compose.yaml`, such as `127.0.0.1:8081:8080`, and send requests to it. |
+| `docker compose up` fails with `port is already allocated` or `address already in use` | Another program or container uses port 8080. | Set another port in `.env`, such as `CHOWKI_PORT=8081`, run `docker compose up -d`, and send requests to that port. |
 | Requests to Ollama on the Docker host fail with `upstream_unavailable` | Ollama listens only on 127.0.0.1 by default, which containers can't reach. | Set `OLLAMA_HOST=0.0.0.0:11434` for Ollama, as its FAQ explains, and use `http://host.docker.internal:11434/v1` as the provider's `base_url`. Allow only trusted machines to reach that port. |
 
 ## Related

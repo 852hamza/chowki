@@ -27,7 +27,8 @@ LDFLAGS = \
 # symbol tables.
 EXTRA_LDFLAGS ?=
 
-# The tag that `make docker` gives the image, as deploy/compose.yaml names it.
+# The tag that `make docker` gives the image. deploy/compose.yaml runs it
+# with CHOWKI_IMAGE=chowki:dev in its .env.
 IMAGE ?= chowki:dev
 
 .PHONY: build docker test race lint vuln sync sync-check docs loadtest help

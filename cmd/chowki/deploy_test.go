@@ -48,8 +48,9 @@ func TestDeployConfig(t *testing.T) {
 }
 
 // The Dockerfile pins its base images, runs as a non-root user, and points
-// CHOWKI_CONFIG at the configuration it copies; compose.yaml runs the image
-// that make docker builds.
+// CHOWKI_CONFIG at the configuration it copies; compose.yaml runs the
+// published image, which the Release workflow tags latest, unless
+// CHOWKI_IMAGE names another.
 func TestDockerfile(t *testing.T) {
 	dockerfile := readDeploy(t, "deploy/Dockerfile")
 	froms := regexp.MustCompile(`(?m)^FROM\s+(?:--platform=\S+\s+)?(\S+)`).FindAllStringSubmatch(dockerfile, -1)
@@ -75,7 +76,6 @@ func TestDockerfile(t *testing.T) {
 		t.Errorf("%s doesn't name the configuration that the image holds", configEnv)
 	}
 
-	image := regexp.MustCompile(`(?m)^IMAGE \?= (\S+)$`).FindStringSubmatch(readDeploy(t, "Makefile"))
 	var compose struct {
 		Services map[string]struct {
 			Image string `yaml:"image"`
@@ -86,8 +86,12 @@ func TestDockerfile(t *testing.T) {
 		t.Fatal(err)
 	}
 	svc := compose.Services["chowki"]
-	if image == nil || svc.Image != image[1] {
-		t.Errorf("compose.yaml runs %q, but make docker builds %v", svc.Image, image)
+	published := buildinfo.Project().Image()
+	if want := "${CHOWKI_IMAGE:-" + published + ":latest}"; svc.Image != want {
+		t.Errorf("compose.yaml runs %q, want %q", svc.Image, want)
+	}
+	if !strings.Contains(readDeploy(t, ".github/workflows/release.yml"), `tags="$tags,$image:latest"`) {
+		t.Error("the Release workflow no longer tags the image latest, which compose.yaml runs")
 	}
 	for _, p := range svc.Ports {
 		if !strings.HasPrefix(p, "127.0.0.1:") {

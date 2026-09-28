@@ -25,7 +25,9 @@ back up before you upgrade: the backup is the way back.
 
    A backup never upgrades the database, so it keeps the current schema.
 
-2. Build or download the new version, and put it in place of the old binary.
+2. Put the new version in place of the old binary. If you installed Chowki with the
+   [install script](../get-started/install.md#install-the-binary), run it again: it installs the
+   latest release, or the version in `CHOWKI_VERSION`, over the old binary.
 3. Run the new version's checks. When the database needs an upgrade, `chowki doctor` says so:
 
    ```text
@@ -44,17 +46,18 @@ failed request can be retried.
 
 ## Upgrade with Docker Compose
 
-In the `deploy` folder:
+In the folder with `compose.yaml`, back up the database, then get the new image and start it:
 
 ```sh
 (umask 077; docker compose exec -T chowki chowki backup - > chowki-before-upgrade.db)
-git pull
-docker compose build
+docker compose pull
 docker compose up -d
 ```
 
-`docker compose up -d` replaces the container with one of the new image, which upgrades the
-database in the volume when it starts. `docker compose logs chowki` shows the upgrade.
+When `CHOWKI_IMAGE` in `.env` names a version, such as `ghcr.io/852hamza/chowki:0.1.0`, change it
+to the new version before `docker compose pull`. `docker compose up -d` replaces the container
+with one of the new image, which upgrades the database in the volume when it starts.
+`docker compose logs chowki` shows the upgrade.
 
 ## Go back to the earlier version
 

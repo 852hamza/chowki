@@ -6,6 +6,13 @@ All notable changes to Chowki are recorded in this file. The format is based on
 
 ## [Unreleased]
 
+### Changed
+
+- `deploy/compose.yaml` runs the published image, `ghcr.io/852hamza/chowki:latest`, so Docker
+  Compose needs only that file and a `.env`, not a clone and a build. In `.env`, `CHOWKI_IMAGE`
+  names another image, such as a version to stay on or `chowki:dev` from `make docker`, and
+  `CHOWKI_PORT` changes the port on this machine. To upgrade, run `docker compose pull`.
+
 ## [0.1.0] - 2026-09-28
 
 The first release.

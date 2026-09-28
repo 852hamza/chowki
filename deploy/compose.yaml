@@ -1,18 +1,19 @@
-# Chowki with Docker Compose: the gateway, with its database and master key
-# in a volume. Run the commands in this folder:
+# Chowki with Docker Compose: the published image, with its database and
+# master key in a volume. In a folder with this file and a .env file that
+# holds your provider keys, run:
 #
 #   docker compose run --rm chowki init
 #   docker compose run --rm chowki key create --name <NAME>
 #   docker compose up -d
 #
-# docs/get-started/install.md explains them.
+# Optional settings in .env: CHOWKI_IMAGE picks the image, such as
+# ghcr.io/852hamza/chowki:0.1.0 to stay on a version, or chowki:dev, which
+# make docker builds from a clone; CHOWKI_PORT picks the port on this
+# machine. docs/get-started/install.md explains them.
 name: chowki
 services:
   chowki:
-    image: chowki:dev
-    build:
-      context: ..
-      dockerfile: deploy/Dockerfile
+    image: ${CHOWKI_IMAGE:-ghcr.io/852hamza/chowki:latest}
     restart: unless-stopped
     # Provider keys, such as OPENAI_API_KEY, from .env in this folder.
     env_file:
@@ -21,7 +22,7 @@ services:
     ports:
       # Only this machine reaches the gateway. To serve others, put a
       # proxy with TLS in front of it.
-      - "127.0.0.1:8080:8080"
+      - "127.0.0.1:${CHOWKI_PORT:-8080}:8080"
     volumes:
       - data:/var/lib/chowki
     # A provider on the Docker host, such as Ollama, is at
