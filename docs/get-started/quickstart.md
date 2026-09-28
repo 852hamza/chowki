@@ -4,6 +4,7 @@ description: Build Chowki, create a virtual key, and send a chat request through
 type: tutorial
 since: v0.1
 edition: community
+sidebar_position: 1
 last_reviewed: 2026-09-27
 ---
 

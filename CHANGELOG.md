@@ -135,6 +135,8 @@ All notable changes to Chowki are recorded in this file. The format is based on
   `linux/amd64` and `linux/arm64`, all with signed build provenance, as a draft release.
   `tools/licenses` fails the release, and CI, on a module under a license that the binary may not
   include.
+- A documentation site, built from `docs/` with Docusaurus in `website/`, with local search. Its
+  build fails on a broken link or anchor, and GitHub Pages publishes it from `main`.
 - `make loadtest` measures the gateway's overhead at 200 requests per second on 2 CPUs, against a
   fake provider, and fails when the p99 is over 25 ms or a gateway built with `-race` reports a
   race.

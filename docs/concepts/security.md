@@ -91,7 +91,8 @@ distroless base, pinned by digest, and runs as a non-root user.
 
 ## Reporting a vulnerability
 
-See [SECURITY.md](../../SECURITY.md) for how to report a vulnerability privately.
+See [SECURITY.md](https://github.com/852hamza/chowki/blob/main/SECURITY.md) for how to report a vulnerability
+privately.
 
 ## Related
 

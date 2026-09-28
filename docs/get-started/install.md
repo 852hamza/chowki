@@ -4,6 +4,7 @@ description: Build Chowki from source, or run it in a container with Docker Comp
 type: how-to
 since: v0.1
 edition: community
+sidebar_position: 2
 last_reviewed: 2026-09-28
 ---
 
@@ -119,7 +120,7 @@ With GNU Make, `make docker` builds the same image, with the version and commit 
 | Path | What |
 |---|---|
 | `/usr/local/bin/chowki` | The binary, the image's entry point. Without arguments, it runs `chowki serve`. |
-| `/etc/chowki/chowki.yaml` | The configuration, from [`deploy/chowki.yaml`](../../deploy/chowki.yaml): the settings that `chowki init` writes, with the data files in `/var/lib/chowki`. `CHOWKI_CONFIG` points every command at it. |
+| `/etc/chowki/chowki.yaml` | The configuration, from [`deploy/chowki.yaml`](https://github.com/852hamza/chowki/blob/main/deploy/chowki.yaml): the settings that `chowki init` writes, with the data files in `/var/lib/chowki`. `CHOWKI_CONFIG` points every command at it. |
 | `/var/lib/chowki` | The data folder, for a volume: the database and the master key. Back it up. |
 
 The image is about 18 MB. It's built on the distroless static image, which has no shell, and runs

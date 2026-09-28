@@ -1,0 +1,9 @@
+{
+  "label": "Architecture decisions",
+  "position": 7,
+  "link": {
+    "type": "generated-index",
+    "slug": "/adr",
+    "description": "Why Chowki is built the way it is: one record for each decision that shapes the code."
+  }
+}
