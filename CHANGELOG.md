@@ -9,7 +9,7 @@ All notable changes to Chowki are recorded in this file. The format is based on
 ### Added
 
 - The `chowki` command. `chowki version` prints the version, commit, build date and repository
-  URL. The `provider` command exists but isn't implemented yet.
+  URL.
 - Project identity in `project.env`. `make sync` applies it to the whole repository, and
   `make sync-check` finds leftovers of an earlier identity and hard-coded URLs in Go code.
 - Fake OpenAI-compatible, Anthropic and Gemini providers for tests, with JSON and streaming
@@ -115,5 +115,9 @@ All notable changes to Chowki are recorded in this file. The format is based on
   file that commands read without `--config`.
 - `chowki usage` prints the requests, tokens, cost, savings, cache hits and redactions of a range
   of days, in total and by key, model or day.
+- `chowki provider list` shows where each provider's key comes from, and `chowki provider set-key`
+  stores a key in the database, sealed with AES-256-GCM under the master key and bound to its
+  provider, for when the environment has none. It reads keys only from standard input.
+  `chowki serve` uses stored keys, and `chowki doctor` checks that they open.
 
 [Unreleased]: https://github.com/852hamza/chowki/commits/main

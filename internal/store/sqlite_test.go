@@ -42,6 +42,10 @@ func TestInspectSQLite(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if err := s.SetProviderKey(t.Context(), ProviderKey{Provider: "openai", Sealed: []byte{7},
+		UpdatedAt: time.Now()}); err != nil {
+		t.Fatal(err)
+	}
 	for i, revoked := range []bool{false, false, true} {
 		k, err := s.CreateKey(t.Context(), Key{ProjectID: p.ID, Name: "app", Prefix: fmt.Sprintf("chowki_k%d", i),
 			Hash: [32]byte{byte(i)}, CreatedAt: time.Now()})
@@ -74,7 +78,8 @@ func TestInspectSQLite(t *testing.T) {
 		want         Inspection
 		wantNotExist bool
 	}{
-		{"migrated", "file:" + migrated, Inspection{Path: migrated, Version: latest, Latest: latest, Keys: 2}, false},
+		{"migrated", "file:" + migrated, Inspection{Path: migrated, Version: latest, Latest: latest, Keys: 2,
+			ProviderKeys: map[string][]byte{"openai": {7}}}, false},
 		{"newer", "file:" + newer, Inspection{Path: newer, Version: 999, Latest: latest}, false},
 		{"never migrated", "file:" + empty, Inspection{Path: empty, Latest: latest}, false},
 		{"in memory", "file::memory:", Inspection{Latest: latest}, false},
@@ -87,7 +92,7 @@ func TestInspectSQLite(t *testing.T) {
 			if tt.wantNotExist != errors.Is(err, fs.ErrNotExist) || !tt.wantNotExist && err != nil {
 				t.Fatalf("InspectSQLite() error = %v, want not exist: %v", err, tt.wantNotExist)
 			}
-			if got != tt.want {
+			if !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("InspectSQLite() = %+v, want %+v", got, tt.want)
 			}
 		})

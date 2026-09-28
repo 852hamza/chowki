@@ -162,9 +162,10 @@ func TestDailyBackfill(t *testing.T) {
 		t.Fatalf("Totals() = %+v, days %+v", wantTotals, wantGroups[ByDay])
 	}
 
-	// Take the database back to before migration 0008, and open it again.
+	// Take the database back to before migration 0008, and the ones after
+	// it, and open it again.
 	for _, q := range []string{`DROP TABLE usage_daily`, `DROP TABLE savings_daily`, `DROP TABLE redactions_daily`,
-		`DELETE FROM schema_migrations WHERE version = 8`} {
+		`DROP TABLE provider_keys`, `DELETE FROM schema_migrations WHERE version >= 8`} {
 		if _, err := s.db.ExecContext(ctx, q); err != nil {
 			t.Fatal(err)
 		}

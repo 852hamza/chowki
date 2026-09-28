@@ -176,8 +176,10 @@ type Inspection struct {
 	// Latest is the newest schema version that this Chowki knows.
 	Latest int
 	// Keys and AdminTokens count the virtual keys and the admin tokens that
-	// aren't revoked, once the schema is up to date.
+	// aren't revoked, and ProviderKeys holds the sealed provider keys, by
+	// provider, once the schema is up to date.
 	Keys, AdminTokens int
+	ProviderKeys      map[string][]byte
 }
 
 // InspectSQLite reads the schema version of the SQLite database at dsn, and
@@ -225,6 +227,23 @@ func InspectSQLite(ctx context.Context, dsn string) (Inspection, error) {
 		(SELECT count(*) FROM virtual_keys WHERE revoked_at IS NULL),
 		(SELECT count(*) FROM admin_tokens WHERE revoked_at IS NULL)`).Scan(&in.Keys, &in.AdminTokens); err != nil {
 		return in, fmt.Errorf("count keys: %w", err)
+	}
+	rows, err := db.QueryContext(ctx, `SELECT provider, sealed FROM provider_keys`)
+	if err != nil {
+		return in, fmt.Errorf("read provider keys: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	in.ProviderKeys = map[string][]byte{}
+	for rows.Next() {
+		var name string
+		var sealed []byte
+		if err := rows.Scan(&name, &sealed); err != nil {
+			return in, fmt.Errorf("read provider keys: %w", err)
+		}
+		in.ProviderKeys[name] = sealed
+	}
+	if err := rows.Err(); err != nil {
+		return in, fmt.Errorf("read provider keys: %w", err)
 	}
 	return in, nil
 }

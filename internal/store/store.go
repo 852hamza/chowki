@@ -94,6 +94,14 @@ type Store interface {
 	// RecentRequests returns up to limit records of requests that started
 	// before t, newest first.
 	RecentRequests(ctx context.Context, before time.Time, limit int) ([]Request, error)
+	// SetProviderKey saves the sealed key of a provider, replacing the one
+	// it had.
+	SetProviderKey(ctx context.Context, k ProviderKey) error
+	// ProviderKeys returns the stored provider keys, by provider name.
+	ProviderKeys(ctx context.Context) ([]ProviderKey, error)
+	// DeleteProviderKey deletes the stored key of a provider, or returns
+	// ErrNotFound when it has none.
+	DeleteProviderKey(ctx context.Context, provider string) error
 	// Close closes the database.
 	Close() error
 }

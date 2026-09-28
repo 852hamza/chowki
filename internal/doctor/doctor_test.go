@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/852hamza/chowki/internal/pipeline"
+	"github.com/852hamza/chowki/internal/providerkeys"
 	"github.com/852hamza/chowki/internal/secretbox"
 	"github.com/852hamza/chowki/internal/store"
 )
@@ -195,13 +196,13 @@ func TestDatabase(t *testing.T) {
 		t.Fatal(err)
 	}
 	_ = st.Close()
-	check(t, byCheck(checkDatabase(t.Context(), "file:"+s.db)), map[string]want{
+	check(t, byCheck(checkDatabase(store.InspectSQLite(t.Context(), "file:"+s.db))), map[string]want{
 		"keys": {Warn, "no active virtual keys, so no app can use the gateway"}})
 
 	if err := os.Remove(s.db); err != nil {
 		t.Fatal(err)
 	}
-	check(t, byCheck(checkDatabase(t.Context(), "file:"+s.db)), map[string]want{
+	check(t, byCheck(checkDatabase(store.InspectSQLite(t.Context(), "file:"+s.db))), map[string]want{
 		"database": {OK, "doesn't exist yet; chowki serve creates it"},
 		"keys":     {Warn, "create one with chowki key create --name <NAME>"},
 	})
@@ -209,11 +210,11 @@ func TestDatabase(t *testing.T) {
 		t.Error("the check created the database")
 	}
 
-	check(t, byCheck(checkDatabase(t.Context(), "file::memory:")), map[string]want{
+	check(t, byCheck(checkDatabase(store.InspectSQLite(t.Context(), "file::memory:"))), map[string]want{
 		"database": {Warn, "in memory"}})
 
 	write(t, s.db, "", 0o600) // created, but never set up
-	got := checkDatabase(t.Context(), "file:"+s.db)
+	got := checkDatabase(store.InspectSQLite(t.Context(), "file:"+s.db))
 	check(t, byCheck(got), map[string]want{"database": {OK, "is empty; chowki serve sets it up"}})
 	if len(got) != 1 {
 		t.Errorf("got %v, want no key counts before the schema is current", got)
@@ -237,7 +238,7 @@ func TestDatabase(t *testing.T) {
 		if strings.Contains(q, "999") {
 			expect = map[string]want{"database": {Fail, "has schema version 999, but this Chowki knows only"}}
 		}
-		check(t, byCheck(checkDatabase(t.Context(), "file:"+s.db)), expect)
+		check(t, byCheck(checkDatabase(store.InspectSQLite(t.Context(), "file:"+s.db))), expect)
 	}
 	_ = db.Close()
 }
@@ -314,4 +315,48 @@ func TestCount(t *testing.T) {
 			t.Errorf("Status(%d).String() = %q, want %q", s, s.String(), want)
 		}
 	}
+}
+
+func TestStoredProviderKeys(t *testing.T) {
+	s := newSetup(t, openAI+
+		"  - name: anthropic\n    type: anthropic\n    base_url: https://api.anthropic.com\n"+
+		"    api_key_env: DOCTOR_TEST_UNSET\n"+
+		"  - name: gemini\n    type: gemini\n    base_url: https://generativelanguage.googleapis.com\n"+
+		"    api_key_env: DOCTOR_TEST_UNSET\n")
+	masterKey, err := secretbox.LoadKey(s.key, func(string) (string, bool) { return "", false })
+	if err != nil {
+		t.Fatal(err)
+	}
+	right, err := providerkeys.New(masterKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wrong, err := providerkeys.New(make([]byte, 32))
+	if err != nil {
+		t.Fatal(err)
+	}
+	st, err := store.OpenSQLite(t.Context(), "file:"+s.db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, sealed := range map[string][]byte{"anthropic": right.Seal("anthropic", "stored"),
+		"gemini": wrong.Seal("gemini", "stored"), "openai": right.Seal("openai", "stored")} {
+		if err := st.SetProviderKey(t.Context(), store.ProviderKey{Provider: name, Sealed: sealed,
+			UpdatedAt: time.Now()}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	_ = st.Close()
+	check(t, s.run(t), map[string]want{
+		"provider openai":    {OK, "key in DOCTOR_TEST_KEY"},
+		"provider anthropic": {OK, "key stored in the database"},
+		"provider gemini": {Warn, "the stored key of gemini doesn't open with this master key; store it again " +
+			"with chowki provider set-key gemini"},
+	})
+
+	// Without the master key, the stored keys can't be checked.
+	if err := os.Remove(s.key); err != nil {
+		t.Fatal(err)
+	}
+	check(t, s.run(t), map[string]want{"provider anthropic": {Warn, "can't be checked without the master key"}})
 }

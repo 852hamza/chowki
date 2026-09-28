@@ -36,7 +36,7 @@ func commands() []command {
 	return []command{
 		{"serve", "Run the gateway", runServe},
 		{"init", "Create a configuration, a master key and the database", runInit},
-		{"provider", "Manage provider keys", notImplemented("provider")},
+		{"provider", "List providers, and store their keys encrypted", runProvider},
 		{"key", "Create, list, update and revoke virtual keys", runKey},
 		{"project", "List projects and set their budgets", runProject},
 		{"admin", "Create, list and revoke admin tokens", runAdmin},
@@ -112,13 +112,6 @@ func runVersion(args []string, stdout, stderr io.Writer) int {
 		buildinfo.Version(), orUnknown(buildinfo.Commit()), orUnknown(buildinfo.Date()),
 		runtime.Version(), runtime.GOOS, runtime.GOARCH, buildinfo.Project().RepoURL())
 	return exitOK
-}
-
-func notImplemented(name string) func([]string, io.Writer, io.Writer) int {
-	return func(_ []string, _, stderr io.Writer) int {
-		fmt.Fprintf(stderr, "chowki %s: not implemented yet\n", name)
-		return exitError
-	}
 }
 
 func orUnknown(s string) string {

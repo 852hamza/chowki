@@ -215,6 +215,16 @@ func keyRevoke(ctx context.Context, args []string, stdout, stderr io.Writer) int
 // withStore loads the configuration, opens the database, runs fn and
 // reports its error as the command's.
 func withStore(ctx context.Context, configPath string, stderr io.Writer, command string, fn func(store.Store) error) int {
+	return withConfigStore(ctx, configPath, stderr, command, func(_ *config.Config, _ func(string) (string, bool),
+		st store.Store) error {
+		return fn(st)
+	})
+}
+
+// withConfigStore is withStore for commands that need the configuration
+// and the environment too.
+func withConfigStore(ctx context.Context, configPath string, stderr io.Writer, command string,
+	fn func(cfg *config.Config, env func(string) (string, bool), st store.Store) error) int {
 	err := func() error {
 		env, err := config.DotEnv(".env")
 		if err != nil {
@@ -229,7 +239,7 @@ func withStore(ctx context.Context, configPath string, stderr io.Writer, command
 			return err
 		}
 		defer func() { _ = st.Close() }() // read errors surface through fn
-		return fn(st)
+		return fn(cfg, env, st)
 	}()
 	if err != nil {
 		fmt.Fprintf(stderr, "%s: %v\n", command, err)

@@ -18,6 +18,7 @@ import (
 	"github.com/852hamza/chowki/internal/config"
 	"github.com/852hamza/chowki/internal/netguard"
 	"github.com/852hamza/chowki/internal/pipeline"
+	"github.com/852hamza/chowki/internal/providerkeys"
 	"github.com/852hamza/chowki/internal/secretbox"
 	"github.com/852hamza/chowki/internal/store"
 )
@@ -91,14 +92,16 @@ func Run(ctx context.Context, opts Options) []Result {
 	}
 	out = append(out, Result{"config", OK, fmt.Sprintf("%s loads, with %s and %s", opts.ConfigPath,
 		count(len(cfg.Providers), "provider"), count(len(cfg.Aliases), "alias"))})
-	out = append(out, checkMasterKey(cfg, env))
+	masterKey, r := checkMasterKey(cfg, env)
+	out = append(out, r)
 	cat, err := catalog.Default()
 	if err != nil {
 		return append(out, Result{"catalog", Fail, err.Error()})
 	}
-	out = append(out, checkProviders(cfg, cat)...)
+	in, dbErr := store.InspectSQLite(ctx, cfg.Storage.DSN)
+	out = append(out, checkProviders(cfg, cat, in.ProviderKeys, masterKey)...)
 	out = append(out, checkCatalog(cat, opts.Now))
-	out = append(out, checkDatabase(ctx, cfg.Storage.DSN)...)
+	out = append(out, checkDatabase(in, dbErr)...)
 	return append(out, checkListen(ctx, cfg.Server.Listen))
 }
 
@@ -122,17 +125,21 @@ func checkEnvFile(path string) (func(string) (string, bool), Result) {
 	return env, Result{".env", OK, path + readableByYou()}
 }
 
-func checkMasterKey(cfg *config.Config, env func(string) (string, bool)) Result {
-	if _, err := secretbox.LoadKey(cfg.Security.MasterKeyFile, env); err != nil {
-		return Result{"master key", Fail, err.Error()}
+// checkMasterKey returns the master key, or nil when it can't be loaded.
+func checkMasterKey(cfg *config.Config, env func(string) (string, bool)) ([]byte, Result) {
+	key, err := secretbox.LoadKey(cfg.Security.MasterKeyFile, env)
+	if err != nil {
+		return nil, Result{"master key", Fail, err.Error()}
 	}
 	if v, ok := env(secretbox.MasterKeyEnv); ok && v != "" {
-		return Result{"master key", OK, "from " + secretbox.MasterKeyEnv}
+		return key, Result{"master key", OK, "from " + secretbox.MasterKeyEnv}
 	}
-	return Result{"master key", OK, cfg.Security.MasterKeyFile + readableByYou()}
+	return key, Result{"master key", OK, cfg.Security.MasterKeyFile + readableByYou()}
 }
 
-func checkProviders(cfg *config.Config, cat *catalog.Catalog) []Result {
+// checkProviders checks each provider, and opens its stored key, if it has
+// one, with the master key, unless the master key is nil.
+func checkProviders(cfg *config.Config, cat *catalog.Catalog, stored map[string][]byte, masterKey []byte) []Result {
 	if len(cfg.Providers) == 0 {
 		return []Result{{"providers", Fail, "the configuration has no providers; add one under providers"}}
 	}
@@ -140,32 +147,46 @@ func checkProviders(cfg *config.Config, cat *catalog.Catalog) []Result {
 	for _, m := range cat.All() {
 		priced[m.Provider]++
 	}
+	var keys *providerkeys.Keys
+	if masterKey != nil {
+		keys, _ = providerkeys.New(masterKey) // LoadKey checked the key's size, the only error
+	}
 	out := make([]Result, 0, len(cfg.Providers))
 	for _, p := range cfg.Providers {
-		out = append(out, checkProvider(p, priced[p.Name]))
+		out = append(out, checkProvider(p, priced[p.Name], stored[p.Name], keys))
 	}
 	return out
 }
 
-// checkProvider checks a provider's key, how the key travels, and whether
-// the catalog prices its models: the catalog finds prices by the
-// provider's name.
-func checkProvider(p config.Provider, models int) Result {
+// checkProvider checks a provider's key, from the environment or stored
+// sealed, how the key travels, and whether the catalog prices its models:
+// the catalog finds prices by the provider's name.
+func checkProvider(p config.Provider, models int, sealed []byte, keys *providerkeys.Keys) Result {
 	r := Result{Check: "provider " + p.Name}
 	var notes []string
 	note := func(s Status, msg string) {
 		r.Status = max(r.Status, s)
 		notes = append(notes, msg)
 	}
+	stored := sealed != nil
 	switch {
+	case p.APIKey.Reveal() != "":
+		note(OK, "key in "+p.APIKeyEnv) // it wins over a stored key, as in chowki serve
+	case stored && keys == nil:
+		note(Warn, "its stored key can't be checked without the master key")
+	case stored:
+		if _, err := keys.Open(p.Name, sealed); err != nil {
+			note(Warn, err.Error())
+		} else {
+			note(OK, "key stored in the database")
+		}
 	case p.APIKeyEnv == "":
 		note(OK, "needs no key")
-	case p.APIKey.Reveal() == "":
-		note(Warn, p.APIKeyEnv+" isn't set, so its requests fail until it is")
 	default:
-		note(OK, "key in "+p.APIKeyEnv)
+		note(Warn, p.APIKeyEnv+" isn't set, so its requests fail until it is")
 	}
-	if u, err := url.Parse(p.BaseURL); err == nil && u.Scheme == "http" && p.APIKeyEnv != "" && !local(u.Hostname()) {
+	keyed := p.APIKeyEnv != "" || stored
+	if u, err := url.Parse(p.BaseURL); err == nil && u.Scheme == "http" && keyed && !local(u.Hostname()) {
 		note(Warn, "base_url uses http, so the key crosses the network unencrypted; use https")
 	}
 	switch {
@@ -173,7 +194,7 @@ func checkProvider(p config.Provider, models int) Result {
 		note(OK, "free tier, so its requests cost $0")
 	case models > 0:
 		note(OK, count(models, "model")+" priced")
-	case p.APIKeyEnv == "":
+	case !keyed:
 		note(OK, "no prices, so its requests cost $0")
 	default:
 		note(Warn, fmt.Sprintf("the catalog has no prices for a provider named %s, so its requests are "+
@@ -210,10 +231,9 @@ func checkCatalog(cat *catalog.Catalog, now time.Time) Result {
 		oldest)}
 }
 
-// checkDatabase checks the database, and counts its keys: without a
-// virtual key, no app can use the gateway.
-func checkDatabase(ctx context.Context, dsn string) []Result {
-	in, err := store.InspectSQLite(ctx, dsn)
+// checkDatabase checks what InspectSQLite found in the database, and
+// counts its keys: without a virtual key, no app can use the gateway.
+func checkDatabase(in store.Inspection, err error) []Result {
 	switch {
 	case errors.Is(err, fs.ErrNotExist):
 		return []Result{{"database", OK, in.Path + " doesn't exist yet; chowki serve creates it"}, noKeys()}

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"maps"
 	"net"
 	"os"
 	"os/signal"
@@ -25,6 +26,7 @@ import (
 	"github.com/852hamza/chowki/internal/netguard"
 	"github.com/852hamza/chowki/internal/pipeline"
 	"github.com/852hamza/chowki/internal/promptcache"
+	"github.com/852hamza/chowki/internal/providerkeys"
 	"github.com/852hamza/chowki/internal/providers"
 	"github.com/852hamza/chowki/internal/ratelimit"
 	"github.com/852hamza/chowki/internal/redact"
@@ -83,24 +85,9 @@ func serve(ctx context.Context, configPath string, ln net.Listener, logOut io.Wr
 	if err != nil {
 		return err
 	}
-	ps, err := providers.New(cfg.Providers, netguard.Policy{AllowPrivate: cfg.Security.AllowPrivateUpstreams})
+	keys, err := providerkeys.New(masterKey)
 	if err != nil {
 		return err
-	}
-	routes, err := router.New(ps, cat, cfg.Aliases)
-	if err != nil {
-		return err
-	}
-	names := make([]string, 0, len(ps))
-	for name := range ps {
-		names = append(names, name)
-	}
-	slices.Sort(names)
-	for _, name := range names {
-		if env := ps[name].MissingKey(); env != "" {
-			logger.Warn("provider key isn't set; requests to this provider fail until it is",
-				"provider", name, "variable", env)
-		}
 	}
 
 	// Listen before starting anything else, so a taken port fails fast.
@@ -113,6 +100,16 @@ func serve(ctx context.Context, configPath string, ln net.Listener, logOut io.Wr
 
 	st, err := store.OpenSQLite(ctx, cfg.Storage.DSN)
 	if err != nil {
+		return err
+	}
+	ps, names, err := setUpProviders(ctx, cfg, st, keys, logger)
+	if err != nil {
+		_ = st.Close() // the setup error is the one to report
+		return err
+	}
+	routes, err := router.New(ps, cat, cfg.Aliases)
+	if err != nil {
+		_ = st.Close()
 		return err
 	}
 	budgets, err := budget.Load(ctx, st, time.Now(), logger)
@@ -157,6 +154,36 @@ func serve(ctx context.Context, configPath string, ln net.Listener, logOut io.Wr
 	api := &admin.API{Store: st, Logger: logger}
 	ui := &web.UI{Store: st, Logger: logger}
 	return server.Run(ctx, ln, server.Routes(gw, api.Handler(), ui.Handler()), logger)
+}
+
+// setUpProviders gives the providers their stored keys where the
+// environment gives none, and returns them with their names in order. A
+// provider without a key gets a warning: its requests fail until it has
+// one.
+func setUpProviders(ctx context.Context, cfg *config.Config, st store.Store, keys *providerkeys.Keys,
+	logger *slog.Logger) (map[string]*providers.Provider, []string, error) {
+	used, errs, err := providerkeys.Apply(ctx, st, keys, cfg.Providers)
+	if err != nil {
+		return nil, nil, err
+	}
+	for _, e := range errs {
+		logger.Warn("stored provider key can't be used", "error", e)
+	}
+	if len(used) > 0 {
+		logger.Info("using stored provider keys", "providers", used)
+	}
+	ps, err := providers.New(cfg.Providers, netguard.Policy{AllowPrivate: cfg.Security.AllowPrivateUpstreams})
+	if err != nil {
+		return nil, nil, err
+	}
+	names := slices.Sorted(maps.Keys(ps))
+	for _, name := range names {
+		if env := ps[name].MissingKey(); env != "" {
+			logger.Warn("provider key isn't set; requests to this provider fail until it is",
+				"provider", name, "variable", env)
+		}
+	}
+	return ps, names, nil
 }
 
 func logLevel(name string) slog.Level {
