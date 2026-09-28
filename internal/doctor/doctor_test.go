@@ -2,8 +2,14 @@ package doctor
 
 import (
 	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/x509"
 	"database/sql"
+	"encoding/pem"
 	"fmt"
+	"math/big"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -14,6 +20,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/852hamza/chowki/internal/config"
 	"github.com/852hamza/chowki/internal/pipeline"
 	"github.com/852hamza/chowki/internal/providerkeys"
 	"github.com/852hamza/chowki/internal/secretbox"
@@ -111,10 +118,11 @@ func TestRunHealthy(t *testing.T) {
 		"database":        {OK, "up to date"},
 		"keys":            {OK, "1 active virtual key"},
 		"admin tokens":    {OK, "none; chowki admin create --name <NAME> makes one"},
+		"tls":             {OK, "off; serve HTTPS"},
 		"listen":          {OK, "127.0.0.1:0 is free for chowki serve"},
 	})
-	if len(got) != 10 {
-		t.Errorf("got %d checks, want 10: %v", len(got), got)
+	if len(got) != 11 {
+		t.Errorf("got %d checks, want 11: %v", len(got), got)
 	}
 	if !strings.Contains(got["provider openai"].Message, "models priced") {
 		t.Errorf("provider openai = %q, want its priced models", got["provider openai"].Message)
@@ -273,7 +281,7 @@ func TestListen(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			check(t, map[string]Result{"listen": checkListen(t.Context(), tt.addr)},
+			check(t, map[string]Result{"listen": checkListen(t.Context(), tt.addr, false)},
 				map[string]want{"listen": tt.want})
 		})
 	}
@@ -290,13 +298,13 @@ func TestRunningGatewayHosts(t *testing.T) {
 	}
 	// A gateway that listens on all addresses answers on the loopback one.
 	for _, addr := range []string{":" + port, "0.0.0.0:" + port} {
-		if base, ok := runningGateway(t.Context(), addr); !ok || base != chowki.URL {
+		if base, ok := runningGateway(t.Context(), addr, false); !ok || base != chowki.URL {
 			t.Errorf("runningGateway(%q) = %q, %v; want %q", addr, base, ok, chowki.URL)
 		}
 	}
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
-	if _, ok := runningGateway(ctx, chowki.Listener.Addr().String()); ok {
+	if _, ok := runningGateway(ctx, chowki.Listener.Addr().String(), false); ok {
 		t.Error("runningGateway() with a canceled context found a gateway")
 	}
 }
@@ -359,4 +367,65 @@ func TestStoredProviderKeys(t *testing.T) {
 		t.Fatal(err)
 	}
 	check(t, s.run(t), map[string]want{"provider anthropic": {Warn, "can't be checked without the master key"}})
+}
+
+// writeCert writes a self-signed certificate for 127.0.0.1 that expires at
+// notAfter to cert.pem and key.pem in dir.
+func writeCert(t *testing.T, dir string, notAfter time.Time) (certFile, keyFile string) {
+	t.Helper()
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tmpl := &x509.Certificate{SerialNumber: big.NewInt(1), NotBefore: notAfter.AddDate(0, -3, 0), NotAfter: notAfter,
+		IPAddresses: []net.IP{net.IPv4(127, 0, 0, 1)}, DNSNames: []string{"gateway.example.com"}}
+	der, err := x509.CreateCertificate(rand.Reader, tmpl, tmpl, &key.PublicKey, key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	keyDER, err := x509.MarshalECPrivateKey(key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	certFile, keyFile = filepath.Join(dir, "cert.pem"), filepath.Join(dir, "key.pem")
+	write(t, certFile, string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der})), 0o600)
+	write(t, keyFile, string(pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: keyDER})), 0o600)
+	return certFile, keyFile
+}
+
+func TestTLS(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		notAfter time.Time
+		want     want
+	}{
+		{"valid", now.AddDate(0, 2, 0), want{OK, "certificate for gateway.example.com, 127.0.0.1, valid until 2026-12-01"}},
+		{"expiring", now.AddDate(0, 0, 10), want{Warn, "expires on 2026-10-11; renew it"}},
+		{"expired", now.AddDate(0, 0, -1), want{Fail, "expired on 2026-09-30"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cert, key := writeCert(t, t.TempDir(), tc.notAfter)
+			got := checkTLS(config.Server{TLSCertFile: cert, TLSKeyFile: key}, now)
+			check(t, map[string]Result{"tls": got}, map[string]want{"tls": tc.want})
+		})
+	}
+	dir := t.TempDir()
+	cert, key := writeCert(t, dir, now.AddDate(0, 2, 0))
+	got := checkTLS(config.Server{TLSCertFile: cert, TLSKeyFile: cert}, now)
+	check(t, map[string]Result{"tls": got}, map[string]want{"tls": {Fail, "load the certificate"}})
+	if runtime.GOOS != "windows" {
+		if err := os.Chmod(key, 0o644); err != nil {
+			t.Fatal(err)
+		}
+		got = checkTLS(config.Server{TLSCertFile: cert, TLSKeyFile: key}, now)
+		check(t, map[string]Result{"tls": got}, map[string]want{"tls": {Warn, "run chmod 600 " + key}})
+	}
+
+	// The listen check finds a gateway that serves HTTPS.
+	gw := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set(pipeline.RequestIDHeader, "req_1")
+	}))
+	defer gw.Close()
+	check(t, map[string]Result{"listen": checkListen(t.Context(), gw.Listener.Addr().String(), true)},
+		map[string]want{"listen": {OK, "chowki serve is running at " + gw.URL}})
 }

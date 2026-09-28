@@ -8,6 +8,10 @@ server:
   listen: ":8080"          # address and port to listen on
   max_body_mb: 20          # largest request body, in MiB
   upstream_timeout: 600s   # limit for one provider call, including a whole stream
+  read_timeout: 60s        # limit for a client to send its request
+  # To serve HTTPS rather than HTTP, name a certificate and its key, in PEM files:
+  # tls_cert_file: /etc/chowki/tls/cert.pem
+  # tls_key_file: /etc/chowki/tls/key.pem
 
 storage:
   driver: sqlite

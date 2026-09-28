@@ -24,11 +24,12 @@ linters:
     rules:
       # File, credential and subprocess rules protect the gateway's own data.
       # Tests and dev tools create source files, fixtures and fake keys, open
-      # some fixtures to others to test permission checks, and run git and
-      # go with arguments (never through a shell).
+      # some fixtures to others to test permission checks, run git and go
+      # with arguments (never through a shell), and have fake servers echo
+      # requests back.
       - path: (_test\.go$|^tools/)
         linters: [gosec]
-        text: "G101|G204|G301|G302|G304|G306|G702|G703"
+        text: "G101|G204|G301|G302|G304|G306|G702|G703|G705"
       # Test helpers close response bodies in t.Cleanup, which bodyclose can't see.
       - path: _test\.go$
         linters: [bodyclose]

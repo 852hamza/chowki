@@ -2,6 +2,8 @@ package doctor
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -102,7 +104,8 @@ func Run(ctx context.Context, opts Options) []Result {
 	out = append(out, checkProviders(cfg, cat, in.ProviderKeys, masterKey)...)
 	out = append(out, checkCatalog(cat, opts.Now))
 	out = append(out, checkDatabase(in, dbErr)...)
-	return append(out, checkListen(ctx, cfg.Server.Listen))
+	useTLS := cfg.Server.TLSCertFile != ""
+	return append(out, checkTLS(cfg.Server, opts.Now), checkListen(ctx, cfg.Server.Listen, useTLS))
 }
 
 // checkEnvFile reads the .env file as chowki serve does, and returns the
@@ -277,15 +280,57 @@ func noKeys() Result {
 		"chowki key create --name <NAME>"}
 }
 
+// certWarning is how long before its expiry a certificate gets a warning:
+// long enough to renew it.
+const certWarning = 14 * 24 * time.Hour
+
+// checkTLS checks the certificate that the gateway serves, if any.
+func checkTLS(srv config.Server, now time.Time) Result {
+	if srv.TLSCertFile == "" {
+		return Result{"tls", OK, "off; serve HTTPS, or put a reverse proxy with HTTPS in front, when clients " +
+			"connect over a network"}
+	}
+	pair, err := tls.LoadX509KeyPair(srv.TLSCertFile, srv.TLSKeyFile)
+	if err != nil {
+		return Result{"tls", Fail, "load the certificate: " + err.Error()}
+	}
+	leaf, err := x509.ParseCertificate(pair.Certificate[0])
+	if err != nil {
+		return Result{"tls", Fail, "parse the certificate: " + err.Error()}
+	}
+	names := strings.Join(append(leaf.DNSNames, ipStrings(leaf.IPAddresses)...), ", ")
+	until := leaf.NotAfter.UTC().Format(time.DateOnly)
+	switch {
+	case now.After(leaf.NotAfter):
+		return Result{"tls", Fail, fmt.Sprintf("the certificate for %s expired on %s; renew it", names, until)}
+	case leaf.NotAfter.Sub(now) < certWarning:
+		return Result{"tls", Warn, fmt.Sprintf("the certificate for %s expires on %s; renew it; the gateway "+
+			"loads the new files without a restart", names, until)}
+	}
+	if info, err := os.Stat(srv.TLSKeyFile); err == nil && !private(info) {
+		return Result{"tls", Warn, fmt.Sprintf("%s is readable by other users; run chmod 600 %s", srv.TLSKeyFile,
+			srv.TLSKeyFile)}
+	}
+	return Result{"tls", OK, fmt.Sprintf("certificate for %s, valid until %s", names, until)}
+}
+
+func ipStrings(ips []net.IP) []string {
+	out := make([]string, len(ips))
+	for i, ip := range ips {
+		out[i] = ip.String()
+	}
+	return out
+}
+
 // checkListen reports whether chowki serve can listen on addr, or already
 // does.
-func checkListen(ctx context.Context, addr string) Result {
+func checkListen(ctx context.Context, addr string, useTLS bool) Result {
 	ln, err := (&net.ListenConfig{}).Listen(ctx, "tcp", addr)
 	if err == nil {
 		_ = ln.Close() // it was only a test
 		return Result{"listen", OK, addr + " is free for chowki serve"}
 	}
-	if base, ok := runningGateway(ctx, addr); ok {
+	if base, ok := runningGateway(ctx, addr, useTLS); ok {
 		return Result{"listen", OK, "chowki serve is running at " + base}
 	}
 	fix := "set server.listen or CHOWKI_SERVER_LISTEN to another address"
@@ -298,7 +343,7 @@ func checkListen(ctx context.Context, addr string) Result {
 // runningGateway reports whether Chowki answers on addr, and at which base
 // URL. It asks for the model list without a key: Chowki refuses, with its
 // request ID header.
-func runningGateway(ctx context.Context, addr string) (string, bool) {
+func runningGateway(ctx context.Context, addr string, useTLS bool) (string, bool) {
 	host, port, err := net.SplitHostPort(addr)
 	if err != nil {
 		return "", false
@@ -309,7 +354,11 @@ func runningGateway(ctx context.Context, addr string) (string, bool) {
 	case "::":
 		host = "::1"
 	}
-	base := "http://" + net.JoinHostPort(host, port)
+	scheme := "http"
+	if useTLS {
+		scheme = "https"
+	}
+	base := scheme + "://" + net.JoinHostPort(host, port)
 	ctx, cancel := context.WithTimeout(ctx, probeTimeout)
 	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, base+"/v1/models", nil)
@@ -317,7 +366,12 @@ func runningGateway(ctx context.Context, addr string) (string, bool) {
 		return "", false
 	}
 	client := &http.Client{
-		Transport:     &http.Transport{Proxy: nil}, // the address is local; a proxy can't reach it
+		Transport: &http.Transport{
+			Proxy: nil, // the address is local; a proxy can't reach it
+			// The request only asks who answers, and sends nothing secret,
+			// so the certificate, which names a public host, needn't match.
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true, MinVersion: tls.VersionTLS12}, //nolint:gosec // G402
+		},
 		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
 	}
 	defer client.CloseIdleConnections()

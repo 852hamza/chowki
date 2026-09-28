@@ -84,7 +84,8 @@ func TestParseFile(t *testing.T) {
 		t.Fatalf("Parse() error = %v", err)
 	}
 	want := Config{
-		Server:        Server{Listen: "127.0.0.1:9090", MaxBodyMB: 5, UpstreamTimeout: 90 * time.Second},
+		Server: Server{Listen: "127.0.0.1:9090", MaxBodyMB: 5, UpstreamTimeout: 90 * time.Second,
+			ReadTimeout: time.Minute},
 		Storage:       Storage{Driver: "sqlite", DSN: "file:/var/lib/chowki/chowki.db", CacheMaxMB: 64},
 		Security:      Security{MasterKeyFile: "/etc/chowki/master.key", AllowPrivateUpstreams: false},
 		Log:           Log{Level: "debug"},
@@ -134,6 +135,7 @@ func TestParseEnvOverrides(t *testing.T) {
 func TestEnvVars(t *testing.T) {
 	want := []string{
 		"CHOWKI_SERVER_LISTEN", "CHOWKI_SERVER_MAX_BODY_MB", "CHOWKI_SERVER_UPSTREAM_TIMEOUT",
+		"CHOWKI_SERVER_READ_TIMEOUT", "CHOWKI_SERVER_TLS_CERT_FILE", "CHOWKI_SERVER_TLS_KEY_FILE",
 		"CHOWKI_STORAGE_DRIVER", "CHOWKI_STORAGE_DSN", "CHOWKI_STORAGE_CACHE_MAX_MB",
 		"CHOWKI_SECURITY_MASTER_KEY_FILE", "CHOWKI_SECURITY_ALLOW_PRIVATE_UPSTREAMS",
 		"CHOWKI_LOG_LEVEL", "CHOWKI_RETENTION_DAYS", "CHOWKI_DEFAULTS_CACHE", "CHOWKI_DEFAULTS_CACHE_TTL",
@@ -161,7 +163,10 @@ func TestParseErrors(t *testing.T) {
 		{"several problems", "server:\n  listen: nowhere\n  max_body_mb: 0\nlog:\n  level: loud\nretention_days: 0\n", nil,
 			[]string{"server.listen", "server.max_body_mb", "log.level", "retention_days"}},
 		{"storage", "storage:\n  driver: postgres\n  dsn: \"\"\n", nil, []string{"storage.driver", "storage.dsn"}},
-		{"timeout", "server:\n  upstream_timeout: -1s\n", nil, []string{"server.upstream_timeout"}},
+		{"timeout", "server:\n  upstream_timeout: -1s\n  read_timeout: 0s\n", nil,
+			[]string{"server.upstream_timeout", "server.read_timeout"}},
+		{"TLS key without certificate", "server:\n  tls_key_file: key.pem\n", nil,
+			[]string{"server.tls_cert_file: set it and server.tls_key_file together"}},
 		{"master key file", "security:\n  master_key_file: \"\"\n", nil, []string{"security.master_key_file"}},
 		{"aliases", provider("") + "aliases:\n  fast: []\n  \"a/b\": [p/m]\n  ok: [p/m, nobody/m, p]\n", nil,
 			[]string{"aliases.fast: must list", "aliases.a/b: an alias name", "aliases.ok[1]", "aliases.ok[2]"}},

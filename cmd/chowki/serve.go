@@ -164,7 +164,8 @@ func serve(ctx context.Context, configPath string, ln net.Listener, logOut io.Wr
 	logger.Info("chowki started", "version", buildinfo.Version(), "providers", names, "priced_models", cat.Len())
 	api := &admin.API{Store: st, Logger: logger}
 	ui := &web.UI{Store: st, Logger: logger}
-	return server.Run(ctx, ln, server.Routes(gw, api.Handler(), ui.Handler()), logger)
+	return server.Run(ctx, ln, server.Routes(gw, api.Handler(), ui.Handler()), logger, server.Options{
+		ReadTimeout: cfg.Server.ReadTimeout, CertFile: cfg.Server.TLSCertFile, KeyFile: cfg.Server.TLSKeyFile})
 }
 
 // setUpProviders gives the providers their stored keys where the

@@ -35,6 +35,9 @@ in the file: keys come from environment variables, or from the database, where
 | [`server.listen`](#serverlisten) | `CHOWKI_SERVER_LISTEN` | `:8080` |
 | [`server.max_body_mb`](#servermax_body_mb) | `CHOWKI_SERVER_MAX_BODY_MB` | `20` |
 | [`server.upstream_timeout`](#serverupstream_timeout) | `CHOWKI_SERVER_UPSTREAM_TIMEOUT` | `10m` |
+| [`server.read_timeout`](#serverread_timeout) | `CHOWKI_SERVER_READ_TIMEOUT` | `1m` |
+| [`server.tls_cert_file`](#servertls_cert_file) | `CHOWKI_SERVER_TLS_CERT_FILE` | None |
+| [`server.tls_key_file`](#servertls_key_file) | `CHOWKI_SERVER_TLS_KEY_FILE` | None |
 | [`storage.driver`](#storagedriver) | `CHOWKI_STORAGE_DRIVER` | `sqlite` |
 | [`storage.dsn`](#storagedsn) | `CHOWKI_STORAGE_DSN` | `file:data/chowki.db` |
 | [`storage.cache_max_mb`](#storagecache_max_mb) | `CHOWKI_STORAGE_CACHE_MAX_MB` | `256` |
@@ -97,6 +100,49 @@ The largest request body that the gateway accepts, in MiB. A larger request gets
 How long one call to a provider may take, including a whole streamed response. Long agent calls
 need several minutes. A call that takes longer fails with a 504 error. A duration needs a unit: `s`
 for seconds, `m` for minutes or `h` for hours.
+
+## `server.read_timeout`
+
+| | |
+|---|---|
+| Type | Duration, such as `30s` or `2m` |
+| Default | `60s` |
+| Allowed values | Greater than zero |
+| Environment variable | `CHOWKI_SERVER_READ_TIMEOUT` |
+| Since | v0.1 |
+
+How long a client may take to send a request, its headers and its body, so that slow clients can't
+hold connections open. It doesn't limit the response: a stream lasts as long as
+`server.upstream_timeout` allows. Raise it for clients that send large requests over slow links.
+
+## `server.tls_cert_file`
+
+| | |
+|---|---|
+| Type | File path |
+| Default | None |
+| Allowed values | A PEM file with the certificate, then any intermediate certificates |
+| Environment variable | `CHOWKI_SERVER_TLS_CERT_FILE` |
+| Since | v0.1 |
+
+With `server.tls_key_file`, makes the gateway serve HTTPS instead of HTTP, with TLS 1.2 or later.
+Set both or neither. When the files change, as when a certificate is renewed, the gateway loads
+them again within 30 seconds, without a restart. Without them, run the gateway behind a reverse
+proxy that serves HTTPS, unless clients reach it only from the same machine. See
+[Serve over HTTPS](../how-to/serve-over-https.md).
+
+## `server.tls_key_file`
+
+| | |
+|---|---|
+| Type | File path |
+| Default | None |
+| Allowed values | A PEM file with the certificate's private key |
+| Environment variable | `CHOWKI_SERVER_TLS_KEY_FILE` |
+| Since | v0.1 |
+
+The private key of `server.tls_cert_file`. Make the file readable only by the user that runs the
+gateway.
 
 ## `storage.driver`
 

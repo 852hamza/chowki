@@ -122,6 +122,10 @@ All notable changes to Chowki are recorded in this file. The format is based on
 - A CLI reference, and summaries in the configuration, metrics and API references, generated from
   the code; `make docs` rewrites them, and the tests fail while they're out of date. Every command
   prints its usage with `--help`.
+- `server.tls_cert_file` and `server.tls_key_file` make the gateway serve HTTPS, with TLS 1.2 or
+  later and HTTP/2, and load a renewed certificate without a restart. `server.read_timeout`, 60
+  seconds by default, limits how long a client may take to send a request; responses may stream
+  for longer. `chowki doctor` checks the certificate and warns 14 days before it expires.
 - `make loadtest` measures the gateway's overhead at 200 requests per second on 2 CPUs, against a
   fake provider, and fails when the p99 is over 25 ms or a gateway built with `-race` reports a
   race.
