@@ -40,7 +40,7 @@ func commands() []command {
 		{"key", "Create, list, update and revoke virtual keys", runKey},
 		{"project", "List projects and set their budgets", runProject},
 		{"admin", "Create, list and revoke admin tokens", runAdmin},
-		{"usage", "Report token usage, cost and savings", notImplemented("usage")},
+		{"usage", "Report token usage, cost and savings", runUsage},
 		{"scan", "Find secrets in a repository, .env files or MCP configurations", runScan},
 		{"setup", "Connect an app or coding agent to the gateway", runSetup},
 		{"doctor", "Check the installation and configuration", runDoctor},

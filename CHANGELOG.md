@@ -9,7 +9,7 @@ All notable changes to Chowki are recorded in this file. The format is based on
 ### Added
 
 - The `chowki` command. `chowki version` prints the version, commit, build date and repository
-  URL. The `provider` and `usage` commands exist but aren't implemented yet.
+  URL. The `provider` command exists but isn't implemented yet.
 - Project identity in `project.env`. `make sync` applies it to the whole repository, and
   `make sync-check` finds leftovers of an earlier identity and hard-coded URLs in Go code.
 - Fake OpenAI-compatible, Anthropic and Gemini providers for tests, with JSON and streaming
@@ -113,5 +113,7 @@ All notable changes to Chowki are recorded in this file. The format is based on
   18 MB, that runs as a non-root user and keeps its data in `/var/lib/chowki`. `deploy/compose.yaml`
   runs it with Docker Compose, and `make docker` builds it. `CHOWKI_CONFIG` sets the configuration
   file that commands read without `--config`.
+- `chowki usage` prints the requests, tokens, cost, savings, cache hits and redactions of a range
+  of days, in total and by key, model or day.
 
 [Unreleased]: https://github.com/852hamza/chowki/commits/main

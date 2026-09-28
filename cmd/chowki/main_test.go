@@ -47,7 +47,7 @@ func TestRun(t *testing.T) {
 			wantStderr: []string{`unknown command "bogus"`},
 		},
 	}
-	for _, name := range []string{"provider", "usage"} {
+	for _, name := range []string{"provider"} {
 		tests = append(tests, runCase{
 			name:       name + " stub",
 			args:       []string{name, "--flag"},
