@@ -41,7 +41,7 @@ Commands:
   doctor     Check the installation and configuration
   version    Print version information
 
-Documentation: https://github.com/852hamza/chowki/tree/main/docs
+Documentation: https://852hamza.github.io/chowki
 Report a bug:  https://github.com/852hamza/chowki/issues
 ```
 

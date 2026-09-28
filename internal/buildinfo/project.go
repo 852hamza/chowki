@@ -8,8 +8,8 @@ var (
 	domain  = "chowki.dev"
 	owner   = "852hamza"
 	repo    = "chowki"
-	website = ""
-	docs    = "https://github.com/852hamza/chowki/tree/main/docs"
+	website = "https://852hamza.github.io/chowki"
+	docs    = "https://852hamza.github.io/chowki"
 )
 
 // Project returns the identity this binary was built with.

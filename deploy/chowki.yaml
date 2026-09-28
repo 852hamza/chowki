@@ -2,7 +2,7 @@
 # /etc/chowki/chowki.yaml. To change it, mount your own file there.
 # Every setting can also come from an environment variable: CHOWKI_ plus the
 # setting's path in capitals, such as CHOWKI_LOG_LEVEL for log.level.
-# Documentation: https://github.com/852hamza/chowki/tree/main/docs
+# Documentation: https://852hamza.github.io/chowki
 
 server:
   listen: ":8080"          # address and port to listen on
