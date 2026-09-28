@@ -24,13 +24,13 @@ model catalog, the database and the listen address. It changes nothing and
 calls no provider. It exits with 1 when a check fails.
 
 Flags:
-  --config  the configuration file; by default chowki.yaml
+  --config  the configuration file; by default $CHOWKI_CONFIG, or chowki.yaml
 `
 
 func runDoctor(args []string, stdout, stderr io.Writer) int {
 	flags := flag.NewFlagSet("chowki doctor", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
-	configPath := flags.String("config", defaultConfig, "")
+	configPath := flags.String("config", defaultConfig(), "")
 	if err := flags.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			fmt.Fprint(stdout, doctorUsage)

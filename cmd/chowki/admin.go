@@ -34,7 +34,7 @@ func runAdmin(args []string, stdout, stderr io.Writer) int {
 func adminCreate(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	flags := flag.NewFlagSet("chowki admin create", flag.ContinueOnError)
 	flags.SetOutput(stderr)
-	configPath := flags.String("config", defaultConfig, "configuration file")
+	configPath := flags.String("config", defaultConfig(), "configuration file")
 	name := flags.String("name", "", "who uses the token, such as ops or dashboard (required)")
 	if err := flags.Parse(args); err != nil || flags.NArg() > 0 {
 		return exitUsage
@@ -63,7 +63,7 @@ func adminCreate(ctx context.Context, args []string, stdout, stderr io.Writer) i
 func adminList(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	flags := flag.NewFlagSet("chowki admin list", flag.ContinueOnError)
 	flags.SetOutput(stderr)
-	configPath := flags.String("config", defaultConfig, "configuration file")
+	configPath := flags.String("config", defaultConfig(), "configuration file")
 	if err := flags.Parse(args); err != nil || flags.NArg() > 0 {
 		return exitUsage
 	}
@@ -92,7 +92,7 @@ func adminList(ctx context.Context, args []string, stdout, stderr io.Writer) int
 func adminRevoke(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	flags := flag.NewFlagSet("chowki admin revoke", flag.ContinueOnError)
 	flags.SetOutput(stderr)
-	configPath := flags.String("config", defaultConfig, "configuration file")
+	configPath := flags.String("config", defaultConfig(), "configuration file")
 	if err := flags.Parse(args); err != nil || flags.NArg() != 1 {
 		if err == nil {
 			fmt.Fprint(stderr, adminUsage)

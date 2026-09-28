@@ -16,13 +16,23 @@ import (
 	"github.com/852hamza/chowki/internal/store"
 )
 
-// defaultConfig is the configuration file that commands use by default.
-const defaultConfig = "chowki.yaml"
+// configEnv names the environment variable that sets the configuration
+// file of every command, as the container image does.
+const configEnv = "CHOWKI_CONFIG"
+
+// defaultConfig returns the configuration file that commands use without
+// --config: $CHOWKI_CONFIG, or chowki.yaml.
+func defaultConfig() string {
+	if path := os.Getenv(configEnv); path != "" {
+		return path
+	}
+	return "chowki.yaml"
+}
 
 func runInit(args []string, stdout, stderr io.Writer) int {
 	flags := flag.NewFlagSet("chowki init", flag.ContinueOnError)
 	flags.SetOutput(stderr)
-	configPath := flags.String("config", defaultConfig, "configuration file to create or use")
+	configPath := flags.String("config", defaultConfig(), "configuration file to create or use")
 	if err := flags.Parse(args); err != nil || flags.NArg() > 0 {
 		return exitUsage
 	}

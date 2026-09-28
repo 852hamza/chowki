@@ -111,3 +111,28 @@ func TestInitErrors(t *testing.T) {
 		})
 	}
 }
+
+func TestConfigEnv(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+	path := filepath.Join(dir, "etc", "chowki.yaml")
+	if err := os.Mkdir(filepath.Dir(path), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv(configEnv, path)
+	var stdout, stderr bytes.Buffer
+	if code := run([]string{"init"}, &stdout, &stderr); code != exitOK {
+		t.Fatalf("chowki init = %d\nstderr: %s", code, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "Created "+path+".") {
+		t.Errorf("init didn't create %s:\n%s", path, stdout.String())
+	}
+	if _, err := os.Stat("chowki.yaml"); err == nil {
+		t.Error("init created chowki.yaml despite " + configEnv)
+	}
+	stdout.Reset()
+	run([]string{"doctor"}, &stdout, &stderr)
+	if !strings.Contains(stdout.String(), path+" loads") {
+		t.Errorf("doctor didn't read %s:\n%s", path, stdout.String())
+	}
+}

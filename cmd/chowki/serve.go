@@ -39,7 +39,7 @@ import (
 func runServe(args []string, _, stderr io.Writer) int {
 	flags := flag.NewFlagSet("chowki serve", flag.ContinueOnError)
 	flags.SetOutput(stderr)
-	configPath := flags.String("config", defaultConfig, "configuration file")
+	configPath := flags.String("config", defaultConfig(), "configuration file")
 	if err := flags.Parse(args); err != nil || flags.NArg() > 0 {
 		return exitUsage
 	}

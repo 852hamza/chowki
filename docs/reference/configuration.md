@@ -13,7 +13,7 @@ This page lists every setting of `chowki.yaml`, the file that `chowki init` crea
 Chowki builds its configuration in this order, and a later source wins:
 
 1. The defaults on this page.
-2. `chowki.yaml`, or the file that `--config` names.
+2. `chowki.yaml`, or the file that `--config` or `CHOWKI_CONFIG` names.
 3. Environment variables: `CHOWKI_` plus the setting's path in capitals, with `_` between the
    parts. For example, `CHOWKI_SERVER_LISTEN` sets `server.listen`. Lists, such as `providers`, can
    only be set in the file.
@@ -285,7 +285,9 @@ See [Route requests with aliases and fallback](../how-to/routing-and-fallback.md
 
 | Variable | Description |
 |---|---|
+| `CHOWKI_CONFIG` | The configuration file that commands read without `--config`, instead of `chowki.yaml`. The container image sets it to `/etc/chowki/chowki.yaml`. Set it in the environment: Chowki chooses the file before it reads `.env`. |
 | `CHOWKI_MASTER_KEY` | The master key: 32 random bytes in base64. Takes precedence over `security.master_key_file`. |
+| `CHOWKI_PUBLIC_URL` | The gateway's address that `chowki setup` prints, such as `https://gateway.example.com`. It defaults to `http://localhost:8080`. |
 | The variables named by `api_key_env` | Provider keys, such as `OPENAI_API_KEY`. |
 
 ## The `.env` file
