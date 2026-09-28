@@ -8,8 +8,8 @@ last_reviewed: 2026-09-28
 ---
 
 `chowki doctor` checks what `chowki serve` needs: the `.env` file, the configuration, the master
-key, the providers' keys and prices, the model catalog, the database, the keys and the listen
-address. It says what to fix, and changes nothing: it doesn't create or migrate the database, and
+key, the providers' keys and prices, the model catalog, the database, the keys, the TLS certificate
+and the listen address. It says what to fix, and changes nothing: it doesn't create or migrate the database, and
 it sends no request to a provider.
 
 ## Before you begin
@@ -38,6 +38,7 @@ it sends no request to a provider.
    ok    database            data/chowki.db, schema version 9, up to date
    ok    keys                1 active virtual key
    ok    admin tokens        none; chowki admin create --name <NAME> makes one for the dashboard and the admin API
+   ok    tls                 off; serve HTTPS, or put a reverse proxy with HTTPS in front, when clients connect over a network
    ok    listen              :8080 is free for chowki serve
 
    2 checks warned; none failed.
@@ -70,6 +71,7 @@ it before `chowki serve`.
 | `catalog` | Some prices were checked more than 90 days ago. A newer Chowki has newer prices. |
 | `database` | The database is newer than this Chowki, is in memory, or other users can read its file. |
 | `keys` | There's no active virtual key, so no app can use the gateway. |
+| `tls` | The certificate of `server.tls_cert_file` doesn't load, has expired, or expires within 14 days, or other users can read its key file. |
 | `listen` | Another program listens on `server.listen`, or the address can't be used. A running `chowki serve` there passes. |
 
 The catalog finds prices by the provider's name, so name the providers of the OpenAI, Anthropic and

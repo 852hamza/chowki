@@ -83,6 +83,8 @@ make build
 - [Route requests with aliases and fallback](docs/how-to/routing-and-fallback.md): give a list of
   models one name, and fall back when a provider fails.
 - [Monitor Chowki](docs/operations/monitoring.md): health checks and Prometheus metrics.
+- [Serve over HTTPS](docs/how-to/serve-over-https.md): serve TLS with your certificate, or behind a
+  reverse proxy.
 - [Measure the gateway's overhead](docs/operations/performance.md): run the load test on your
   hardware.
 - [Architecture](docs/concepts/architecture.md): how a request flows through Chowki.
