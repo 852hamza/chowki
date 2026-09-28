@@ -33,29 +33,19 @@ Flags:
 
 func runUsage(args []string, stdout, stderr io.Writer) int {
 	flags := flag.NewFlagSet("chowki usage", flag.ContinueOnError)
-	flags.SetOutput(io.Discard)
 	configPath := flags.String("config", defaultConfig(), "")
 	fromFlag := flags.String("from", "", "")
 	toFlag := flags.String("to", "", "")
 	by := flags.String("by", "", "")
-	if err := flags.Parse(args); err != nil {
-		if errors.Is(err, flag.ErrHelp) {
-			fmt.Fprint(stdout, usageUsage)
-			return exitOK
-		}
-		fmt.Fprintf(stderr, "chowki usage: %v\n\n%s", err, usageUsage)
-		return exitUsage
+	if code, ok := parseCommand(flags, args, usageUsage, stdout, stderr); !ok {
+		return code
 	}
 	from, to, err := usageRange(time.Now(), *fromFlag, *toFlag)
 	if err == nil && *by != "" && !slices.Contains([]string{store.ByKey, store.ByModel, store.ByDay}, *by) {
 		err = errors.New("--by must be key, model or day")
 	}
-	if err != nil || flags.NArg() > 0 {
-		if err != nil {
-			fmt.Fprintf(stderr, "chowki usage: %v\n", err)
-		} else {
-			fmt.Fprint(stderr, usageUsage)
-		}
+	if err != nil {
+		fmt.Fprintf(stderr, "chowki usage: %v\n", err)
 		return exitUsage
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)

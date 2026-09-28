@@ -38,12 +38,23 @@ import (
 	"github.com/852hamza/chowki/internal/web"
 )
 
-func runServe(args []string, _, stderr io.Writer) int {
+const serveUsage = `Usage:
+  chowki serve [--config <FILE>]
+
+Runs the gateway. It listens on server.listen and relays requests to the
+providers, until it gets an interrupt or SIGTERM; then it stops taking
+requests and waits up to 30 seconds for those in flight. It reads .env from
+the current folder, and writes its log to stderr, in JSON.
+
+Flags:
+  --config  the configuration file; by default $CHOWKI_CONFIG, or chowki.yaml
+`
+
+func runServe(args []string, stdout, stderr io.Writer) int {
 	flags := flag.NewFlagSet("chowki serve", flag.ContinueOnError)
-	flags.SetOutput(stderr)
-	configPath := flags.String("config", defaultConfig(), "configuration file")
-	if err := flags.Parse(args); err != nil || flags.NArg() > 0 {
-		return exitUsage
+	configPath := flags.String("config", defaultConfig(), "")
+	if code, ok := parseCommand(flags, args, serveUsage, stdout, stderr); !ok {
+		return code
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()

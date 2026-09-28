@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -29,19 +28,9 @@ Flags:
 
 func runDoctor(args []string, stdout, stderr io.Writer) int {
 	flags := flag.NewFlagSet("chowki doctor", flag.ContinueOnError)
-	flags.SetOutput(io.Discard)
 	configPath := flags.String("config", defaultConfig(), "")
-	if err := flags.Parse(args); err != nil {
-		if errors.Is(err, flag.ErrHelp) {
-			fmt.Fprint(stdout, doctorUsage)
-			return exitOK
-		}
-		fmt.Fprintf(stderr, "chowki doctor: %v\n\n%s", err, doctorUsage)
-		return exitUsage
-	}
-	if flags.NArg() > 0 {
-		fmt.Fprint(stderr, doctorUsage)
-		return exitUsage
+	if code, ok := parseCommand(flags, args, doctorUsage, stdout, stderr); !ok {
+		return code
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()

@@ -29,12 +29,23 @@ func defaultConfig() string {
 	return "chowki.yaml"
 }
 
+const initUsage = `Usage:
+  chowki init [--config <FILE>]
+
+Creates what the gateway needs, and keeps what exists: the configuration
+file, a master key that only you can read, where security.master_key_file
+says, and the database. Run it in the folder where you run chowki serve.
+
+Flags:
+  --config  the configuration file to create or use; by default
+            $CHOWKI_CONFIG, or chowki.yaml
+`
+
 func runInit(args []string, stdout, stderr io.Writer) int {
 	flags := flag.NewFlagSet("chowki init", flag.ContinueOnError)
-	flags.SetOutput(stderr)
-	configPath := flags.String("config", defaultConfig(), "configuration file to create or use")
-	if err := flags.Parse(args); err != nil || flags.NArg() > 0 {
-		return exitUsage
+	configPath := flags.String("config", defaultConfig(), "")
+	if code, ok := parseCommand(flags, args, initUsage, stdout, stderr); !ok {
+		return code
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()

@@ -29,7 +29,7 @@ func TestRun(t *testing.T) {
 			name:       "version with arguments",
 			args:       []string{"version", "extra"},
 			wantCode:   exitUsage,
-			wantStderr: []string{"takes no arguments"},
+			wantStderr: []string{`unexpected argument "extra"`},
 		},
 		{
 			name:     "help",

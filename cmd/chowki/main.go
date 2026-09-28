@@ -4,6 +4,8 @@ package main
 
 import (
 	"context"
+	"errors"
+	"flag"
 	"fmt"
 	"io"
 	"os"
@@ -103,10 +105,37 @@ func usage(w io.Writer) {
 	fmt.Fprintf(w, "\nDocumentation: %s\nReport a bug:  %s\n", id.DocsURL(), id.IssuesURL())
 }
 
+const versionUsage = `Usage:
+  chowki version
+
+Prints the version, commit and build date of chowki, its Go version and
+platform, and its repository.
+`
+
+// parseCommand parses the flags of a command that takes no arguments. On
+// --help it prints usage to stdout; on a mistake, the mistake and usage to
+// stderr. When ok is false, the command stops with code.
+func parseCommand(flags *flag.FlagSet, args []string, usage string, stdout, stderr io.Writer) (code int, ok bool) {
+	flags.SetOutput(io.Discard)
+	err := flags.Parse(args)
+	switch {
+	case errors.Is(err, flag.ErrHelp):
+		fmt.Fprint(stdout, usage)
+		return exitOK, false
+	case err != nil:
+		fmt.Fprintf(stderr, "%s: %v\n\n%s", flags.Name(), err, usage)
+		return exitUsage, false
+	case flags.NArg() > 0:
+		fmt.Fprintf(stderr, "%s: unexpected argument %q\n\n%s", flags.Name(), flags.Arg(0), usage)
+		return exitUsage, false
+	}
+	return exitOK, true
+}
+
 func runVersion(args []string, stdout, stderr io.Writer) int {
-	if len(args) > 0 {
-		fmt.Fprintln(stderr, "chowki version: takes no arguments")
-		return exitUsage
+	if code, ok := parseCommand(flag.NewFlagSet("chowki version", flag.ContinueOnError), args, versionUsage,
+		stdout, stderr); !ok {
+		return code
 	}
 	fmt.Fprintf(stdout, "chowki %s\ncommit: %s\ndate:   %s\ngo:     %s %s/%s\nrepo:   %s\n",
 		buildinfo.Version(), orUnknown(buildinfo.Commit()), orUnknown(buildinfo.Date()),
