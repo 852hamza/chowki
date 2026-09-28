@@ -5,7 +5,13 @@ reports as a priority.
 
 ## Supported versions
 
-Chowki has no release yet. Once it does, security fixes go into the latest release.
+| Version | Supported |
+|---|---|
+| 0.1.x | Yes |
+| Earlier builds from source | No |
+
+Security fixes go into the latest release. Until v1.0, only the latest minor release gets them, so
+upgrade to receive a fix.
 
 ## Report a vulnerability
 

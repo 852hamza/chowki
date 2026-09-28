@@ -18,9 +18,13 @@ provider, and Chowki:
 
 It's a single binary with a SQLite database, and runs on a laptop, a server or in a container.
 
+![The Chowki dashboard: a month of spend, savings, failures and redactions, by day, key and model](/img/dashboard.png)
+
 ## Start here
 
-- [Send your first request](/docs/get-started/quickstart), in a few minutes.
-- [Install Chowki](/docs/get-started/install) with Docker Compose, Docker or from source.
+- [Send your first request](/docs/get-started/quickstart), in about five minutes.
+- [Install Chowki](/docs/get-started/install) with one command, Docker Compose, Docker or from
+  source.
 - [Connect Claude Code](/docs/how-to/connect-claude-code),
-  [the Codex CLI](/docs/how-to/connect-codex), [the Gemini CLI](/docs/how-to/connect-gemini-cli) or [your SDKs](/docs/how-to/connect-sdks).
+  [the Codex CLI](/docs/how-to/connect-codex), [the Gemini CLI](/docs/how-to/connect-gemini-cli)
+  or [your SDKs](/docs/how-to/connect-sdks).

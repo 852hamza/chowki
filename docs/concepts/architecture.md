@@ -118,7 +118,7 @@ endpoint and error code.
 
 ## Limits
 
-- The first release runs as one node: rate limits are kept in memory, and SQLite allows one writer.
+- Chowki runs as one node: it keeps rate limits in memory, and SQLite allows one writer.
 - The exact cache serves only non-streaming requests.
 - The prompt-cache optimizer works only with Anthropic. OpenAI caches prompts automatically, and
   Chowki keeps requests byte-stable so that this caching keeps working.

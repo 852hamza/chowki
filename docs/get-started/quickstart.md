@@ -1,11 +1,11 @@
 ---
 title: Send your first request through Chowki
-description: Build Chowki, create a virtual key, and send a chat request through the gateway in about ten minutes.
+description: Install Chowki, create a virtual key, and send a chat request through the gateway in about five minutes.
 type: tutorial
 since: v0.1
 edition: community
 sidebar_position: 1
-last_reviewed: 2026-09-27
+last_reviewed: 2026-09-28
 ---
 
 In this tutorial you set up Chowki on your computer and send a chat request through it with a
@@ -201,6 +201,9 @@ official SDKs and Ollama; run `chowki setup` for the list. See
    rm -rf ~/chowki-gateway
    ```
 
+3. To uninstall Chowki too, delete the binary from the folder that the install script named, such
+   as `/usr/local/bin/chowki` or `~/.local/bin/chowki`.
+
 ## What you learned
 
 - Clients use Chowki by changing their base URL and API key; the request format stays the same.
@@ -210,5 +213,7 @@ official SDKs and Ollama; run `chowki setup` for the list. See
 ## Next steps
 
 - [Manage virtual keys](../how-to/manage-virtual-keys.md)
+- [Connect Claude Code](../how-to/connect-claude-code.md), or [the SDKs](../how-to/connect-sdks.md)
+- [Use the dashboard](../how-to/use-the-dashboard.md)
 - [Configuration reference](../reference/configuration.md)
 - [Architecture](../concepts/architecture.md)
