@@ -366,7 +366,7 @@ func FromAnthropic(body []byte, created int64, mem *Memory) ([]byte, error) {
 		msg.Content = ptr(text.String())
 	}
 	rememberThinking(mem, ids, items)
-	return json.Marshal(completion{ID: "chatcmpl-" + r.ID, Object: "chat.completion", Created: created,
+	return marshal(completion{ID: "chatcmpl-" + r.ID, Object: "chat.completion", Created: created,
 		Model: r.Model, Choices: []choice{{Message: msg, FinishReason: ptr(anthropicFinish(r.StopReason))}},
 		Usage: openAIUsage(report.Usage)})
 }

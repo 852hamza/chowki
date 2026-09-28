@@ -24,7 +24,9 @@ func readDeploy(t *testing.T, name string) string {
 }
 
 // The container's configuration keeps the settings of the one that chowki
-// init writes, with its files in the data volume.
+// init writes, with its files in the data volume, and listens on every
+// address: inside a container, localhost would take no connection from
+// outside it, and Compose publishes the port to this machine only.
 func TestDeployConfig(t *testing.T) {
 	none := func(string) (string, bool) { return "", false }
 	image, err := config.Parse([]byte(readDeploy(t, "deploy/chowki.yaml")), none)
@@ -41,7 +43,12 @@ func TestDeployConfig(t *testing.T) {
 			t.Errorf("%s isn't in the data volume, /var/lib/chowki", path)
 		}
 	}
+	if image.Server.Listen != ":8080" || starter.Server.Listen != "localhost:8080" {
+		t.Errorf("the image listens on %q and chowki init on %q; want :8080 and localhost:8080",
+			image.Server.Listen, starter.Server.Listen)
+	}
 	image.Storage.DSN, image.Security.MasterKeyFile = starter.Storage.DSN, starter.Security.MasterKeyFile
+	image.Server.Listen = starter.Server.Listen
 	if !reflect.DeepEqual(image, starter) {
 		t.Errorf("deploy/chowki.yaml differs from the starter configuration:\n%+v\n%+v", image, starter)
 	}

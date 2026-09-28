@@ -54,6 +54,9 @@ provider. Its log lines and records count what it found, by type, and never hold
 
 ## The network
 
+- **This machine only, by default.** A new gateway listens on `localhost:8080`, which takes no
+  connection from another machine. To serve other machines, set `server.listen`, such as to
+  `:8443`, with HTTPS.
 - **Server-side request forgery.** Provider addresses come only from the configuration. Chowki
   never connects to link-local or cloud metadata addresses, such as `169.254.169.254`, and
   connects to loopback and private addresses only while `security.allow_private_upstreams` is

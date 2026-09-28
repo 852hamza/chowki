@@ -395,7 +395,7 @@ func FromGemini(body []byte, model string, created int64, mem *Memory) ([]byte, 
 		out.Choices = append(out.Choices, choice{Message: &message{Role: "assistant"},
 			FinishReason: ptr("content_filter")})
 	}
-	return json.Marshal(out)
+	return marshal(out)
 }
 
 func cmpOr(a, b string) string {
@@ -525,7 +525,7 @@ func OpenAIError(f usage.Family, status int, body []byte) []byte {
 	if code != "" {
 		c = code
 	}
-	b, _ := json.Marshal(map[string]any{"error": map[string]any{"message": msg, "type": typ, "param": nil,
+	b, _ := marshal(map[string]any{"error": map[string]any{"message": msg, "type": typ, "param": nil,
 		"code": c}}) // plain values always marshal
 	return b
 }

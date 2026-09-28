@@ -103,7 +103,7 @@ func serve(ctx context.Context, configPath string, ln net.Listener, logOut io.Wr
 
 	// Listen before starting anything else, so a taken port fails fast.
 	if ln == nil {
-		if ln, err = (&net.ListenConfig{}).Listen(ctx, "tcp", cfg.Server.Listen); err != nil {
+		if ln, err = server.Listen(ctx, cfg.Server.Listen); err != nil {
 			return fmt.Errorf("%w; set server.listen or %s to use another address", err, "CHOWKI_SERVER_LISTEN")
 		}
 	}

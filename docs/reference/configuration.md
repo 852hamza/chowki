@@ -32,7 +32,7 @@ in the file: keys come from environment variables, or from the database, where
 
 | Setting | Environment variable | Default |
 |---|---|---|
-| [`server.listen`](#serverlisten) | `CHOWKI_SERVER_LISTEN` | `:8080` |
+| [`server.listen`](#serverlisten) | `CHOWKI_SERVER_LISTEN` | `localhost:8080` |
 | [`server.max_body_mb`](#servermax_body_mb) | `CHOWKI_SERVER_MAX_BODY_MB` | `20` |
 | [`server.upstream_timeout`](#serverupstream_timeout) | `CHOWKI_SERVER_UPSTREAM_TIMEOUT` | `10m` |
 | [`server.read_timeout`](#serverread_timeout) | `CHOWKI_SERVER_READ_TIMEOUT` | `1m` |
@@ -61,18 +61,20 @@ in the file: keys come from environment variables, or from the database, where
 | | |
 |---|---|
 | Type | String, `host:port` |
-| Default | `:8080` |
+| Default | `localhost:8080` |
 | Environment variable | `CHOWKI_SERVER_LISTEN` |
 | Since | v0.1 |
 
-The address and port that the gateway listens on. `:8080` listens on every network interface;
-`127.0.0.1:8080` listens only on this computer.
+The address and port that the gateway listens on. `localhost:8080` takes connections from this
+computer only, on both of its loopback addresses, `127.0.0.1` and `::1`, because clients resolve
+`localhost` to either. `:8080` takes connections on every network interface: set it to serve other
+machines, over HTTPS, as [Serve over HTTPS](../how-to/serve-over-https.md) shows.
 
 Example:
 
 ```yaml
 server:
-  listen: "127.0.0.1:8080"
+  listen: ":8080"
 ```
 
 ## `server.max_body_mb`

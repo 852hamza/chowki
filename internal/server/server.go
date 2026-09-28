@@ -28,8 +28,8 @@ func Routes(gw *pipeline.Gateway, admin, ui http.Handler) http.Handler {
 	}
 	mux.Handle("POST /gemini/v1beta/models/", gw.Gemini())
 	mux.Handle("GET /v1/models", gw.Models())
-	mux.HandleFunc("GET /healthz", healthz)
-	mux.Handle("GET /readyz", readyz(gw.Store))
+	mux.Handle("GET /healthz", withRequestID(http.HandlerFunc(healthz)))
+	mux.Handle("GET /readyz", withRequestID(readyz(gw.Store)))
 	mux.Handle("GET /metrics", gw.Metrics.Handler())
 	if admin != nil {
 		mux.Handle("/admin/", admin)
@@ -42,6 +42,16 @@ func Routes(gw *pipeline.Gateway, admin, ui http.Handler) http.Handler {
 	mux.Handle("/gemini/", gw.NotFound(usage.Gemini))
 	mux.Handle("/", gw.NotFound(usage.OpenAI))
 	return mux
+}
+
+// withRequestID gives the health checks' answers a request ID, as the
+// gateway's other answers have one. chowki doctor recognizes the gateway by
+// it.
+func withRequestID(h http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set(pipeline.RequestIDHeader, pipeline.NewRequestID())
+		h.ServeHTTP(w, r)
+	})
 }
 
 // healthz answers while the process runs, for liveness probes.

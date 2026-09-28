@@ -68,7 +68,9 @@ func writeError(w http.ResponseWriter, f usage.Family, requestID string, e apiEr
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(e.Status)
-	_ = json.NewEncoder(w).Encode(body) // the client may be gone; nothing to do then
+	enc := json.NewEncoder(w)
+	enc.SetEscapeHTML(false) // as the providers write their errors; see translate.marshal
+	_ = enc.Encode(body)     // the client may be gone; nothing to do then
 }
 
 func openAIType(status int) string {

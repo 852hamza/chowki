@@ -22,6 +22,7 @@ import (
 	"github.com/852hamza/chowki/internal/pipeline"
 	"github.com/852hamza/chowki/internal/providerkeys"
 	"github.com/852hamza/chowki/internal/secretbox"
+	"github.com/852hamza/chowki/internal/server"
 	"github.com/852hamza/chowki/internal/store"
 )
 
@@ -287,6 +288,9 @@ const certWarning = 14 * 24 * time.Hour
 // checkTLS checks the certificate that the gateway serves, if any.
 func checkTLS(srv config.Server, now time.Time) Result {
 	if srv.TLSCertFile == "" {
+		if loopback(srv.Listen) {
+			return Result{"tls", OK, "off; only this machine can connect, which needs no HTTPS"}
+		}
 		return Result{"tls", OK, "off; serve HTTPS, or put a reverse proxy with HTTPS in front, when clients " +
 			"connect over a network"}
 	}
@@ -325,7 +329,7 @@ func ipStrings(ips []net.IP) []string {
 // checkListen reports whether chowki serve can listen on addr, or already
 // does.
 func checkListen(ctx context.Context, addr string, useTLS bool) Result {
-	ln, err := (&net.ListenConfig{}).Listen(ctx, "tcp", addr)
+	ln, err := server.Listen(ctx, addr)
 	if err == nil {
 		_ = ln.Close() // it was only a test
 		return Result{"listen", OK, addr + " is free for chowki serve"}
@@ -341,8 +345,8 @@ func checkListen(ctx context.Context, addr string, useTLS bool) Result {
 }
 
 // runningGateway reports whether Chowki answers on addr, and at which base
-// URL. It asks for the model list without a key: Chowki refuses, with its
-// request ID header.
+// URL. It asks for /healthz, which answers without a key, and logs nothing,
+// with Chowki's request ID header.
 func runningGateway(ctx context.Context, addr string, useTLS bool) (string, bool) {
 	host, port, err := net.SplitHostPort(addr)
 	if err != nil {
@@ -361,7 +365,7 @@ func runningGateway(ctx context.Context, addr string, useTLS bool) (string, bool
 	base := scheme + "://" + net.JoinHostPort(host, port)
 	ctx, cancel := context.WithTimeout(ctx, probeTimeout)
 	defer cancel()
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, base+"/v1/models", nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, base+"/healthz", nil)
 	if err != nil {
 		return "", false
 	}
@@ -381,6 +385,16 @@ func runningGateway(ctx context.Context, addr string, useTLS bool) (string, bool
 	}
 	_ = resp.Body.Close() // only the header matters
 	return base, resp.Header.Get(pipeline.RequestIDHeader) != ""
+}
+
+// loopback reports whether a listen address takes only this machine.
+func loopback(addr string) bool {
+	host, _, err := net.SplitHostPort(addr)
+	if err != nil {
+		return false
+	}
+	ip := net.ParseIP(host)
+	return host == "localhost" || ip != nil && ip.IsLoopback()
 }
 
 // private reports whether only the owner can read a file. Windows has no

@@ -128,7 +128,7 @@ func (g *Gateway) Gemini() http.Handler {
 // Anthropic and Gemini providers included, in the OpenAI format.
 func (g *Gateway) Models() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		c := &call{ep: OpenAIChat, family: usage.OpenAI, id: newRequestID(), start: time.Now(),
+		c := &call{ep: OpenAIChat, family: usage.OpenAI, id: NewRequestID(), start: time.Now(),
 			w: &trackingWriter{ResponseWriter: w}}
 		c.w.Header().Set(RequestIDHeader, c.id)
 		if e := g.authenticate(r.Context(), c, r); e != nil {
@@ -152,7 +152,9 @@ func (g *Gateway) Models() http.Handler {
 			}
 		}
 		c.w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(c.w).Encode(list) // the client may be gone; nothing to do then
+		enc := json.NewEncoder(c.w)
+		enc.SetEscapeHTML(false)
+		_ = enc.Encode(list) // the client may be gone; nothing to do then
 		g.Logger.Info("models listed", "request_id", c.id, "key_id", c.key.ID, "models", len(list.Data))
 	})
 }

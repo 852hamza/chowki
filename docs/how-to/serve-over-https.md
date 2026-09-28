@@ -74,8 +74,8 @@ ok    listen              chowki serve is running at https://127.0.0.1:8443
 
 ## Use a reverse proxy instead
 
-Leave the TLS settings out, let the gateway listen on the machine only, such as with
-`listen: "127.0.0.1:8080"`, and let the proxy serve HTTPS and forward to it. Configure the proxy
+Leave the TLS settings out, keep the gateway on the machine only, with the default
+`listen: "localhost:8080"`, and let the proxy serve HTTPS and forward to it. Configure the proxy
 not to buffer responses, so that streams reach clients as they're written, and to allow long
 responses: a stream can last as long as `server.upstream_timeout`. The proxy should send
 `X-Forwarded-Proto: https`, so that the dashboard marks its cookies as secure.

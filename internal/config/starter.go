@@ -14,7 +14,7 @@ const starter = `# Chowki configuration, created by chowki init.
 # Documentation: {{DOCS_URL}}
 
 server:
-  listen: ":8080"          # address and port to listen on
+  listen: "localhost:8080" # this machine only; ":8080" also takes other machines, see the HTTPS guide
   max_body_mb: 20          # largest request body, in MiB
   upstream_timeout: 600s   # limit for one provider call, including a whole stream
   read_timeout: 60s        # limit for a client to send its request

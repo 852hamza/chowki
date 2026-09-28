@@ -1,6 +1,7 @@
 package translate
 
 import (
+	"bytes"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
@@ -97,6 +98,20 @@ func callID() string {
 	return "call_" + hex.EncodeToString(b)
 }
 
+// marshal encodes v as json.Marshal does, but writes <, > and & as they are,
+// as the providers' own APIs do. json.Marshal writes them as \u003c, \u003e
+// and \u0026, which only JSON in an HTML page needs, and which reads badly
+// in a raw answer.
+func marshal(v any) ([]byte, error) {
+	var b bytes.Buffer
+	enc := json.NewEncoder(&b)
+	enc.SetEscapeHTML(false)
+	if err := enc.Encode(v); err != nil {
+		return nil, err
+	}
+	return bytes.TrimSuffix(b.Bytes(), []byte("\n")), nil
+}
+
 // chunkWriter builds the chunks of a translated stream.
 type chunkWriter struct {
 	id, model string
@@ -107,7 +122,7 @@ func (w *chunkWriter) chunk(choices []choice, u *outUsage) []byte {
 	if choices == nil {
 		choices = []choice{}
 	}
-	b, _ := json.Marshal(completion{ID: w.id, Object: "chat.completion.chunk", Created: w.created, Model: w.model,
+	b, _ := marshal(completion{ID: w.id, Object: "chat.completion.chunk", Created: w.created, Model: w.model,
 		Choices: choices, Usage: u}) // these types always marshal
 	return b
 }
@@ -119,7 +134,7 @@ func (w *chunkWriter) delta(index int, d delta, finish *string) []byte {
 // errorChunk is an error in the middle of a stream, which the official
 // OpenAI SDKs raise as an API error.
 func errorChunk(message, typ string) []byte {
-	b, _ := json.Marshal(map[string]any{"error": map[string]any{"message": message, "type": typ, "param": nil,
+	b, _ := marshal(map[string]any{"error": map[string]any{"message": message, "type": typ, "param": nil,
 		"code": nil}}) // a map of strings always marshals
 	return b
 }

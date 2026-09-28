@@ -38,8 +38,8 @@ database, and it sends no request to a provider.
    ok    database            data/chowki.db, schema version 9, up to date
    ok    keys                1 active virtual key
    ok    admin tokens        none; chowki admin create --name <NAME> makes one for the dashboard and the admin API
-   ok    tls                 off; serve HTTPS, or put a reverse proxy with HTTPS in front, when clients connect over a network
-   ok    listen              :8080 is free for chowki serve
+   ok    tls                 off; only this machine can connect, which needs no HTTPS
+   ok    listen              localhost:8080 is free for chowki serve
 
    2 checks warned; none failed.
    ```
@@ -83,7 +83,7 @@ unpriced: they count as $0 toward budgets. See
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| `fail  listen  another program listens on :8080` | Another program uses the port. | Stop it, or set `server.listen` in `chowki.yaml`, or `CHOWKI_SERVER_LISTEN`, to another address, such as `:8081`. |
+| `fail  listen  another program listens on localhost:8080` | Another program uses the port. | Stop it, or set `server.listen` in `chowki.yaml`, or `CHOWKI_SERVER_LISTEN`, to another address, such as `:8081`. |
 | `fail  config  read config: open chowki.yaml: no such file or directory` | There's no configuration in the current folder. | Run `chowki doctor` in the Chowki folder, run `chowki init`, or pass `--config <FILE>`. |
 | `warn  provider <NAME>` says the key isn't set, but it is in `.env` | `.env` isn't in the current folder. | Run `chowki doctor` and `chowki serve` in the folder that holds `.env`. |
 

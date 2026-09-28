@@ -118,7 +118,7 @@ func TestRunHealthy(t *testing.T) {
 		"database":        {OK, "up to date"},
 		"keys":            {OK, "1 active virtual key"},
 		"admin tokens":    {OK, "none; chowki admin create --name <NAME> makes one"},
-		"tls":             {OK, "off; serve HTTPS"},
+		"tls":             {OK, "off; only this machine can connect"},
 		"listen":          {OK, "127.0.0.1:0 is free for chowki serve"},
 	})
 	if len(got) != 11 {
@@ -409,6 +409,16 @@ func TestTLS(t *testing.T) {
 			check(t, map[string]Result{"tls": got}, map[string]want{"tls": tc.want})
 		})
 	}
+	// Without a certificate, the advice depends on who can connect.
+	for listen, text := range map[string]string{
+		"localhost:8080": "only this machine can connect", "127.0.0.1:8080": "only this machine can connect",
+		"[::1]:8080": "only this machine can connect", ":8080": "serve HTTPS, or put a reverse proxy",
+		"0.0.0.0:8080": "serve HTTPS, or put a reverse proxy", "192.168.1.5:8080": "serve HTTPS, or put a reverse proxy",
+	} {
+		check(t, map[string]Result{"tls": checkTLS(config.Server{Listen: listen}, now)},
+			map[string]want{"tls": {OK, text}})
+	}
+
 	dir := t.TempDir()
 	cert, key := writeCert(t, dir, now.AddDate(0, 2, 0))
 	got := checkTLS(config.Server{TLSCertFile: cert, TLSKeyFile: cert}, now)

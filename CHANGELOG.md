@@ -8,6 +8,14 @@ All notable changes to Chowki are recorded in this file. The format is based on
 
 ### Changed
 
+- New gateways listen on `localhost:8080`, which takes connections from this machine only, on both
+  `127.0.0.1` and `::1`, instead of on every network interface. `chowki init` writes it, and it's
+  the default when `server.listen` isn't set. To serve other machines, set `server.listen`, such as
+  to `:8443`, with HTTPS. The container image still listens on `:8080`, which Compose publishes to
+  this machine only.
+- `chowki doctor` finds a running gateway through `/healthz`, which logs nothing, instead of an
+  unauthenticated request to `/v1/models`, which the gateway logged as rejected. Its `tls` check
+  says that HTTPS isn't needed while only this machine can connect.
 - `deploy/compose.yaml` runs the published image, `ghcr.io/852hamza/chowki:latest`, so Docker
   Compose needs only that file and a `.env`, not a clone and a build. In `.env`, `CHOWKI_IMAGE`
   names another image, such as a version to stay on or `chowki:dev` from `make docker`, and
@@ -15,6 +23,8 @@ All notable changes to Chowki are recorded in this file. The format is based on
 
 ### Fixed
 
+- Answers translated from Anthropic and Gemini, and the gateway's errors, write `<`, `>` and `&`
+  as they are, as the providers do, instead of as `\u003c`, `\u003e` and `\u0026`.
 - The errors for a missing or ambiguous model name no longer contain `<` and `>`, which JSON wrote
   as `\u003c` and `\u003e`, hard to read in raw answers.
 - GitHub releases take their notes from the version's section of `CHANGELOG.md`, followed by

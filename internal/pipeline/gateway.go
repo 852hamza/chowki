@@ -91,7 +91,7 @@ func (g *Gateway) Handler(ep Endpoint) http.Handler {
 // format of family f.
 func (g *Gateway) NotFound(f usage.Family) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		id := newRequestID()
+		id := NewRequestID()
 		w.Header().Set(RequestIDHeader, id)
 		writeError(w, f, id, apiError{http.StatusNotFound, codeNotFound,
 			fmt.Sprintf("%s %s isn't an endpoint of this gateway.", r.Method, r.URL.Path)}, "")
@@ -135,7 +135,7 @@ type call struct {
 }
 
 func (g *Gateway) serve(w http.ResponseWriter, r *http.Request, ep Endpoint, pathModel string) {
-	c := &call{ep: ep, family: ep.Family, upstream: ep.usage(), pathModel: pathModel, id: newRequestID(),
+	c := &call{ep: ep, family: ep.Family, upstream: ep.usage(), pathModel: pathModel, id: NewRequestID(),
 		start: time.Now(), w: &trackingWriter{ResponseWriter: w}}
 	c.w.Header().Set(RequestIDHeader, c.id)
 	if e := g.handle(r.Context(), c, r); e != nil {
@@ -930,7 +930,9 @@ func hitCost(original *float64) usage.Cost {
 	return cost
 }
 
-func newRequestID() string {
+// NewRequestID returns a new ID for a request, as the RequestIDHeader
+// header carries it.
+func NewRequestID() string {
 	b := make([]byte, 12)
 	_, _ = rand.Read(b) // crypto/rand.Read never fails
 	return "req_" + hex.EncodeToString(b)

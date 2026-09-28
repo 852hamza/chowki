@@ -36,7 +36,9 @@ type Config struct {
 
 // Server configures the HTTP server.
 type Server struct {
-	// Listen is the address to listen on, such as ":8080".
+	// Listen is the address to listen on. localhost, the default, takes
+	// only this machine, on both 127.0.0.1 and ::1; ":8080" takes every
+	// address.
 	Listen string `yaml:"listen"`
 	// MaxBodyMB is the largest request body the gateway accepts, in MiB.
 	MaxBodyMB int `yaml:"max_body_mb"`
@@ -124,7 +126,7 @@ const (
 // environment are read.
 func Default() Config {
 	return Config{
-		Server: Server{Listen: ":8080", MaxBodyMB: 20, UpstreamTimeout: 10 * time.Minute,
+		Server: Server{Listen: "localhost:8080", MaxBodyMB: 20, UpstreamTimeout: 10 * time.Minute,
 			ReadTimeout: time.Minute},
 		Storage:       Storage{Driver: "sqlite", DSN: "file:data/chowki.db", CacheMaxMB: 256},
 		Security:      Security{MasterKeyFile: ".chowki/master.key", AllowPrivateUpstreams: true},
@@ -186,7 +188,7 @@ func (c *Config) validate() error {
 	}
 
 	if _, _, err := net.SplitHostPort(c.Server.Listen); err != nil {
-		add("server.listen", "want host:port, such as :8080")
+		add("server.listen", "want host:port, such as localhost:8080")
 	}
 	if c.Server.MaxBodyMB < 1 || c.Server.MaxBodyMB > 1024 {
 		add("server.max_body_mb", "must be between 1 and 1024")

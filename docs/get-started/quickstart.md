@@ -169,7 +169,7 @@ the keys, the database and the port, and says what to fix. See
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| `chowki serve` fails with `address already in use` | Another program uses port 8080. | Start with `CHOWKI_SERVER_LISTEN=:8081 chowki serve`, and send requests to port 8081. |
+| `chowki serve` fails with `address already in use` | Another program uses port 8080. | Start with `CHOWKI_SERVER_LISTEN=localhost:8081 chowki serve`, and send requests to port 8081. |
 | The response has `"code":"invalid_api_key"` | `CHOWKI_KEY` isn't set in this terminal, or it holds a different key. | Set `CHOWKI_KEY` to the key from step 3. |
 | The response has `"code":"provider_key_missing"` | Chowki can't read `OPENAI_API_KEY`. | Check that `.env` is in the folder where you ran `chowki serve`, then restart the gateway. |
 
