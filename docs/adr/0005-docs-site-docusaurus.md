@@ -36,3 +36,6 @@ and the Docs workflow builds it on every change and publishes it to GitHub Pages
 - The site's dependencies are pinned in `website/package-lock.json`, and only CI and writers
   install them.
 - GitHub Pages must be set to deploy from GitHub Actions in the repository's settings, once.
+- The workflow publishes the site only while the repository is public. While it's private, the
+  workflow builds and checks the site without publishing it: GitHub Free has no Pages for private
+  repositories, and the site shouldn't go live before the code.
