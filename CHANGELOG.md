@@ -119,5 +119,8 @@ All notable changes to Chowki are recorded in this file. The format is based on
   stores a key in the database, sealed with AES-256-GCM under the master key and bound to its
   provider, for when the environment has none. It reads keys only from standard input.
   `chowki serve` uses stored keys, and `chowki doctor` checks that they open.
+- A CLI reference, and summaries in the configuration, metrics and API references, generated from
+  the code; `make docs` rewrites them, and the tests fail while they're out of date. Every command
+  prints its usage with `--help`.
 
 [Unreleased]: https://github.com/852hamza/chowki/commits/main

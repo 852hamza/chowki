@@ -76,6 +76,7 @@ make build
 - [Check your setup](docs/how-to/check-your-setup.md): find what stops the gateway from starting
   or working, with `chowki doctor`.
 - [API reference](docs/reference/api.md): endpoints, headers and error codes.
+- [CLI reference](docs/reference/cli.md): every `chowki` command and its options.
 - [Admin API reference](docs/reference/admin-api.md): reports, and managing keys and projects.
 - [Configuration reference](docs/reference/configuration.md): every setting and its environment
   variable.

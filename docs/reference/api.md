@@ -110,6 +110,9 @@ the `reason` of the `ErrorInfo` detail is the code below in capitals:
 {"error":{"code":401,"details":[{"@type":"type.googleapis.com/google.rpc.ErrorInfo","domain":"chowki","reason":"MISSING_API_KEY"}],"message":"Send your Chowki virtual key in the Authorization: Bearer, x-api-key or x-goog-api-key header.","status":"UNAUTHENTICATED"}}
 ```
 
+<!-- Generated from the code by TestErrorCodesReference in internal/pipeline; run make docs. -->
+<!-- generated:error-codes -->
+
 | Code | Status | Meaning |
 |---|---|---|
 | `missing_api_key` | 401 | The request has no virtual key. |
@@ -124,11 +127,13 @@ the `reason` of the `ErrorInfo` detail is the code below in capitals:
 | `sensitive_data_blocked` | 400 | Redaction in `block` mode found secrets or personal data. |
 | `rate_limit_exceeded` | 429 | The key reached its limit of requests or tokens per minute. |
 | `budget_exceeded` | 429 | The key's or its project's monthly budget is used up. |
-| `provider_key_missing` | 500 | The provider's key isn't set in the gateway's environment. |
+| `provider_key_missing` | 500 | The provider has no key: the variable that its `api_key_env` names isn't set, and no key is stored. |
 | `upstream_unavailable` | 502 | The provider can't be reached. |
 | `upstream_timeout` | 504 | The provider didn't answer within `server.upstream_timeout`. |
 | `internal_error` | 500 | Chowki failed; its log has the details. |
 | `not_found` | 404 | The path isn't an endpoint of the gateway. |
+
+<!-- end generated:error-codes -->
 
 Errors from providers, such as a 400 for an invalid parameter, reach the client unchanged.
 

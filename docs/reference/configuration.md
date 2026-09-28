@@ -25,7 +25,33 @@ An unknown setting in `chowki.yaml`, such as a misspelled name, is an error. So 
 in the file: keys come from environment variables, or from the database, where
 [`chowki provider set-key`](../how-to/manage-provider-keys.md) stores them encrypted.
 
-<!-- Written by hand for now; a test checks that it lists every environment variable. -->
+## Summary
+
+<!-- Generated from the code by TestConfigurationSummary in internal/config; run make docs. -->
+<!-- generated:summary -->
+
+| Setting | Environment variable | Default |
+|---|---|---|
+| [`server.listen`](#serverlisten) | `CHOWKI_SERVER_LISTEN` | `:8080` |
+| [`server.max_body_mb`](#servermax_body_mb) | `CHOWKI_SERVER_MAX_BODY_MB` | `20` |
+| [`server.upstream_timeout`](#serverupstream_timeout) | `CHOWKI_SERVER_UPSTREAM_TIMEOUT` | `10m` |
+| [`storage.driver`](#storagedriver) | `CHOWKI_STORAGE_DRIVER` | `sqlite` |
+| [`storage.dsn`](#storagedsn) | `CHOWKI_STORAGE_DSN` | `file:data/chowki.db` |
+| [`storage.cache_max_mb`](#storagecache_max_mb) | `CHOWKI_STORAGE_CACHE_MAX_MB` | `256` |
+| [`security.master_key_file`](#securitymaster_key_file) | `CHOWKI_SECURITY_MASTER_KEY_FILE` | `.chowki/master.key` |
+| [`security.allow_private_upstreams`](#securityallow_private_upstreams) | `CHOWKI_SECURITY_ALLOW_PRIVATE_UPSTREAMS` | `true` |
+| [`log.level`](#loglevel) | `CHOWKI_LOG_LEVEL` | `info` |
+| [`retention_days`](#retention_days) | `CHOWKI_RETENTION_DAYS` | `90` |
+| [`defaults.cache`](#defaultscache) | `CHOWKI_DEFAULTS_CACHE` | `off` |
+| [`defaults.cache_ttl`](#defaultscache_ttl) | `CHOWKI_DEFAULTS_CACHE_TTL` | `1h` |
+| [`defaults.prompt_cache`](#defaultsprompt_cache) | `CHOWKI_DEFAULTS_PROMPT_CACHE` | `auto` |
+| [`defaults.redaction`](#defaultsredaction) | `CHOWKI_DEFAULTS_REDACTION` | `mask` |
+| [`providers`](#providers) | None: only in the file | None |
+| [`aliases`](#aliases) | None: only in the file | None |
+
+<!-- end generated:summary -->
+
+<!-- The sections below are written by hand; a test checks that there is one for every setting. -->
 
 ## `server.listen`
 

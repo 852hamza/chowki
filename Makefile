@@ -30,7 +30,7 @@ EXTRA_LDFLAGS ?=
 # The tag that `make docker` gives the image, as deploy/compose.yaml names it.
 IMAGE ?= chowki:dev
 
-.PHONY: build docker test race lint vuln sync sync-check help
+.PHONY: build docker test race lint vuln sync sync-check docs help
 
 ## build: compile bin/chowki with version and project identity
 build:
@@ -64,6 +64,11 @@ sync:
 ## sync-check: fail if the repository is out of sync with project.env
 sync-check:
 	$(GO) run ./tools/projectsync --check
+
+## docs: rewrite the parts of docs/reference that are generated from the code
+docs:
+	UPDATE_DOCS=1 $(GO) test -count=1 -run 'TestCLIReference|TestConfigurationSummary|TestMetricsSummary|TestErrorCodesReference' \
+		./cmd/chowki ./internal/config ./internal/metrics ./internal/pipeline
 
 ## help: list these targets
 help:
