@@ -1,0 +1,51 @@
+# Dependabot opens pull requests that update dependencies: Go modules weekly,
+# and the workflows' actions, the Dockerfile's base images and the docs
+# site's packages monthly, each in one grouped pull request. Security updates,
+# which the repository settings turn on, don't wait for this schedule.
+# Commit subjects follow the Conventional Commits rule that CI checks, and
+# tools/commitcheck accepts Dependabot's sign-off.
+version: 2
+updates:
+  - package-ecosystem: gomod
+    directory: /
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: build
+      include: scope
+    groups:
+      go:
+        patterns: ["*"]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    commit-message:
+      prefix: ci
+      include: scope
+    groups:
+      actions:
+        patterns: ["*"]
+
+  - package-ecosystem: docker
+    directory: /deploy
+    schedule:
+      interval: monthly
+    commit-message:
+      prefix: build
+      include: scope
+    groups:
+      images:
+        patterns: ["*"]
+
+  - package-ecosystem: npm
+    directory: /website
+    schedule:
+      interval: monthly
+    commit-message:
+      prefix: build
+      include: scope
+    groups:
+      website:
+        patterns: ["*"]
