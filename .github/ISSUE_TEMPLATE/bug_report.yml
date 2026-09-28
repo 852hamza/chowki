@@ -1,0 +1,89 @@
+name: Bug report
+description: Chowki does something wrong, or not what the documentation says.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Report a security problem privately instead:
+        https://github.com/852hamza/chowki/security/advisories/new
+
+        Never paste a provider key, virtual key or admin token here. Chowki's own logs and
+        `chowki doctor` show metadata only, so you can paste them as they are.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you did, what Chowki did, and any error message.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: >-
+        The commands you ran and the request you sent, with the parts of chowki.yaml that matter.
+      placeholder: |
+        1. chowki key create --name test
+        2. curl http://localhost:8080/v1/chat/completions ...
+    validations:
+      required: true
+  - type: textarea
+    id: version
+    attributes:
+      label: Version
+      description: The output of `chowki version`.
+      render: text
+    validations:
+      required: true
+  - type: dropdown
+    id: install
+    attributes:
+      label: How you run Chowki
+      options:
+        - Install script
+        - Docker or Docker Compose
+        - Archive from the releases page
+        - Built from source
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: Operating system
+      placeholder: Ubuntu 24.04, macOS 26, Windows 11 with WSL
+  - type: dropdown
+    id: providers
+    attributes:
+      label: Providers involved
+      multiple: true
+      options:
+        - OpenAI
+        - Anthropic
+        - Google Gemini
+        - OpenAI-compatible, such as Ollama
+        - None
+  - type: textarea
+    id: doctor
+    attributes:
+      label: Output of chowki doctor
+      render: text
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: The log lines around the problem.
+      render: text
+  - type: checkboxes
+    id: secrets
+    attributes:
+      label: Before you submit
+      options:
+        - label: I removed keys, tokens and personal data from everything above.
+          required: true

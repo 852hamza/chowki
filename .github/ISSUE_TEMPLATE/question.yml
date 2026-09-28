@@ -1,0 +1,21 @@
+name: Question
+description: Ask how to do something with Chowki.
+labels: ["question"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        The guides may answer it already: https://852hamza.github.io/chowki
+  - type: textarea
+    id: question
+    attributes:
+      label: Your question
+      description: What you want to do, and what you tried.
+    validations:
+      required: true
+  - type: textarea
+    id: version
+    attributes:
+      label: Version
+      description: The output of `chowki version`.
+      render: text

@@ -1,0 +1,32 @@
+name: Feature request
+description: Suggest a feature, or a change to how Chowki works.
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What you want to do, and what stops you today.
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: The solution you'd like
+      description: How Chowki could help, such as a setting, a command or an API.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives you considered
+      description: Other ways to get the same result, with Chowki or other tools.
+  - type: dropdown
+    id: contribute
+    attributes:
+      label: Would you like to build it?
+      # Quoted: YAML reads a bare No as false.
+      options:
+        - "Yes, I'd like to open a pull request"
+        - "Yes, with some help"
+        - "No"
