@@ -30,7 +30,7 @@ EXTRA_LDFLAGS ?=
 # The tag that `make docker` gives the image, as deploy/compose.yaml names it.
 IMAGE ?= chowki:dev
 
-.PHONY: build docker test race lint vuln sync sync-check docs help
+.PHONY: build docker test race lint vuln sync sync-check docs loadtest help
 
 ## build: compile bin/chowki with version and project identity
 build:
@@ -69,6 +69,10 @@ sync-check:
 docs:
 	UPDATE_DOCS=1 $(GO) test -count=1 -run 'TestCLIReference|TestConfigurationSummary|TestMetricsSummary|TestErrorCodesReference' \
 		./cmd/chowki ./internal/config ./internal/metrics ./internal/pipeline
+
+## loadtest: measure the gateway's overhead at 200 requests per second on 2 CPUs
+loadtest: build
+	$(GO) run ./tools/loadtest --binary bin/chowki
 
 ## help: list these targets
 help:
