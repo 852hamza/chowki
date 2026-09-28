@@ -1,6 +1,8 @@
 package usage
 
 import (
+	"time"
+
 	"github.com/852hamza/chowki/internal/catalog"
 )
 
@@ -23,10 +25,10 @@ type Cost struct {
 	SavingsMethod string
 }
 
-// Compute prices a request that model m served, with the formulas in the
-// architecture document (section 8). m is nil for a model that isn't in the
-// catalog. Prices are per million tokens.
-func Compute(f Family, r Report, m *catalog.Model) Cost {
+// Compute prices a request made at a time that model m served, with the
+// formulas in the architecture document (section 8). m is nil for a model
+// that isn't in the catalog. Prices are per million tokens.
+func Compute(f Family, r Report, m *catalog.Model, at time.Time) Cost {
 	switch {
 	case r.Usage == nil:
 		return Cost{Reason: "the provider reported no usage"}
@@ -40,7 +42,7 @@ func Compute(f Family, r Report, m *catalog.Model) Cost {
 	if uncached < 0 || u.CacheWrite1h > u.CacheWrite {
 		return Cost{Reason: "the usage numbers are inconsistent"}
 	}
-	p := m.PriceFor(u.Input)
+	p := m.PriceFor(u.Input, at)
 	if u.CacheRead > 0 && p.CacheRead == nil {
 		return Cost{Reason: "the catalog lists no cache read price"}
 	}
@@ -48,9 +50,10 @@ func Compute(f Family, r Report, m *catalog.Model) Cost {
 
 	var writes float64 // cost of the cache writes, in tokens × price
 	switch f {
-	case OpenAI:
+	case OpenAI, Gemini:
 		// Without a cache write price, writes cost the input price, as for
-		// OpenAI models before GPT-5.6.
+		// OpenAI models before GPT-5.6. Gemini reports no writes: its
+		// implicit cache is free to fill.
 		writes = float64(u.CacheWrite) * valueOr(p.CacheWrite, p.Input)
 	case Anthropic:
 		w5m, w1h := u.CacheWrite-u.CacheWrite1h, u.CacheWrite1h

@@ -75,27 +75,30 @@ func New(ps map[string]*providers.Provider, cat *catalog.Catalog, aliases map[st
 }
 
 // Resolve returns the targets for requested, a model name or an alias,
-// that speak API type wantType ("openai" or "anthropic"), in the order to
-// try them: healthy targets first, each group in configured order.
+// whose providers speak one of the API types in accept, in the order to try
+// them: healthy targets first, each group in configured order. The first
+// type in accept is the endpoint's own; the others are those it reaches
+// through translation.
 //
 // A name is resolved like this: an alias gives its targets;
 // "<provider>/<model>" names one; otherwise the provider that the catalog
-// lists for the model, or the only provider of the type.
-func (r *Router) Resolve(wantType, requested string, now time.Time) ([]Target, error) {
+// lists for the model, or the only provider of the endpoint's own type.
+func (r *Router) Resolve(accept []string, requested string, now time.Time) ([]Target, error) {
 	var targets []Target
 	if names, ok := r.aliases[requested]; ok {
 		for _, name := range names {
 			p, model, _ := strings.Cut(name, "/")
-			if r.providers[p].Type == wantType {
+			if slices.Contains(accept, r.providers[p].Type) {
 				targets = append(targets, Target{r.providers[p], model})
 			}
 		}
 		if len(targets) == 0 {
 			return nil, &Error{CodeWrongEndpoint, fmt.Sprintf(
-				"The alias %q has no target of the %s API; send requests for it to another endpoint.", requested, wantType)}
+				"The alias %q has no target that this endpoint can reach; send requests for it to another endpoint.",
+				requested)}
 		}
 	} else {
-		t, err := r.one(wantType, requested)
+		t, err := r.one(accept, requested)
 		if err != nil {
 			return nil, err
 		}
@@ -109,9 +112,10 @@ func (r *Router) Resolve(wantType, requested string, now time.Time) ([]Target, e
 	return targets, nil
 }
 
-func (r *Router) one(wantType, requested string) (Target, error) {
+func (r *Router) one(accept []string, requested string) (Target, error) {
+	wantType := accept[0]
 	check := func(p *providers.Provider, model string) (Target, error) {
-		if p.Type != wantType {
+		if !slices.Contains(accept, p.Type) {
 			return Target{}, &Error{CodeWrongEndpoint, fmt.Sprintf(
 				"The provider %q speaks the %s API; send requests for it to that API's endpoint.", p.Name, p.Type)}
 		}
@@ -124,7 +128,7 @@ func (r *Router) one(wantType, requested string) (Target, error) {
 	}
 	var listed []*providers.Provider
 	for _, name := range r.catalog.Providers(requested) {
-		if p, ok := r.providers[name]; ok && p.Type == wantType {
+		if p, ok := r.providers[name]; ok && slices.Contains(accept, p.Type) {
 			listed = append(listed, p)
 		}
 	}
@@ -155,13 +159,14 @@ type ModelInfo struct {
 	Owner string // the provider, or "chowki" for an alias
 }
 
-// Models returns the aliases with a target of API type wantType, and the
-// catalog's models of the configured providers of that type, by name.
-func (r *Router) Models(wantType string) []ModelInfo {
+// Models returns the aliases with a target of one of the API types in
+// accept, and the catalog's models of the configured providers of those
+// types, by name.
+func (r *Router) Models(accept []string) []ModelInfo {
 	var out []ModelInfo
 	for name, targets := range r.aliases {
 		for _, t := range targets {
-			if p, _, _ := strings.Cut(t, "/"); r.providers[p].Type == wantType {
+			if p, _, _ := strings.Cut(t, "/"); slices.Contains(accept, r.providers[p].Type) {
 				out = append(out, ModelInfo{ID: name, Owner: "chowki"})
 				break
 			}
@@ -169,7 +174,7 @@ func (r *Router) Models(wantType string) []ModelInfo {
 	}
 	if r.catalog != nil {
 		for _, m := range r.catalog.All() {
-			if p, ok := r.providers[m.Provider]; ok && p.Type == wantType {
+			if p, ok := r.providers[m.Provider]; ok && slices.Contains(accept, p.Type) {
 				out = append(out, ModelInfo{ID: m.Provider + "/" + m.Model, Owner: m.Provider})
 			}
 		}

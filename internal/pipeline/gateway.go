@@ -32,6 +32,7 @@ import (
 	"github.com/852hamza/chowki/internal/router"
 	"github.com/852hamza/chowki/internal/sse"
 	"github.com/852hamza/chowki/internal/store"
+	"github.com/852hamza/chowki/internal/translate"
 	"github.com/852hamza/chowki/internal/usage"
 )
 
@@ -69,16 +70,21 @@ type Gateway struct {
 	PromptCache *promptcache.Optimizer
 	Providers   map[string]*providers.Provider
 	Catalog     *catalog.Catalog
-	Logger      *slog.Logger
+	// Memory keeps what translated answers held that the OpenAI format
+	// can't carry, for the next request of a tool-use loop; nil keeps
+	// nothing.
+	Memory *translate.Memory
+	Logger *slog.Logger
 	// MaxBody is the largest request body, in bytes.
 	MaxBody int64
 	// Timeout limits each upstream call, streams included.
 	Timeout time.Duration
 }
 
-// Handler returns the handler of an endpoint that the gateway relays.
+// Handler returns the handler of an endpoint with a fixed path that the
+// gateway relays.
 func (g *Gateway) Handler(ep Endpoint) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { g.serve(w, r, ep) })
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { g.serve(w, r, ep, "") })
 }
 
 // NotFound returns a handler that answers unknown paths in the error
@@ -88,14 +94,23 @@ func (g *Gateway) NotFound(f usage.Family) http.Handler {
 		id := newRequestID()
 		w.Header().Set(RequestIDHeader, id)
 		writeError(w, f, id, apiError{http.StatusNotFound, codeNotFound,
-			fmt.Sprintf("%s %s isn't an endpoint of this gateway.", r.Method, r.URL.Path)})
+			fmt.Sprintf("%s %s isn't an endpoint of this gateway.", r.Method, r.URL.Path)}, "")
 	})
 }
 
 // call is one request on its way through the gateway.
 type call struct {
-	ep       Endpoint
-	family   usage.Family
+	ep        Endpoint
+	family    usage.Family
+	pathModel string // the model that the path names, for Gemini
+	// upstream is the API of the current target, which translated is
+	// true when it isn't the client's.
+	upstream   usage.Family
+	translated bool
+	// parsed is the request as translation reads it, once a target needed
+	// it; param names the option that it couldn't translate.
+	parsed   *translate.Request
+	param    string
 	id       string
 	start    time.Time
 	w        *trackingWriter
@@ -119,12 +134,13 @@ type call struct {
 	fallbacks                  int // the targets that failed before the one that answered
 }
 
-func (g *Gateway) serve(w http.ResponseWriter, r *http.Request, ep Endpoint) {
-	c := &call{ep: ep, family: ep.Family, id: newRequestID(), start: time.Now(), w: &trackingWriter{ResponseWriter: w}}
+func (g *Gateway) serve(w http.ResponseWriter, r *http.Request, ep Endpoint, pathModel string) {
+	c := &call{ep: ep, family: ep.Family, upstream: ep.Family, pathModel: pathModel, id: newRequestID(),
+		start: time.Now(), w: &trackingWriter{ResponseWriter: w}}
 	c.w.Header().Set(RequestIDHeader, c.id)
 	if e := g.handle(r.Context(), c, r); e != nil {
 		c.errType = e.Code
-		writeError(c.w, ep.Family, c.id, *e)
+		writeError(c.w, ep.Family, c.id, *e, c.param)
 	}
 	g.finish(c)
 }
@@ -156,7 +172,7 @@ func (g *Gateway) handle(ctx context.Context, c *call, r *http.Request) *apiErro
 	if err != nil {
 		return &apiError{http.StatusBadRequest, codeInvalidRequest, "Invalid request body: " + err.Error() + "."}
 	}
-	req, e := readRequest(c.ep, obj)
+	req, e := readRequest(c, obj, r)
 	if e != nil {
 		return e
 	}
@@ -168,7 +184,7 @@ func (g *Gateway) handle(ctx context.Context, c *call, r *http.Request) *apiErro
 		return &apiError{http.StatusForbidden, codeModelNotAllowed, fmt.Sprintf(
 			"This key may not use the model %q. It may use: %s.", req.model, strings.Join(c.key.AllowedModels, ", "))}
 	}
-	targets, err := g.Router.Resolve(providerType(c.family), req.model, time.Now())
+	targets, err := g.Router.Resolve(c.ep.accepts(), req.model, time.Now())
 	var re *router.Error
 	if errors.As(err, &re) {
 		return &apiError{http.StatusBadRequest, re.Code, re.Message}
@@ -198,7 +214,7 @@ func (g *Gateway) handle(ctx context.Context, c *call, r *http.Request) *apiErro
 	}
 	// Providers don't bill counting tokens, so it spends no tokens or budget.
 	if c.ep.kind != kindCountTokens {
-		if e := g.admit(c, withModel(obj, edits, req.model, c.model)); e != nil {
+		if e := g.admit(c, c.upstreamBody(obj, edits, req.model, c.model)); e != nil {
 			return e
 		}
 	}
@@ -230,8 +246,12 @@ func (g *Gateway) forward(ctx context.Context, c *call, r *http.Request, obj *ob
 			}
 			continue
 		}
+		path, body, header, e := g.prepare(c, obj, edits, requested, t, r)
+		if e != nil {
+			return e
+		}
 		attemptCtx, cancel := context.WithTimeout(ctx, g.Timeout)
-		resp, err := t.Provider.Do(attemptCtx, c.ep.upstream, withModel(obj, edits, requested, t.Model), r.Header)
+		resp, err := t.Provider.Do(attemptCtx, path, body, header)
 		stream := err == nil && c.stream && resp.StatusCode == http.StatusOK && isEventStream(resp.Header)
 		var data []byte
 		if err == nil && !stream {
@@ -269,17 +289,113 @@ func (g *Gateway) forward(ctx context.Context, c *call, r *http.Request, obj *ob
 	return nil // the last target always returns
 }
 
-// withModel returns the request body with the edits, and with the model
-// name of a target when it differs from the requested one.
-func withModel(obj *object, edits map[string][]byte, requested, model string) []byte {
+// defaultMaxTokens is the limit of output tokens that a request translated
+// for Anthropic gets when it sets none and the catalog doesn't know the
+// model's own: Anthropic requires one.
+const defaultMaxTokens = 4096
+
+// prepare returns the path, body and headers of the request to target t.
+// A target of another API than the client's gets it translated; an option
+// that the target can't honor is an error.
+func (g *Gateway) prepare(c *call, obj *object, edits map[string][]byte, requested string, t router.Target,
+	r *http.Request) (string, []byte, http.Header, *apiError) {
+	c.upstream = family(t.Provider.Type)
+	c.translated = c.upstream != c.family
+	if !c.translated {
+		return c.ep.target(t.Model), c.upstreamBody(obj, edits, requested, t.Model), r.Header, nil
+	}
+	var err error
+	if c.parsed == nil {
+		if c.parsed, err = translate.ParseRequest(obj.body); err != nil {
+			return "", nil, nil, c.translationError(err)
+		}
+	}
+	var path string
+	var body []byte
+	header := http.Header{}
+	switch c.upstream {
+	case usage.Anthropic:
+		maxTokens := int64(defaultMaxTokens)
+		if m, ok := g.Catalog.Find(t.Provider.Name, t.Model); ok && m.MaxOutput > 0 {
+			maxTokens = int64(m.MaxOutput)
+		}
+		body, err = translate.ToAnthropic(c.parsed, t.Model, maxTokens, g.Memory)
+		path = providers.Messages
+		header.Set("anthropic-version", translate.AnthropicVersion)
+	case usage.Gemini:
+		body, err = translate.ToGemini(c.parsed, t.Model, g.Memory)
+		path = providers.GeminiModels + t.Model + GeminiGenerate.upstream
+		if c.stream {
+			path = providers.GeminiModels + t.Model + GeminiStream.upstream
+		}
+	}
+	if err != nil {
+		return "", nil, nil, c.translationError(err)
+	}
+	return path, body, header, nil
+}
+
+// translationError is the error for a request that can't be translated.
+func (c *call) translationError(err error) *apiError {
+	var te *translate.Error
+	if errors.As(err, &te) {
+		c.param = te.Param
+		return &apiError{http.StatusBadRequest, codeUnsupportedOption, fmt.Sprintf("%s The gateway translates this "+
+			"request for the provider %q, which speaks another API.", te.Message, c.provider.Name)}
+	}
+	return &apiError{http.StatusBadRequest, codeInvalidRequest, "The request couldn't be translated: " + err.Error()}
+}
+
+// family returns the API family of a provider type.
+func family(providerType string) usage.Family {
+	switch providerType {
+	case config.TypeAnthropic:
+		return usage.Anthropic
+	case config.TypeGemini:
+		return usage.Gemini
+	}
+	return usage.OpenAI
+}
+
+// upstreamBody returns the request body for a target that serves model:
+// with the edits, and with the target's model name where the body names
+// the model and it differs from the requested one. Gemini names the model
+// in the path, except in each request of a batch.
+func (c *call) upstreamBody(obj *object, edits map[string][]byte, requested, model string) []byte {
 	if model != requested {
-		edits = maps.Clone(edits)
-		edits["model"], _ = json.Marshal(model) // a string always marshals
+		switch {
+		case c.family != usage.Gemini:
+			edits = maps.Clone(edits)
+			edits["model"], _ = json.Marshal(model) // a string always marshals
+		case c.ep == GeminiBatchEmbed:
+			if requests, ok := geminiBatchModels(obj, model); ok {
+				edits = maps.Clone(edits)
+				edits["requests"] = requests
+			}
+		}
 	}
 	if len(edits) == 0 {
 		return obj.body
 	}
 	return obj.with(edits)
+}
+
+// geminiBatchModels returns the requests of a batchEmbedContents body, each
+// naming model, as Gemini wants them to name the model of the path.
+func geminiBatchModels(obj *object, model string) ([]byte, bool) {
+	raw, ok := obj.raw("requests")
+	var requests []map[string]json.RawMessage
+	if !ok || json.Unmarshal(raw, &requests) != nil {
+		return nil, false
+	}
+	name, _ := json.Marshal("models/" + model) // a string always marshals
+	for _, r := range requests {
+		if r != nil {
+			r["model"] = name
+		}
+	}
+	out, err := json.Marshal(requests)
+	return out, err == nil
 }
 
 // statusOf describes the outcome of an upstream call for a log.
@@ -318,8 +434,11 @@ func allowed(patterns []string, model string) bool {
 }
 
 func providerType(f usage.Family) string {
-	if f == usage.Anthropic {
+	switch f {
+	case usage.Anthropic:
 		return config.TypeAnthropic
+	case usage.Gemini:
+		return config.TypeGemini
 	}
 	return config.TypeOpenAI
 }
@@ -364,9 +483,17 @@ type request struct {
 	streamOptions map[string]json.RawMessage
 }
 
-func readRequest(ep Endpoint, o *object) (request, *apiError) {
+func readRequest(c *call, o *object, r *http.Request) (request, *apiError) {
+	ep := c.ep
 	bad := func(msg string) (request, *apiError) {
 		return request{}, &apiError{http.StatusBadRequest, codeInvalidRequest, msg}
+	}
+	if ep.Family == usage.Gemini {
+		if ep == GeminiStream && r.URL.Query().Get("alt") != "sse" {
+			return bad("Add ?alt=sse to stream: the gateway streams Gemini responses as server-sent events, " +
+				"as the Google Gen AI SDKs ask for them.")
+		}
+		return request{model: c.pathModel, stream: ep == GeminiStream}, nil
 	}
 	var req request
 	raw, ok := o.raw("model")
@@ -499,9 +626,9 @@ func (g *Gateway) admit(c *call, body []byte) *apiError {
 	c.tokens = tk
 
 	var estimate float64
-	if hasBudget {
+	if hasBudget && !c.provider.Free {
 		if m, ok := g.Catalog.Find(c.provider.Name, c.model); ok {
-			estimate = float64(tokens) * m.PriceFor(tokens).Input / 1e6
+			estimate = float64(tokens) * m.PriceFor(tokens, c.start).Input / 1e6
 		}
 	}
 	t, err := g.Budgets.Admit(k, estimate, c.start)
@@ -537,20 +664,36 @@ func readBody(resp *http.Response) ([]byte, error) {
 }
 
 // relayBody forwards a complete response, data: a non-streaming one, or an
-// error.
+// error. A translated one goes back in the client's format.
 func (g *Gateway) relayBody(c *call, resp *http.Response, data []byte) {
 	copyHeaders(c.w.Header(), resp.Header)
 	var cost usage.Cost
 	if resp.StatusCode == http.StatusOK {
 		// A token count is an answer, not usage.
-		if rep, err := usage.ParseResponse(c.family, data); err == nil && c.ep.kind != kindCountTokens {
+		if rep, err := usage.ParseResponse(c.upstream, data); err == nil && c.ep.kind != kindCountTokens {
 			c.report = rep
+		}
+		if c.translated {
+			out, err := g.translateBody(c, data)
+			if err != nil {
+				c.errType = "upstream_invalid_response"
+				g.Logger.Warn("translate response", "request_id", c.id, "provider", c.provider.Name, "error", err)
+				writeError(c.w, c.family, c.id, apiError{http.StatusBadGateway, codeUpstreamFailed,
+					fmt.Sprintf("The answer of the provider %q couldn't be read.", c.provider.Name)}, "")
+				return
+			}
+			data = out
+			c.w.Header().Set("Content-Type", "application/json")
 		}
 		if cost = g.cost(c); cost.USD != nil {
 			c.w.Header().Set(CostHeader, fmt.Sprintf("%.8f", *cost.USD))
 		}
 	} else {
 		c.errType = fmt.Sprintf("upstream_%d", resp.StatusCode)
+		if c.translated {
+			data = translate.OpenAIError(c.upstream, resp.StatusCode, data)
+			c.w.Header().Set("Content-Type", "application/json")
+		}
 	}
 	c.w.WriteHeader(resp.StatusCode)
 	if _, err := c.w.Write(data); err != nil {
@@ -562,15 +705,28 @@ func (g *Gateway) relayBody(c *call, resp *http.Response, data []byte) {
 	}
 }
 
-// relayStream forwards a streamed response event by event.
+// translateBody translates a provider's complete answer for the client.
+func (g *Gateway) translateBody(c *call, data []byte) ([]byte, error) {
+	if c.upstream == usage.Gemini {
+		return translate.FromGemini(data, c.model, c.start.Unix(), g.Memory)
+	}
+	return translate.FromAnthropic(data, c.start.Unix(), g.Memory)
+}
+
+// relayStream forwards a streamed response event by event. A translated
+// one goes to the client as the chunks of its format.
 func (g *Gateway) relayStream(ctx context.Context, c *call, resp *http.Response, dropUsage bool) {
 	copyHeaders(c.w.Header(), resp.Header)
 	c.w.Header().Set("Cache-Control", "no-cache")
 	c.w.WriteHeader(http.StatusOK)
 	rc := http.NewResponseController(c.w)
-	stream := usage.NewStream(c.family)
+	stream := usage.NewStream(c.upstream)
 	err := rc.Flush()
-	if err == nil {
+	switch {
+	case err != nil:
+	case c.translated:
+		err = g.translateStream(c, rc.Flush, resp.Body, stream)
+	default:
 		err = sse.Relay(c.w, rc.Flush, resp.Body, func(ev sse.Event) bool {
 			stream.Event(ev.Name, ev.Data)
 			return !dropUsage || !isUsageChunk(ev.Data)
@@ -587,6 +743,50 @@ func (g *Gateway) relayStream(ctx context.Context, c *call, resp *http.Response,
 			c.errType = "upstream_stream_error"
 		}
 		g.Logger.Warn("stream ended early", "request_id", c.id, "provider", c.provider.Name, "error", err)
+	}
+}
+
+// translateStream relays a stream in another API's format as the chunks of
+// the client's, each flushed as soon as the event that it comes from, and
+// ends it as OpenAI streams end.
+func (g *Gateway) translateStream(c *call, flush func() error, body io.Reader, report *usage.Stream) error {
+	var t interface {
+		Event(name string, data []byte) [][]byte
+		End() [][]byte
+	}
+	if c.upstream == usage.Gemini {
+		t = translate.NewGeminiStream(c.model, c.start.Unix(), c.parsed.IncludeUsage, g.Memory)
+	} else {
+		t = translate.NewAnthropicStream(c.start.Unix(), c.parsed.IncludeUsage, g.Memory)
+	}
+	send := func(chunks [][]byte) error {
+		if len(chunks) == 0 {
+			return nil
+		}
+		var b bytes.Buffer
+		for _, chunk := range chunks {
+			b.WriteString("data: ")
+			b.Write(chunk)
+			b.WriteString("\n\n")
+		}
+		if _, err := c.w.Write(b.Bytes()); err != nil {
+			return err
+		}
+		return flush()
+	}
+	events := sse.NewReader(body)
+	for {
+		ev, err := events.Next()
+		if errors.Is(err, io.EOF) {
+			return send(append(t.End(), []byte("[DONE]")))
+		}
+		if err != nil {
+			return err
+		}
+		report.Event(ev.Name, ev.Data)
+		if err := send(t.Event(ev.Name, ev.Data)); err != nil {
+			return err
+		}
 	}
 }
 
@@ -622,6 +822,10 @@ func copyHeaders(dst, src http.Header) {
 }
 
 func (g *Gateway) cost(c *call) usage.Cost {
+	if c.provider != nil && c.provider.Free && c.report.Usage != nil {
+		free := 0.0
+		return usage.Cost{USD: &free}
+	}
 	var m *catalog.Model
 	if c.provider != nil {
 		var ok bool
@@ -629,7 +833,7 @@ func (g *Gateway) cost(c *call) usage.Cost {
 			m, _ = g.Catalog.Find(c.provider.Name, c.report.Model)
 		}
 	}
-	return usage.Compute(c.family, c.report, m)
+	return usage.Compute(c.upstream, c.report, m, c.start)
 }
 
 // finish records the request's metadata: never its content or keys.

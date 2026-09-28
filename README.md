@@ -17,11 +17,12 @@ a single Go binary that stores its data in SQLite.
 
 *Chowki* (چوکی) means "checkpoint" in Urdu.
 
-> **Status:** early development. Chowki relays OpenAI and Anthropic requests with virtual keys,
-> records their cost, enforces budgets and rate limits, caches repeated answers, marks repeated
-> Anthropic prompts for caching, redacts secrets and personal data, falls back between providers,
-> and shows it all in a dashboard. Gemini and the secret scanner aren't built yet, so don't use it
-> in production. Follow the [changelog](CHANGELOG.md) to see what has landed.
+> **Status:** early development. Chowki relays OpenAI, Anthropic and Google Gemini requests with
+> virtual keys, translates OpenAI-format requests for Anthropic and Gemini models, records their
+> cost, enforces budgets and rate limits, caches repeated answers, marks repeated Anthropic prompts
+> for caching, redacts secrets and personal data, falls back between providers, and shows it all in
+> a dashboard. The secret scanner isn't built yet, so don't use it in production. Follow the
+> [changelog](CHANGELOG.md) to see what has landed.
 
 ## Quickstart
 
@@ -49,6 +50,12 @@ make build
   repeated prompt prefixes for Anthropic's cache.
 - [Redact secrets and personal data](docs/how-to/redact-sensitive-data.md): mask, block or report
   keys and personal data in prompts.
+- [Use Google Gemini](docs/how-to/use-google-gemini.md): send Gemini requests from the Google
+  Gen AI SDKs through Chowki.
+- [Call Anthropic and Gemini models with OpenAI SDKs](docs/how-to/call-any-model-with-openai-sdks.md):
+  use any provider's models from OpenAI-format clients.
+- [Connect OpenAI-compatible providers](docs/how-to/connect-openai-compatible-providers.md): add
+  DeepSeek, xAI, Mistral, Groq, OpenRouter and others.
 - [Use the dashboard](docs/how-to/use-the-dashboard.md): see spend, savings, redactions and
   budgets in a browser.
 - [API reference](docs/reference/api.md): endpoints, headers and error codes.

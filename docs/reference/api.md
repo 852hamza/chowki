@@ -18,6 +18,7 @@ the key. This page lists what Chowki adds: its endpoints, its headers and its ow
 |---|---|
 | OpenAI, such as the OpenAI SDKs | `http://<HOST>:8080/v1` |
 | Anthropic, such as the Anthropic SDKs and Claude Code | `http://<HOST>:8080/anthropic` |
+| Gemini, such as the Google Gen AI SDKs | `http://<HOST>:8080/gemini` |
 
 Replace `<HOST>` with the gateway's host, and `8080` with the port of `server.listen`.
 
@@ -31,13 +32,20 @@ Send a virtual key in the header that the client's SDK uses: `Authorization: Bea
 
 | Endpoint | What it does |
 |---|---|
-| `POST /v1/chat/completions` | OpenAI chat completions, streaming or not. |
+| `POST /v1/chat/completions` | OpenAI chat completions, streaming or not, for models of every provider: Chowki translates requests for Anthropic and Gemini models. See [Call Anthropic and Gemini models with OpenAI SDKs](../how-to/call-any-model-with-openai-sdks.md). |
 | `POST /v1/embeddings` | OpenAI embeddings. Redaction reads the `input` text; the exact cache applies. |
-| `GET /v1/models` | The aliases and catalog models that the key may use through the OpenAI-format endpoints. Models that the catalog doesn't list, such as local ones, aren't in it but still work. |
+| `GET /v1/models` | The aliases and catalog models that the key may use through `/v1/chat/completions`, those of Anthropic and Gemini providers included. Models that the catalog doesn't list, such as local ones, aren't in it but still work. |
 | `POST /anthropic/v1/messages` | Anthropic messages, streaming or not. |
 | `POST /anthropic/v1/messages/count_tokens` | Anthropic token counting. Providers don't bill it, so it spends no budget or tokens per minute, and the exact cache doesn't apply. Redaction does. |
+| `POST /gemini/v1beta/models/<MODEL>:generateContent` | Gemini content generation. |
+| `POST /gemini/v1beta/models/<MODEL>:streamGenerateContent?alt=sse` | Gemini streaming, as server-sent events. Without `alt=sse`, Chowki answers 400. |
+| `POST /gemini/v1beta/models/<MODEL>:countTokens` | Gemini token counting: free, like Anthropic's. |
+| `POST /gemini/v1beta/models/<MODEL>:embedContent`, `…:batchEmbedContents` | Gemini embeddings. |
 | `GET /healthz`, `GET /readyz`, `GET /metrics` | Health checks and metrics, without a key. See the [metrics reference](metrics.md). |
 | `/admin/v1/…` | The admin API, with an admin token instead of a virtual key. See the [admin API reference](admin-api.md). |
+
+In the Gemini paths, replace `<MODEL>` with a model, such as `gemini-2.5-flash`, with
+`<provider>/<model>`, or with an alias. See [Use Google Gemini](../how-to/use-google-gemini.md).
 
 For example, `GET /v1/models` answers:
 
@@ -94,6 +102,13 @@ In the Anthropic format, `error.type` is one of Anthropic's types for the status
 {"error":{"message":"…","type":"rate_limit_error"},"request_id":"req_…","type":"error"}
 ```
 
+In the Gemini format, Google's error model, `status` is the status name for the HTTP status, and
+the `reason` of the `ErrorInfo` detail is the code below in capitals:
+
+```json
+{"error":{"code":401,"details":[{"@type":"type.googleapis.com/google.rpc.ErrorInfo","domain":"chowki","reason":"MISSING_API_KEY"}],"message":"Send your Chowki virtual key in the Authorization: Bearer, x-api-key or x-goog-api-key header.","status":"UNAUTHENTICATED"}}
+```
+
 | Code | Status | Meaning |
 |---|---|---|
 | `missing_api_key` | 401 | The request has no virtual key. |
@@ -103,7 +118,8 @@ In the Anthropic format, `error.type` is one of Anthropic's types for the status
 | `request_too_large` | 413 | The body is larger than `server.max_body_mb`. |
 | `model_not_allowed` | 403 | The key may not use the model. |
 | `unknown_provider` | 400 | Chowki can't tell which provider serves the model. |
-| `wrong_endpoint` | 400 | The model's provider speaks another API than the endpoint's. |
+| `wrong_endpoint` | 400 | The model's provider speaks another API than the endpoint's, and the endpoint doesn't translate. |
+| `unsupported_option` | 400 | The request is translated for a provider of another API, which can't honor an option; `param` names it. |
 | `sensitive_data_blocked` | 400 | Redaction in `block` mode found secrets or personal data. |
 | `rate_limit_exceeded` | 429 | The key reached its limit of requests or tokens per minute. |
 | `budget_exceeded` | 429 | The key's or its project's monthly budget is used up. |

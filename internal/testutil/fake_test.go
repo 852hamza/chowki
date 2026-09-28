@@ -256,3 +256,46 @@ func TestStreamsFlushEachChunk(t *testing.T) {
 		})
 	}
 }
+
+// Each fake answers with a tool call in its format, as JSON and as a
+// stream whose pieces add up to the arguments.
+func TestToolCalls(t *testing.T) {
+	cfg := Config{ToolCall: &ToolCall{Name: "get_weather", Arguments: `{"city":"Paris"}`}, Chunks: 3}
+	oa, an, gm := NewOpenAI(t, cfg), NewAnthropic(t, cfg), NewGemini(t, cfg)
+	version := map[string]string{"anthropic-version": "2023-06-01"}
+	for _, tc := range []struct {
+		name, url string
+		header    map[string]string
+		body      string
+		want      []string
+	}{
+		{"openai", oa.URL + "/v1/chat/completions", nil, `{"model":"m","messages":[{}]}`,
+			[]string{`"finish_reason":"tool_calls"`, `"arguments":"{\"city\":\"Paris\"}"`, `"content":null`}},
+		{"openai stream", oa.URL + "/v1/chat/completions", nil, `{"model":"m","messages":[{}],"stream":true}`,
+			[]string{`"arguments":"","name":"get_weather"`, `"arguments":"{\"cit"`, `"finish_reason":"tool_calls"`}},
+		{"anthropic", an.URL + "/v1/messages", version, `{"model":"m","max_tokens":9,"messages":[{}]}`,
+			[]string{`"type":"tool_use"`, `"input":{"city":"Paris"}`, `"stop_reason":"tool_use"`}},
+		{"anthropic stream", an.URL + "/v1/messages", version,
+			`{"model":"m","max_tokens":9,"messages":[{}],"stream":true}`,
+			[]string{`"type":"tool_use"`, `"partial_json":"{\"cit"`, `"stop_reason":"tool_use"`}},
+		{"gemini", gm.URL + "/v1beta/models/g:generateContent", nil, `{"contents":[{}]}`,
+			[]string{`"functionCall":{"args":{"city":"Paris"},"name":"get_weather"}`,
+				`"thoughtSignature":"` + FakeSignature + `"`}},
+		{"gemini stream", gm.URL + "/v1beta/models/g:streamGenerateContent?alt=sse", nil, `{"contents":[{}]}`,
+			[]string{`"functionCall":{"args":{"city":"Paris"},"name":"get_weather"}`, `"finishReason":"STOP"`}},
+	} {
+		resp := post(t.Context(), t, tc.url, tc.header, tc.body)
+		b, err := io.ReadAll(resp.Body)
+		if err != nil || resp.StatusCode != http.StatusOK {
+			t.Fatalf("%s: %d %v", tc.name, resp.StatusCode, err)
+		}
+		for _, want := range tc.want {
+			if !strings.Contains(string(b), want) {
+				t.Errorf("%s: the reply lacks %s:\n%s", tc.name, want, b)
+			}
+		}
+	}
+	if err := (Config{ToolCall: &ToolCall{Arguments: "{"}}).validate(); err == nil {
+		t.Error("validate() accepted arguments that aren't JSON")
+	}
+}

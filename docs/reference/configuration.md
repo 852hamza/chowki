@@ -232,8 +232,9 @@ The APIs that Chowki forwards requests to. Each provider has these fields:
 |---|---|---|
 | `name` | Yes | A unique name of lowercase letters, digits, `-` and `_`. Clients name a provider in the model, such as `openai/gpt-6-luna`. |
 | `type` | Yes | The API the provider speaks: `openai` for OpenAI and every OpenAI-compatible API, `anthropic`, or `gemini`. |
-| `base_url` | Yes | The API's base URL, as its SDKs use it: with `/v1` for OpenAI-compatible APIs, without it for Anthropic. |
+| `base_url` | Yes | The API's base URL, as its SDKs use it: with `/v1` for OpenAI-compatible APIs, without a version for Anthropic and Gemini. |
 | `api_key_env` | No | The environment variable, or `.env` entry, that holds the provider key. Leave it out for a provider that needs no key, such as a local Ollama server. |
+| `free_tier` | No | `true` when the provider doesn't bill your requests, such as on the free tier of the Gemini API. Chowki then records their cost as $0, and they spend no budget. Default `false`. |
 
 Example:
 
@@ -247,6 +248,11 @@ providers:
     type: anthropic
     base_url: https://api.anthropic.com
     api_key_env: ANTHROPIC_API_KEY
+  - name: gemini
+    type: gemini
+    base_url: https://generativelanguage.googleapis.com
+    api_key_env: GEMINI_API_KEY
+    free_tier: true
   - name: local
     type: openai
     base_url: http://localhost:11434/v1

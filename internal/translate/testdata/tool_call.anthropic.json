@@ -1,0 +1,17 @@
+{
+  "id": "msg_01XYZ",
+  "type": "message",
+  "role": "assistant",
+  "model": "claude-sonnet-5",
+  "content": [
+    {"type": "thinking", "thinking": "", "signature": "EqQBCkYIBxgCKkA-thought-1"},
+    {"type": "text", "text": "Let me check both cities."},
+    {"type": "tool_use", "id": "toolu_01A", "name": "get_weather", "input": {"city": "Paris"}},
+    {"type": "thinking", "thinking": "", "signature": "EqQBCkYIBxgCKkA-thought-2"},
+    {"type": "tool_use", "id": "toolu_01B", "name": "get_weather", "input": {"city": "London"}}
+  ],
+  "stop_reason": "tool_use",
+  "stop_sequence": null,
+  "usage": {"input_tokens": 50, "cache_creation_input_tokens": 100, "cache_read_input_tokens": 2000,
+    "output_tokens": 120, "output_tokens_details": {"thinking_tokens": 80}}
+}

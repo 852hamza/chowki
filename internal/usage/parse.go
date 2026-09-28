@@ -13,6 +13,7 @@ type Family string
 const (
 	OpenAI    Family = "openai"
 	Anthropic Family = "anthropic"
+	Gemini    Family = "gemini"
 )
 
 // Usage is the token usage of one request, the same for every family.
@@ -48,6 +49,7 @@ type Report struct {
 type openAIUsage struct {
 	PromptTokens        int64 `json:"prompt_tokens"`
 	CompletionTokens    int64 `json:"completion_tokens"`
+	TotalTokens         int64 `json:"total_tokens"`
 	PromptTokensDetails struct {
 		CachedTokens     int64 `json:"cached_tokens"`
 		CacheWriteTokens int64 `json:"cache_write_tokens"`
@@ -61,6 +63,12 @@ type openAIBody struct {
 	Model       string       `json:"model"`
 	ServiceTier string       `json:"service_tier"`
 	Usage       *openAIUsage `json:"usage"`
+	// XGroq carries Groq's usage in the last chunk of a stream, instead of
+	// usage, as client libraries for Groq observe; Groq's API reference
+	// doesn't show it.
+	XGroq *struct {
+		Usage *openAIUsage `json:"usage"`
+	} `json:"x_groq"`
 }
 
 func (b openAIBody) apply(r *Report) {
@@ -72,14 +80,25 @@ func (b openAIBody) apply(r *Report) {
 	if b.ServiceTier != "" && b.ServiceTier != "default" {
 		r.Modifier = "service tier " + b.ServiceTier
 	}
-	if u := b.Usage; u != nil {
-		r.Usage = &Usage{
-			Input:      u.PromptTokens,
-			Output:     u.CompletionTokens,
-			CacheRead:  u.PromptTokensDetails.CachedTokens,
-			CacheWrite: u.PromptTokensDetails.CacheWriteTokens,
-			Reasoning:  u.CompletionTokensDetails.ReasoningTokens,
-		}
+	u := b.Usage
+	if u == nil && b.XGroq != nil {
+		u = b.XGroq.Usage
+	}
+	if u == nil {
+		return
+	}
+	r.Usage = &Usage{
+		Input:      u.PromptTokens,
+		Output:     u.CompletionTokens,
+		CacheRead:  u.PromptTokensDetails.CachedTokens,
+		CacheWrite: u.PromptTokensDetails.CacheWriteTokens,
+		Reasoning:  u.CompletionTokensDetails.ReasoningTokens,
+	}
+	// OpenAI counts reasoning in the completion. Some compatible APIs, such
+	// as xAI's, count it apart, which their total shows: the output adds it.
+	if reasoning := u.CompletionTokensDetails.ReasoningTokens; reasoning > 0 &&
+		u.TotalTokens == u.PromptTokens+u.CompletionTokens+reasoning {
+		r.Usage.Output += reasoning
 	}
 }
 
@@ -164,6 +183,65 @@ type anthropicBody struct {
 	Usage *anthropicUsage `json:"usage"`
 }
 
+// Gemini usage metadata: UsageMetadata, and EmbeddingUsageMetadata for
+// embeddings, in the discovery document of the Gemini API,
+// https://generativelanguage.googleapis.com/$discovery/rest?version=v1beta.
+type geminiUsage struct {
+	// PromptTokenCount includes the cached tokens.
+	PromptTokenCount        int64 `json:"promptTokenCount"`
+	CachedContentTokenCount int64 `json:"cachedContentTokenCount"`
+	// CandidatesTokenCount excludes the thoughts, which are billed as output
+	// too.
+	CandidatesTokenCount    int64            `json:"candidatesTokenCount"`
+	ThoughtsTokenCount      int64            `json:"thoughtsTokenCount"`
+	ToolUsePromptTokenCount int64            `json:"toolUsePromptTokenCount"`
+	ServiceTier             string           `json:"serviceTier"`
+	PromptTokensDetails     []modalityTokens `json:"promptTokensDetails"`
+	PromptTokenDetails      []modalityTokens `json:"promptTokenDetails"` // in embeddings
+}
+
+type modalityTokens struct {
+	Modality   string `json:"modality"`
+	TokenCount int64  `json:"tokenCount"`
+}
+
+type geminiBody struct {
+	ModelVersion  string       `json:"modelVersion"`
+	UsageMetadata *geminiUsage `json:"usageMetadata"`
+}
+
+func (b geminiBody) apply(r *Report) {
+	if b.ModelVersion != "" {
+		r.Model = b.ModelVersion
+	}
+	u := b.UsageMetadata
+	if u == nil {
+		return
+	}
+	r.Usage = &Usage{
+		Input:     u.PromptTokenCount,
+		CacheRead: u.CachedContentTokenCount,
+		Output:    u.CandidatesTokenCount + u.ThoughtsTokenCount,
+		Reasoning: u.ThoughtsTokenCount,
+	}
+	var audio int64
+	for _, d := range append(u.PromptTokensDetails, u.PromptTokenDetails...) {
+		if d.Modality == "AUDIO" {
+			audio += d.TokenCount
+		}
+	}
+	switch {
+	case u.ServiceTier != "" && u.ServiceTier != "standard" && u.ServiceTier != "unspecified":
+		r.Modifier = "service tier " + u.ServiceTier
+	case audio > 0:
+		// Audio input has its own price for most models.
+		r.Modifier = "audio input"
+	case u.ToolUsePromptTokenCount > 0:
+		// Built-in tools, such as Google Search, have prices of their own.
+		r.Modifier = "built-in tool use"
+	}
+}
+
 // ParseResponse reads the report from a complete, non-streaming response
 // body of the given family.
 func ParseResponse(f Family, body []byte) (Report, error) {
@@ -184,6 +262,12 @@ func ParseResponse(f Family, body []byte) (Report, error) {
 		if b.Usage != nil {
 			b.Usage.apply(&r)
 		}
+	case Gemini:
+		var b geminiBody
+		if err := json.Unmarshal(body, &b); err != nil {
+			return r, fmt.Errorf("parse %s response: %w", f, err)
+		}
+		b.apply(&r)
 	default:
 		return r, fmt.Errorf("unknown API family %q", f)
 	}
@@ -196,15 +280,15 @@ func ParseResponse(f Family, body []byte) (Report, error) {
 type Stream struct {
 	family    Family
 	report    Report
-	seen      bool // an OpenAI chunk was decoded
+	seen      bool // an OpenAI or Gemini chunk was decoded
 	anthropic *anthropicUsage
 }
 
 // NewStream returns a Stream for a response of the given family.
 func NewStream(f Family) *Stream { return &Stream{family: f} }
 
-// Event takes one server-sent event: its name, empty for OpenAI streams,
-// and its data.
+// Event takes one server-sent event: its name, empty for OpenAI and Gemini
+// streams, and its data.
 func (s *Stream) Event(name string, data []byte) {
 	switch s.family {
 	case OpenAI:
@@ -242,6 +326,17 @@ func (s *Stream) Event(name string, data []byte) {
 				}
 				s.anthropic.merge(*e.Usage)
 			}
+		}
+	case Gemini:
+		// Chunks may repeat usageMetadata with growing counts: the last one
+		// wins. The first chunk names the model.
+		if s.seen && !bytes.Contains(data, []byte(`"usageMetadata"`)) {
+			return
+		}
+		var b geminiBody
+		if json.Unmarshal(data, &b) == nil {
+			s.seen = true
+			b.apply(&s.report)
 		}
 	}
 }

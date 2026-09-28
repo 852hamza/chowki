@@ -29,6 +29,7 @@ import (
 	"github.com/852hamza/chowki/internal/server"
 	"github.com/852hamza/chowki/internal/store"
 	"github.com/852hamza/chowki/internal/testutil"
+	"github.com/852hamza/chowki/internal/translate"
 )
 
 // Provider keys of the fakes. The fakes reject any other key, which proves
@@ -36,6 +37,7 @@ import (
 const (
 	openAIKey    = "sk-EXAMPLE-upstream-openai"
 	anthropicKey = "sk-ant-EXAMPLE-upstream"
+	geminiKey    = "EXAMPLE-upstream-gemini"
 )
 
 // testCatalog prices the fakes' models with round numbers.
@@ -45,7 +47,12 @@ const testCatalog = `{"models":[
  {"provider":"openai","model":"gpt-test","price":{"input":2,"output":10,"cache_read":0.2,"cache_write":2.5},
   "source":"https://example.com/pricing","updated":"2026-09-27"},
  {"provider":"anthropic","model":"claude-test","min_cacheable_tokens":512,"price":{"input":4,"output":20,"cache_read":0.2,"cache_write":5,
-  "cache_write_1h":8},"source":"https://example.com/pricing","updated":"2026-09-27"}]}`
+  "cache_write_1h":8},"source":"https://example.com/pricing","updated":"2026-09-27"},
+ {"provider":"gemini","model":"gemini-test","price":{"input":1,"output":8,"cache_read":0.1},
+  "tiers":[{"above_input_tokens":200000,"input":2,"output":12,"cache_read":0.2}],
+  "source":"https://example.com/pricing","updated":"2026-09-27"},
+ {"provider":"gemini","model":"gemini-embed-test","price":{"input":0.2,"output":0},
+  "source":"https://example.com/pricing","updated":"2026-09-27"}]}`
 
 // recordingStore captures the request records that the gateway saves.
 type recordingStore struct {
@@ -91,7 +98,18 @@ type harness struct {
 	aliases   map[string][]string // set by options
 	openai    *testutil.Server
 	anthropic *testutil.Server
+	gemini    *testutil.Server // set by withGemini
 	closed    bool
+}
+
+// withGemini adds a Gemini provider named gemini, served by a fake.
+func withGemini(cfg testutil.Config) option {
+	return func(h *harness, cfgs *[]config.Provider) {
+		cfg.APIKey = geminiKey
+		h.gemini = testutil.NewGemini(h.t, cfg)
+		*cfgs = append(*cfgs, config.Provider{Name: "gemini", Type: config.TypeGemini, BaseURL: h.gemini.URL,
+			APIKeyEnv: "GEMINI_API_KEY", APIKey: geminiKey})
+	}
 }
 
 // option changes a harness before it starts: its gateway, providers and
@@ -124,7 +142,7 @@ func newHarness(t testing.TB, oa, an testutil.Config, opts ...option) *harness {
 	h.gw = &pipeline.Gateway{Store: h.st, Metrics: metrics.New(),
 		Redactor: redact.New([]byte("redaction secret"), redact.ModeMask),
 		Cache:    h.openCache(logger), Limits: ratelimit.New(), Budgets: budgets, Catalog: cat, Logger: logger,
-		MaxBody: 1 << 20, Timeout: 10 * time.Second}
+		Memory: translate.NewMemory(), MaxBody: 1 << 20, Timeout: 10 * time.Second}
 	cfgs := []config.Provider{
 		{Name: "openai", Type: config.TypeOpenAI, BaseURL: h.openai.URL + "/v1", APIKeyEnv: "OPENAI_API_KEY", APIKey: openAIKey},
 		{Name: "anthropic", Type: config.TypeAnthropic, BaseURL: h.anthropic.URL, APIKeyEnv: "ANTHROPIC_API_KEY",
@@ -208,8 +226,11 @@ func (h *harness) records() []store.Request {
 func (h *harness) post(ctx context.Context, path, body string) *http.Response {
 	h.t.Helper()
 	header := map[string]string{"Authorization": "Bearer " + h.key}
-	if strings.HasPrefix(path, "/anthropic/") {
+	switch {
+	case strings.HasPrefix(path, "/anthropic/"):
 		header = map[string]string{"x-api-key": h.key, "anthropic-version": "2023-06-01"}
+	case strings.HasPrefix(path, "/gemini/"):
+		header = map[string]string{"x-goog-api-key": h.key}
 	}
 	return h.send(ctx, http.MethodPost, h.url+path, header, body)
 }

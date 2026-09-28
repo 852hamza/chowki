@@ -3,8 +3,10 @@ package pipeline
 import (
 	"encoding/json"
 	"net/http"
+	"strings"
 	"time"
 
+	"github.com/852hamza/chowki/internal/config"
 	"github.com/852hamza/chowki/internal/providers"
 	"github.com/852hamza/chowki/internal/usage"
 )
@@ -40,27 +42,85 @@ var (
 		kindCountTokens}
 )
 
-// Endpoints are all the endpoints that the gateway relays.
+// Endpoints are the endpoints with fixed paths that the gateway relays.
 var Endpoints = []Endpoint{OpenAIChat, OpenAIEmbeddings, AnthropicMessages, AnthropicCountTokens}
+
+// geminiPrefix is where the gateway serves Gemini's model methods, whose
+// paths go on with the model and the method.
+const geminiPrefix = "/gemini/v1beta/models/"
+
+// Gemini's model methods. Records show their paths with {model}, and each
+// target of a request gets a path with its own model.
+var (
+	GeminiGenerate = Endpoint{usage.Gemini, geminiPrefix + "{model}:generateContent", ":generateContent", kindChat}
+	GeminiStream   = Endpoint{usage.Gemini, geminiPrefix + "{model}:streamGenerateContent",
+		":streamGenerateContent?alt=sse", kindChat}
+	GeminiCountTokens = Endpoint{usage.Gemini, geminiPrefix + "{model}:countTokens", ":countTokens", kindCountTokens}
+	GeminiEmbed       = Endpoint{usage.Gemini, geminiPrefix + "{model}:embedContent", ":embedContent", kindEmbeddings}
+	GeminiBatchEmbed  = Endpoint{usage.Gemini, geminiPrefix + "{model}:batchEmbedContents", ":batchEmbedContents",
+		kindEmbeddings}
+)
+
+// GeminiEndpoints are the Gemini model methods that the gateway relays.
+var GeminiEndpoints = []Endpoint{GeminiGenerate, GeminiStream, GeminiCountTokens, GeminiEmbed, GeminiBatchEmbed}
+
+// accepts returns the API types of the providers that the endpoint
+// reaches: its own, and for OpenAI chat, the others through translation.
+func (ep Endpoint) accepts() []string {
+	if ep == OpenAIChat {
+		return []string{config.TypeOpenAI, config.TypeAnthropic, config.TypeGemini}
+	}
+	return []string{providerType(ep.Family)}
+}
+
+// target returns the provider's path for a request to model.
+func (ep Endpoint) target(model string) string {
+	if ep.Family == usage.Gemini {
+		return providers.GeminiModels + model + ep.upstream
+	}
+	return ep.upstream
+}
 
 // redactionKind is the request shape that redaction reads.
 func (ep Endpoint) redactionKind() string {
-	if ep.kind == kindEmbeddings {
+	switch {
+	case ep.kind == kindEmbeddings && ep.Family == usage.Gemini:
+		return "gemini-embeddings"
+	case ep.kind == kindEmbeddings:
 		return "embeddings"
 	}
 	return string(ep.Family)
 }
 
+// Gemini returns the handler of Gemini's model methods, whose paths name the
+// model and the method, as in
+// /gemini/v1beta/models/gemini-2.5-flash:generateContent. The model may be
+// <provider>/<model> or an alias, as on the other endpoints.
+func (g *Gateway) Gemini() http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		rest := strings.TrimPrefix(r.URL.Path, geminiPrefix)
+		if i := strings.LastIndexByte(rest, ':'); i > 0 {
+			for _, ep := range GeminiEndpoints {
+				if ep.Path == geminiPrefix+"{model}"+rest[i:] {
+					g.serve(w, r, ep, rest[:i])
+					return
+				}
+			}
+		}
+		g.NotFound(usage.Gemini).ServeHTTP(w, r)
+	})
+}
+
 // Models returns the handler of GET /v1/models: the aliases and catalog
-// models that the key may use through the OpenAI-format endpoints, in the
-// OpenAI format.
+// models that the key may use through the OpenAI chat endpoint, those of
+// Anthropic and Gemini providers included, in the OpenAI format.
 func (g *Gateway) Models() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		c := &call{ep: OpenAIChat, family: usage.OpenAI, id: newRequestID(), start: time.Now(),
 			w: &trackingWriter{ResponseWriter: w}}
 		c.w.Header().Set(RequestIDHeader, c.id)
 		if e := g.authenticate(r.Context(), c, r); e != nil {
-			writeError(c.w, usage.OpenAI, c.id, *e)
+			writeError(c.w, usage.OpenAI, c.id, *e, "")
 			g.Logger.Info("request rejected", "request_id", c.id, "path", r.URL.Path, "status", e.Status)
 			return
 		}
@@ -74,7 +134,7 @@ func (g *Gateway) Models() http.Handler {
 			Object string  `json:"object"`
 			Data   []model `json:"data"`
 		}{Object: "list", Data: []model{}}
-		for _, m := range g.Router.Models(providerType(usage.OpenAI)) {
+		for _, m := range g.Router.Models(OpenAIChat.accepts()) {
 			if allowed(c.key.AllowedModels, m.ID) {
 				list.Data = append(list.Data, model{ID: m.ID, Object: "model", OwnedBy: m.Owner})
 			}

@@ -66,7 +66,7 @@ func TestResolve(t *testing.T) {
 		{"anthropic", "claude-z", []string{"anthropic/claude-z"}, ""},
 	}
 	for _, tt := range tests {
-		got, err := r.Resolve(tt.wantType, tt.requested, t0)
+		got, err := r.Resolve([]string{tt.wantType}, tt.requested, t0)
 		var e *Error
 		if tt.code != "" {
 			if !errors.As(err, &e) || e.Code != tt.code {
@@ -79,7 +79,7 @@ func TestResolve(t *testing.T) {
 		}
 	}
 	// With one provider of a type, any model name goes to it.
-	if got, err := newRouter(t, nil).Resolve("openai", "anything", t0); err != nil ||
+	if got, err := newRouter(t, nil).Resolve([]string{"openai"}, "anything", t0); err != nil ||
 		!slices.Equal(names(got), []string{"openai/anything"}) {
 		t.Errorf("Resolve() with one OpenAI provider = %v, %v", names(got), err)
 	}
@@ -89,7 +89,7 @@ func TestBreaker(t *testing.T) {
 	r := newRouter(t, map[string][]string{"fast": {"local/small", "openai/gpt-x"}}, local)
 	order := func(at time.Time) []string {
 		t.Helper()
-		got, err := r.Resolve("openai", "fast", at)
+		got, err := r.Resolve([]string{"openai"}, "fast", at)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -137,10 +137,36 @@ func TestNewChecksAliases(t *testing.T) {
 func TestModels(t *testing.T) {
 	r := newRouter(t, map[string][]string{"fast": {"anthropic/c", "openai/g"}, "smart": {"anthropic/c"}})
 	var got []string
-	for _, m := range r.Models("openai") {
+	for _, m := range r.Models([]string{"openai"}) {
 		got = append(got, m.ID+":"+m.Owner)
 	}
 	if want := []string{"fast:chowki", "openai/gpt-listed:openai"}; !slices.Equal(got, want) {
 		t.Errorf("Models(openai) = %v, want %v", got, want)
+	}
+}
+
+// The OpenAI chat endpoint reaches the other APIs through translation. A
+// model name without a provider still goes to a provider of its own API.
+func TestResolveThroughTranslation(t *testing.T) {
+	r := newRouter(t, map[string][]string{"fast": {"anthropic/claude-x", "openai/gpt-x"}})
+	chat := []string{config.TypeOpenAI, config.TypeAnthropic, config.TypeGemini}
+	for requested, want := range map[string][]string{
+		"fast":               {"anthropic/claude-x", "openai/gpt-x"},
+		"anthropic/claude-y": {"anthropic/claude-y"},
+		"anything":           {"openai/anything"},
+	} {
+		if got, err := r.Resolve(chat, requested, t0); err != nil || !slices.Equal(names(got), want) {
+			t.Errorf("Resolve(chat, %s) = %v, %v; want %v", requested, names(got), err, want)
+		}
+	}
+	if _, err := r.Resolve([]string{config.TypeOpenAI}, "anthropic/claude-y", t0); err == nil {
+		t.Error("an endpoint without translation reached another API")
+	}
+	var ids []string
+	for _, m := range r.Models(chat) {
+		ids = append(ids, m.ID)
+	}
+	if !slices.Contains(ids, "fast") {
+		t.Errorf("Models(chat) = %v, want the alias", ids)
 	}
 }

@@ -176,6 +176,7 @@ Point an SDK or tool at Chowki by changing two settings:
 |---|---|---|
 | OpenAI format, such as the OpenAI SDKs | `http://localhost:8080/v1` | Your virtual key |
 | Anthropic format, such as the Anthropic SDKs | `http://localhost:8080/anthropic` | Your virtual key |
+| Gemini format, such as the Google Gen AI SDKs | `http://localhost:8080/gemini` | Your virtual key |
 
 Name the provider in the model, such as `openai/gpt-6-luna`, unless your configuration has only one
 provider for that API.

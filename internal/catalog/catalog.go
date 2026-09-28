@@ -27,13 +27,17 @@ type Model struct {
 	Model    string   `json:"model"`
 	Aliases  []string `json:"aliases,omitempty"`
 	// ContextWindow, MaxOutput and MinCacheableTokens are 0 when unknown.
-	ContextWindow      int      `json:"context_window,omitempty"`
-	MaxOutput          int      `json:"max_output,omitempty"`
-	MinCacheableTokens int      `json:"min_cacheable_tokens,omitempty"`
-	Supports           []string `json:"supports,omitempty"`
-	Price              Price    `json:"price"`
+	ContextWindow      int `json:"context_window,omitempty"`
+	MaxOutput          int `json:"max_output,omitempty"`
+	MinCacheableTokens int `json:"min_cacheable_tokens,omitempty"`
+	// Supports lists capabilities from Capabilities.
+	Supports []string `json:"supports,omitempty"`
+	Price    Price    `json:"price"`
 	// Tiers are prices for large prompts, in ascending order of threshold.
 	Tiers []Tier `json:"tiers,omitempty"`
+	// Changes are announced prices, in ascending order of date: from its
+	// date on, a change's price and tiers replace the earlier ones.
+	Changes []Change `json:"changes,omitempty"`
 	// Source is the official page that lists the prices.
 	Source string `json:"source"`
 	// Updated is the date the prices were checked, as YYYY-MM-DD.
@@ -60,16 +64,35 @@ type Tier struct {
 	Price
 }
 
-// PriceFor returns the price for a request with the given total input
-// tokens: the highest tier whose threshold it exceeds, or the base price.
-func (m *Model) PriceFor(inputTokens int64) Price {
-	p := m.Price
-	for _, t := range m.Tiers {
-		if inputTokens > t.AboveInputTokens {
-			p = t.Price
+// Capabilities are what a model can do, as its maker documents it: call
+// tools, read images, return JSON for a schema, cache prompts, and think.
+var Capabilities = []string{"tools", "vision", "json", "caching", "thinking"}
+
+// Change is a price that applies from a date on.
+type Change struct {
+	// From is the first day in UTC of the price, as YYYY-MM-DD.
+	From  string `json:"from"`
+	Price Price  `json:"price"`
+	Tiers []Tier `json:"tiers,omitempty"`
+}
+
+// PriceFor returns the price of a request made at a time, with the given
+// total input tokens: of the prices in effect then, the highest tier whose
+// threshold the request exceeds, or the base price.
+func (m *Model) PriceFor(inputTokens int64, at time.Time) Price {
+	price, tiers := m.Price, m.Tiers
+	day := at.UTC().Format(time.DateOnly)
+	for _, c := range m.Changes {
+		if day >= c.From {
+			price, tiers = c.Price, c.Tiers
 		}
 	}
-	return p
+	for _, t := range tiers {
+		if inputTokens > t.AboveInputTokens {
+			price = t.Price
+		}
+	}
+	return price
 }
 
 // Find returns the model of a provider by its ID or an alias.
@@ -163,14 +186,36 @@ func (m *Model) validate() error {
 	if _, err := time.Parse(time.DateOnly, m.Updated); err != nil {
 		errs = append(errs, errors.New("updated must be a date such as 2026-09-27"))
 	}
-	errs = append(errs, m.Price.validate("price"))
+	for _, c := range m.Supports {
+		if !slices.Contains(Capabilities, c) {
+			errs = append(errs, fmt.Errorf("supports: unknown capability %q", c))
+		}
+	}
+	if m.ContextWindow < 0 || m.MaxOutput < 0 || m.MinCacheableTokens < 0 {
+		errs = append(errs, errors.New("token limits must not be negative"))
+	}
+	errs = append(errs, m.Price.validate("price"), validateTiers("tiers", m.Tiers))
+	last := m.Updated
+	for i, c := range m.Changes {
+		field := fmt.Sprintf("changes[%d]", i)
+		if _, err := time.Parse(time.DateOnly, c.From); err != nil || c.From <= last {
+			errs = append(errs, fmt.Errorf("%s.from must be a date after updated and the changes before it", field))
+		}
+		last = c.From
+		errs = append(errs, c.Price.validate(field+".price"), validateTiers(field+".tiers", c.Tiers))
+	}
+	return errors.Join(errs...)
+}
+
+func validateTiers(field string, tiers []Tier) error {
+	var errs []error
 	var last int64
-	for i, t := range m.Tiers {
+	for i, t := range tiers {
 		if t.AboveInputTokens <= last {
-			errs = append(errs, fmt.Errorf("tiers[%d]: thresholds must be positive and ascending", i))
+			errs = append(errs, fmt.Errorf("%s[%d]: thresholds must be positive and ascending", field, i))
 		}
 		last = t.AboveInputTokens
-		errs = append(errs, t.validate(fmt.Sprintf("tiers[%d]", i)))
+		errs = append(errs, t.validate(fmt.Sprintf("%s[%d]", field, i)))
 	}
 	return errors.Join(errs...)
 }

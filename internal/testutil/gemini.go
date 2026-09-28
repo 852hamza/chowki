@@ -3,14 +3,17 @@ package testutil
 import (
 	"encoding/json"
 	"net/http"
+	"slices"
 	"strings"
 	"testing"
 )
 
 // NewGemini starts a fake Gemini API. It serves
-// POST /v1beta/models/{model}:generateContent as JSON and
+// POST /v1beta/models/{model}:generateContent as JSON,
 // POST /v1beta/models/{model}:streamGenerateContent?alt=sse as an SSE stream,
-// and expects the key in the x-goog-api-key header. Unlike the real API it
+// and :countTokens, :embedContent and :batchEmbedContents, and expects the
+// key in the x-goog-api-key header. countTokens answers cfg.Usage.Input; the
+// embeddings methods report it as their usage. Unlike the real API it
 // refuses a key in the URL (?key=), which the gateway must never send
 // upstream. It fails the test if cfg.Usage.CacheWrite is set, because Gemini
 // reports no cache write tokens.
@@ -37,8 +40,17 @@ func NewGemini(t testing.TB, cfg Config) *Server {
 }
 
 type geminiRequest struct {
-	Contents []json.RawMessage `json:"contents"`
+	Contents               []json.RawMessage `json:"contents"`
+	GenerateContentRequest json.RawMessage   `json:"generateContentRequest"`
+	Content                json.RawMessage   `json:"content"`
+	Requests               []struct {
+		Model   string          `json:"model"`
+		Content json.RawMessage `json:"content"`
+	} `json:"requests"`
 }
+
+// geminiEmbedding is the embedding of every fake embeddings request.
+var geminiEmbedding = map[string]any{"values": []float64{0.25, -0.5, 0.75}}
 
 func (s *Server) geminiModels(w http.ResponseWriter, r *http.Request) {
 	action := r.PathValue("action")
@@ -50,7 +62,8 @@ func (s *Server) geminiModels(w http.ResponseWriter, r *http.Request) {
 	model, method := action[:i], action[i+1:]
 	stream := method == "streamGenerateContent"
 	switch {
-	case method != "generateContent" && !stream:
+	case !slices.Contains([]string{"generateContent", "streamGenerateContent", "countTokens", "embedContent",
+		"batchEmbedContents"}, method):
 		geminiError(w, http.StatusNotFound, "unknown method "+method)
 		return
 	case r.URL.Query().Has("key"):
@@ -67,19 +80,57 @@ func (s *Server) geminiModels(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req geminiRequest
-	switch err := json.NewDecoder(r.Body).Decode(&req); {
-	case err != nil:
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		geminiError(w, http.StatusBadRequest, "invalid JSON body: "+err.Error())
 		return
-	case len(req.Contents) == 0:
+	}
+	embeddingUsage := map[string]any{"promptTokenCount": s.cfg.Usage.Input}
+	switch method {
+	case "countTokens":
+		if len(req.Contents) == 0 && len(req.GenerateContentRequest) == 0 {
+			geminiError(w, http.StatusBadRequest, "contents is not specified")
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"totalTokens": s.cfg.Usage.Input})
+		return
+	case "embedContent":
+		if len(req.Content) == 0 {
+			geminiError(w, http.StatusBadRequest, "content is not specified")
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"embedding": geminiEmbedding, "usageMetadata": embeddingUsage})
+		return
+	case "batchEmbedContents":
+		var embeddings []any
+		for _, r := range req.Requests {
+			// The real API wants each request to name the model of the path.
+			if r.Model != "models/"+model {
+				geminiError(w, http.StatusBadRequest, "the model of each request must be models/"+model)
+				return
+			}
+			embeddings = append(embeddings, geminiEmbedding)
+		}
+		if len(embeddings) == 0 {
+			geminiError(w, http.StatusBadRequest, "requests is not specified")
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"embeddings": embeddings, "usageMetadata": embeddingUsage})
+		return
+	}
+	if len(req.Contents) == 0 {
 		geminiError(w, http.StatusBadRequest, "contents is not specified")
 		return
 	}
 
 	id := s.id("fake-response-")
 	response := func(text string, finish bool, u Usage) map[string]any {
+		part := map[string]any{"text": text}
+		if c := s.cfg.ToolCall; c != nil {
+			part = map[string]any{"functionCall": map[string]any{"name": c.Name, "args": json.RawMessage(c.Arguments)},
+				"thoughtSignature": FakeSignature}
+		}
 		candidate := map[string]any{
-			"content": map[string]any{"role": "model", "parts": []any{map[string]any{"text": text}}},
+			"content": map[string]any{"role": "model", "parts": []any{part}},
 			"index":   0,
 		}
 		if finish {
@@ -99,6 +150,9 @@ func (s *Server) geminiModels(w http.ResponseWriter, r *http.Request) {
 
 	sse := newSSE(w, r, s.cfg.ChunkDelay)
 	pieces := s.cfg.pieces()
+	if s.cfg.ToolCall != nil {
+		pieces = pieces[:1] // Gemini streams a call whole
+	}
 	for i, piece := range pieces {
 		u := s.cfg.Usage
 		u.Output = u.Output * (i + 1) / len(pieces)

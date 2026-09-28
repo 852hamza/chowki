@@ -1,0 +1,135 @@
+{
+  "model": "claude-sonnet-5",
+  "max_tokens": 1024,
+  "system": [
+    {
+      "text": "You are a travel agent.",
+      "type": "text"
+    },
+    {
+      "text": "Answer in JSON.",
+      "type": "text"
+    }
+  ],
+  "messages": [
+    {
+      "role": "user",
+      "content": [
+        {
+          "text": "What's the weather in Paris and London? Here is my ticket.",
+          "type": "text"
+        },
+        {
+          "source": {
+            "data": "iVBORw0KGgo=",
+            "media_type": "image/png",
+            "type": "base64"
+          },
+          "type": "image"
+        }
+      ]
+    },
+    {
+      "role": "assistant",
+      "content": [
+        {
+          "type": "thinking",
+          "thinking": "",
+          "signature": "EqQBCkYIBxgCKkA-thought-1"
+        },
+        {
+          "text": "Let me check both cities.",
+          "type": "text"
+        },
+        {
+          "id": "toolu_01A",
+          "input": {
+            "city": "Paris"
+          },
+          "name": "get_weather",
+          "type": "tool_use"
+        },
+        {
+          "type": "thinking",
+          "thinking": "",
+          "signature": "EqQBCkYIBxgCKkA-thought-2"
+        },
+        {
+          "id": "toolu_01B",
+          "input": {
+            "city": "London"
+          },
+          "name": "get_weather",
+          "type": "tool_use"
+        }
+      ]
+    },
+    {
+      "role": "user",
+      "content": [
+        {
+          "content": "{\"temp_c\":15}",
+          "tool_use_id": "toolu_01A",
+          "type": "tool_result"
+        },
+        {
+          "content": "12C and rain",
+          "tool_use_id": "toolu_01B",
+          "type": "tool_result"
+        },
+        {
+          "text": "Which is warmer?",
+          "type": "text"
+        }
+      ]
+    }
+  ],
+  "tools": [
+    {
+      "name": "get_weather",
+      "description": "Gets the weather in a city.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "city": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "city"
+        ],
+        "additionalProperties": false
+      },
+      "strict": true
+    }
+  ],
+  "tool_choice": {
+    "type": "auto"
+  },
+  "temperature": 0.5,
+  "top_p": 0.9,
+  "stop_sequences": [
+    "END"
+  ],
+  "stream": true,
+  "metadata": {
+    "user_id": "user-42"
+  },
+  "output_config": {
+    "effort": "high",
+    "format": {
+      "schema": {
+        "type": "object",
+        "properties": {
+          "city": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "city"
+        ]
+      },
+      "type": "json_schema"
+    }
+  }
+}

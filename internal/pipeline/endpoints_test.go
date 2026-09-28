@@ -90,8 +90,9 @@ func TestModels(t *testing.T) {
 		}
 		return ids
 	}
-	// OpenAI-format clients see the aliases and models they can reach.
-	if got := strings.Join(list(), " "); got != "fast openai/embed-test openai/gpt-test" {
+	// OpenAI-format clients see the aliases and models they can reach, those
+	// of other APIs through translation too.
+	if got := strings.Join(list(), " "); got != "anthropic/claude-test fast openai/embed-test openai/gpt-test smart" {
 		t.Errorf("models = %s", got)
 	}
 	models := []string{"fast"}

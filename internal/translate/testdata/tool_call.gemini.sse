@@ -1,0 +1,8 @@
+data: {"candidates":[{"content":{"role":"model","parts":[{"text":"Planning.","thought":true}]},"index":0}],"usageMetadata":{"promptTokenCount":2100,"cachedContentTokenCount":2000,"candidatesTokenCount":0,"thoughtsTokenCount":80},"modelVersion":"gemini-3.7-flash","responseId":"resp-abc"}
+
+data: {"candidates":[{"content":{"role":"model","parts":[{"text":"Let me check "}]},"index":0}],"usageMetadata":{"promptTokenCount":2100,"cachedContentTokenCount":2000,"candidatesTokenCount":10,"thoughtsTokenCount":80},"modelVersion":"gemini-3.7-flash","responseId":"resp-abc"}
+
+data: {"candidates":[{"content":{"role":"model","parts":[{"text":"both cities."},{"functionCall":{"name":"get_weather","args":{"city":"Paris"}},"thoughtSignature":"c2lnLUE="}]},"index":0}],"usageMetadata":{"promptTokenCount":2100,"cachedContentTokenCount":2000,"candidatesTokenCount":30,"thoughtsTokenCount":80},"modelVersion":"gemini-3.7-flash","responseId":"resp-abc"}
+
+data: {"candidates":[{"content":{"role":"model","parts":[{"functionCall":{"name":"get_weather","args":{"city":"London"}}}]},"finishReason":"STOP","index":0}],"usageMetadata":{"promptTokenCount":2100,"cachedContentTokenCount":2000,"candidatesTokenCount":40,"thoughtsTokenCount":80,"totalTokenCount":2220},"modelVersion":"gemini-3.7-flash","responseId":"resp-abc"}
+

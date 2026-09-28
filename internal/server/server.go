@@ -25,6 +25,7 @@ func Routes(gw *pipeline.Gateway, admin, ui http.Handler) http.Handler {
 	for _, ep := range pipeline.Endpoints {
 		mux.Handle("POST "+ep.Path, gw.Handler(ep))
 	}
+	mux.Handle("POST /gemini/v1beta/models/", gw.Gemini())
 	mux.Handle("GET /v1/models", gw.Models())
 	mux.HandleFunc("GET /healthz", healthz)
 	mux.Handle("GET /readyz", readyz(gw.Store))
@@ -37,6 +38,7 @@ func Routes(gw *pipeline.Gateway, admin, ui http.Handler) http.Handler {
 		mux.Handle("/ui/", ui)
 	}
 	mux.Handle("/anthropic/", gw.NotFound(usage.Anthropic))
+	mux.Handle("/gemini/", gw.NotFound(usage.Gemini))
 	mux.Handle("/", gw.NotFound(usage.OpenAI))
 	return mux
 }

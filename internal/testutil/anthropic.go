@@ -89,15 +89,22 @@ func (s *Server) anthropicMessages(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("request-id", s.id("req_fake"))
 	id := s.id("msg_fake")
+	toolID := s.id("toolu_fake")
 	u := s.cfg.Usage
 	if !req.Stream {
+		content, stop := []any{map[string]any{"type": "text", "text": s.cfg.text()}}, "end_turn"
+		if c := s.cfg.ToolCall; c != nil {
+			content = []any{map[string]any{"type": "tool_use", "id": toolID, "name": c.Name,
+				"input": json.RawMessage(c.Arguments)}}
+			stop = "tool_use"
+		}
 		writeJSON(w, http.StatusOK, map[string]any{
 			"id":            id,
 			"type":          "message",
 			"role":          "assistant",
 			"model":         req.Model,
-			"content":       []any{map[string]any{"type": "text", "text": s.cfg.text()}},
-			"stop_reason":   "end_turn",
+			"content":       content,
+			"stop_reason":   stop,
 			"stop_sequence": nil,
 			"usage":         anthropicUsage(u),
 		})
@@ -125,15 +132,22 @@ func (s *Server) anthropicMessages(w http.ResponseWriter, r *http.Request) {
 			"content_block": map[string]any{"type": "text", "text": ""}}},
 		{"ping", map[string]any{"type": "ping"}},
 	}
+	pieces, stop := s.cfg.pieces(), "end_turn"
+	delta := func(p string) map[string]any { return map[string]any{"type": "text_delta", "text": p} }
+	if c := s.cfg.ToolCall; c != nil {
+		events[1].data["content_block"] = map[string]any{"type": "tool_use", "id": toolID, "name": c.Name,
+			"input": map[string]any{}}
+		pieces, stop = s.cfg.argumentPieces(), "tool_use"
+		delta = func(p string) map[string]any { return map[string]any{"type": "input_json_delta", "partial_json": p} }
+	}
 	for _, ev := range events {
 		if !sse.send(ev.name, ev.data) {
 			return
 		}
 	}
-	for i, piece := range s.cfg.pieces() {
-		delta := map[string]any{"type": "content_block_delta", "index": 0,
-			"delta": map[string]any{"type": "text_delta", "text": piece}}
-		if i > 0 && !sse.pause() || !sse.send("content_block_delta", delta) {
+	for i, piece := range pieces {
+		d := map[string]any{"type": "content_block_delta", "index": 0, "delta": delta(piece)}
+		if i > 0 && !sse.pause() || !sse.send("content_block_delta", d) {
 			return
 		}
 	}
@@ -143,7 +157,7 @@ func (s *Server) anthropicMessages(w http.ResponseWriter, r *http.Request) {
 	}{
 		{"content_block_stop", map[string]any{"type": "content_block_stop", "index": 0}},
 		{"message_delta", map[string]any{"type": "message_delta",
-			"delta": map[string]any{"stop_reason": "end_turn", "stop_sequence": nil}, "usage": deltaUsage}},
+			"delta": map[string]any{"stop_reason": stop, "stop_sequence": nil}, "usage": deltaUsage}},
 		{"message_stop", map[string]any{"type": "message_stop"}},
 	}
 	for _, ev := range events {

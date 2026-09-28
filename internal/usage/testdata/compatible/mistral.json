@@ -1,0 +1,13 @@
+{
+  "id": "cmpl-e5cc70bb28c444948073e77776eb30ef",
+  "object": "chat.completion",
+  "model": "mistral-small-latest",
+  "usage": {
+    "prompt_tokens": 1013,
+    "total_tokens": 1043,
+    "completion_tokens": 30,
+    "prompt_tokens_details": {
+      "cached_tokens": 1008
+    }
+  }
+}

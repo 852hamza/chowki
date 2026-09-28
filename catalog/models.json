@@ -3,6 +3,9 @@
     {
       "provider": "openai",
       "model": "gpt-6-astra",
+      "context_window": 1050000,
+      "max_output": 128000,
+      "supports": ["tools", "vision", "json", "caching", "thinking"],
       "price": {"input": 10, "output": 50, "cache_read": 1, "cache_write": 12.5},
       "tiers": [{"above_input_tokens": 272000, "input": 20, "output": 75, "cache_read": 2, "cache_write": 25}],
       "source": "https://developers.openai.com/api/docs/pricing",
@@ -11,6 +14,9 @@
     {
       "provider": "openai",
       "model": "gpt-6-sol",
+      "context_window": 1050000,
+      "max_output": 128000,
+      "supports": ["tools", "vision", "json", "caching", "thinking"],
       "price": {"input": 2, "output": 10, "cache_read": 0.2, "cache_write": 2.5},
       "tiers": [{"above_input_tokens": 272000, "input": 4, "output": 15, "cache_read": 0.4, "cache_write": 5}],
       "source": "https://developers.openai.com/api/docs/pricing",
@@ -19,6 +25,9 @@
     {
       "provider": "openai",
       "model": "gpt-6-luna",
+      "context_window": 1050000,
+      "max_output": 128000,
+      "supports": ["tools", "vision", "json", "caching", "thinking"],
       "price": {"input": 0.1, "output": 0.5, "cache_read": 0.01, "cache_write": 0.125},
       "tiers": [{"above_input_tokens": 272000, "input": 0.2, "output": 0.75, "cache_read": 0.02, "cache_write": 0.25}],
       "source": "https://developers.openai.com/api/docs/pricing",
@@ -27,6 +36,9 @@
     {
       "provider": "anthropic",
       "model": "claude-fable-5-1",
+      "context_window": 1000000,
+      "max_output": 128000,
+      "supports": ["tools", "vision", "caching", "thinking"],
       "min_cacheable_tokens": 512,
       "price": {"input": 10, "output": 50, "cache_read": 0.25, "cache_write": 12.5, "cache_write_1h": 20},
       "source": "https://platform.claude.com/docs/en/about-claude/pricing",
@@ -35,6 +47,9 @@
     {
       "provider": "anthropic",
       "model": "claude-opus-5-5",
+      "context_window": 1000000,
+      "max_output": 128000,
+      "supports": ["tools", "vision", "caching", "thinking"],
       "min_cacheable_tokens": 512,
       "price": {"input": 4, "output": 20, "cache_read": 0.2, "cache_write": 5, "cache_write_1h": 8},
       "source": "https://platform.claude.com/docs/en/about-claude/pricing",
@@ -43,6 +58,9 @@
     {
       "provider": "anthropic",
       "model": "claude-sonnet-5",
+      "context_window": 1000000,
+      "max_output": 128000,
+      "supports": ["tools", "vision", "caching", "thinking"],
       "min_cacheable_tokens": 1024,
       "price": {"input": 2, "output": 10, "cache_read": 0.2, "cache_write": 2.5, "cache_write_1h": 4},
       "source": "https://platform.claude.com/docs/en/about-claude/pricing",
@@ -51,10 +69,137 @@
     {
       "provider": "anthropic",
       "model": "claude-haiku-4-5-20251001",
+      "context_window": 200000,
+      "max_output": 64000,
+      "supports": ["tools", "vision", "caching", "thinking"],
       "aliases": ["claude-haiku-4-5"],
       "min_cacheable_tokens": 4096,
       "price": {"input": 1, "output": 5, "cache_read": 0.1, "cache_write": 1.25, "cache_write_1h": 2},
       "source": "https://platform.claude.com/docs/en/about-claude/pricing",
+      "updated": "2026-09-27"
+    },
+    {
+      "provider": "gemini",
+      "model": "gemini-3.8-flash",
+      "context_window": 1048576,
+      "max_output": 65536,
+      "supports": ["tools", "vision", "json", "caching", "thinking"],
+      "price": {"input": 0.75, "output": 3.75, "cache_read": 0.075},
+      "changes": [{"from": "2027-01-01", "price": {"input": 1.5, "output": 7.5, "cache_read": 0.15}}],
+      "source": "https://ai.google.dev/gemini-api/docs/pricing",
+      "updated": "2026-09-27"
+    },
+    {
+      "provider": "gemini",
+      "model": "gemini-3.7-flash",
+      "context_window": 1048576,
+      "max_output": 65536,
+      "supports": ["tools", "vision", "json", "caching", "thinking"],
+      "price": {"input": 0.75, "output": 3.75, "cache_read": 0.075},
+      "changes": [{"from": "2027-01-01", "price": {"input": 1.5, "output": 7.5, "cache_read": 0.15}}],
+      "source": "https://ai.google.dev/gemini-api/docs/pricing",
+      "updated": "2026-09-27"
+    },
+    {
+      "provider": "gemini",
+      "model": "gemini-3.6-flash",
+      "context_window": 1048576,
+      "max_output": 65536,
+      "supports": ["tools", "vision", "json", "caching", "thinking"],
+      "price": {"input": 0.75, "output": 3.75, "cache_read": 0.075},
+      "changes": [{"from": "2027-01-01", "price": {"input": 1.5, "output": 7.5, "cache_read": 0.15}}],
+      "source": "https://ai.google.dev/gemini-api/docs/pricing",
+      "updated": "2026-09-27"
+    },
+    {
+      "provider": "gemini",
+      "model": "gemini-3.5-flash",
+      "context_window": 1048576,
+      "max_output": 65536,
+      "supports": ["tools", "vision", "json", "caching", "thinking"],
+      "price": {"input": 1.5, "output": 9, "cache_read": 0.15},
+      "source": "https://ai.google.dev/gemini-api/docs/pricing",
+      "updated": "2026-09-27"
+    },
+    {
+      "provider": "gemini",
+      "model": "gemini-3.5-flash-lite",
+      "context_window": 1048576,
+      "max_output": 65536,
+      "supports": ["tools", "vision", "json", "caching", "thinking"],
+      "price": {"input": 0.3, "output": 2.5, "cache_read": 0.03},
+      "source": "https://ai.google.dev/gemini-api/docs/pricing",
+      "updated": "2026-09-27"
+    },
+    {
+      "provider": "gemini",
+      "model": "gemini-3.1-flash-lite",
+      "context_window": 1048576,
+      "max_output": 65536,
+      "supports": ["tools", "vision", "json", "caching", "thinking"],
+      "price": {"input": 0.25, "output": 1.5, "cache_read": 0.025},
+      "source": "https://ai.google.dev/gemini-api/docs/pricing",
+      "updated": "2026-09-27"
+    },
+    {
+      "provider": "gemini",
+      "model": "gemini-3.1-pro-preview",
+      "context_window": 1048576,
+      "max_output": 65536,
+      "supports": ["tools", "vision", "json", "caching", "thinking"],
+      "aliases": ["gemini-3.1-pro-preview-customtools"],
+      "price": {"input": 2, "output": 12, "cache_read": 0.2},
+      "tiers": [{"above_input_tokens": 200000, "input": 4, "output": 18, "cache_read": 0.4}],
+      "source": "https://ai.google.dev/gemini-api/docs/pricing",
+      "updated": "2026-09-27"
+    },
+    {
+      "provider": "gemini",
+      "model": "gemini-3-flash-preview",
+      "context_window": 1048576,
+      "max_output": 65536,
+      "supports": ["tools", "vision", "json", "caching", "thinking"],
+      "price": {"input": 0.5, "output": 3, "cache_read": 0.05},
+      "source": "https://ai.google.dev/gemini-api/docs/pricing",
+      "updated": "2026-09-27"
+    },
+    {
+      "provider": "gemini",
+      "model": "gemini-2.5-pro",
+      "context_window": 1048576,
+      "max_output": 65536,
+      "supports": ["tools", "vision", "json", "caching", "thinking"],
+      "price": {"input": 1.25, "output": 10, "cache_read": 0.125},
+      "tiers": [{"above_input_tokens": 200000, "input": 2.5, "output": 15, "cache_read": 0.25}],
+      "source": "https://ai.google.dev/gemini-api/docs/pricing",
+      "updated": "2026-09-27"
+    },
+    {
+      "provider": "gemini",
+      "model": "gemini-2.5-flash",
+      "context_window": 1048576,
+      "max_output": 65536,
+      "supports": ["tools", "vision", "json", "caching", "thinking"],
+      "price": {"input": 0.3, "output": 2.5, "cache_read": 0.03},
+      "source": "https://ai.google.dev/gemini-api/docs/pricing",
+      "updated": "2026-09-27"
+    },
+    {
+      "provider": "gemini",
+      "model": "gemini-2.5-flash-lite",
+      "context_window": 1048576,
+      "max_output": 65536,
+      "supports": ["tools", "vision", "json", "caching", "thinking"],
+      "price": {"input": 0.1, "output": 0.4, "cache_read": 0.01},
+      "source": "https://ai.google.dev/gemini-api/docs/pricing",
+      "updated": "2026-09-27"
+    },
+    {
+      "provider": "gemini",
+      "model": "gemini-embedding-2",
+      "context_window": 8192,
+      "price": {"input": 0.2, "output": 0},
+      "source": "https://ai.google.dev/gemini-api/docs/pricing",
       "updated": "2026-09-27"
     }
   ]
