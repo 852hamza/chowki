@@ -98,7 +98,7 @@ The guide is at **[852hamza.github.io/chowki](https://852hamza.github.io/chowki)
 
 ## Status
 
-Chowki is at v0.1. Before v1.0, a minor release can change the configuration or the APIs; the
+Chowki is at v0.2. Before v1.0, a minor release can change the configuration or the APIs; the
 [changelog](CHANGELOG.md) says what changed and how to upgrade.
 
 ## Contributing

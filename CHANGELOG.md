@@ -6,6 +6,8 @@ All notable changes to Chowki are recorded in this file. The format is based on
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-09-28
+
 ### Added
 
 - The dashboard's **Requests** tab lists requests, the newest first, with their key, model,
@@ -184,5 +186,6 @@ The first release.
   fake provider, and fails when the p99 is over 25 ms or a gateway built with `-race` reports a
   race.
 
-[Unreleased]: https://github.com/852hamza/chowki/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/852hamza/chowki/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/852hamza/chowki/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/852hamza/chowki/releases/tag/v0.1.0
