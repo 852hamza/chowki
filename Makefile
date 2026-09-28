@@ -67,8 +67,9 @@ sync-check:
 
 ## docs: rewrite the parts of docs/reference that are generated from the code
 docs:
-	UPDATE_DOCS=1 $(GO) test -count=1 -run 'TestCLIReference|TestConfigurationSummary|TestMetricsSummary|TestErrorCodesReference' \
-		./cmd/chowki ./internal/config ./internal/metrics ./internal/pipeline
+	UPDATE_DOCS=1 $(GO) test -count=1 \
+		-run 'TestCLIReference|TestConfigurationSummary|TestMetricsSummary|TestErrorCodesReference|TestSavingsExample' \
+		./cmd/chowki ./internal/config ./internal/metrics ./internal/pipeline ./internal/usage
 
 ## loadtest: measure the gateway's overhead at 200 requests per second on 2 CPUs
 loadtest: build
