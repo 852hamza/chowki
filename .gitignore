@@ -15,6 +15,7 @@ data/
 
 # Build and test output
 bin/
+build/
 dist/
 coverage.out
 *.test

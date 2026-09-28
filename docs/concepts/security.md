@@ -82,10 +82,11 @@ Content Security Policy, and can't be framed.
 ## The supply chain
 
 Chowki is one static binary with two direct dependencies beyond the Go standard library: a pure Go
-SQLite and a YAML parser. With the modules that they need, nine modules are linked in, all under
-the MIT, BSD or Apache 2.0 licenses. Continuous
-integration verifies downloaded modules against `go.sum`, checks for known vulnerabilities with
-`govulncheck`, and pins every GitHub Action to a commit. The container image is built on a
+SQLite and a YAML parser. With the modules that they need, 9 to 11 modules are linked in, by
+platform, all under the MIT, BSD or Apache 2.0 licenses, or in the public domain, as SQLite is.
+Each release ships their licenses, and its build fails on a module under another license.
+Continuous integration verifies downloaded modules against `go.sum`, checks for known
+vulnerabilities with `govulncheck`, and pins every GitHub Action to a commit. The container image is built on a
 distroless base, pinned by digest, and runs as a non-root user.
 
 ## Reporting a vulnerability

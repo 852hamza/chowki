@@ -28,6 +28,11 @@ RUN --mount=type=cache,target=/go/pkg/mod --mount=type=cache,target=/root/.cache
 # COPY's chmod option would give its mode to the folders it creates too.
 RUN install -D -m 0644 deploy/chowki.yaml /out/etc/chowki/chowki.yaml && \
     install -d -m 0700 /out/var/lib/chowki
+# The licenses of Chowki and of the modules in its binary, which the image
+# ships as they ask.
+RUN --mount=type=cache,target=/go/pkg/mod \
+    go run ./tools/licenses --out /out/usr/share/licenses/chowki/third_party_licenses && \
+    install -m 0644 LICENSE NOTICE /out/usr/share/licenses/chowki/
 
 FROM gcr.io/distroless/static-debian13:nonroot@sha256:e2e927ec666bae08560abb3c55d0659eceabb657f56b6782ab500a9fc7f555e3
 ARG VERSION=dev
@@ -43,6 +48,7 @@ LABEL org.opencontainers.image.title="Chowki" \
       org.opencontainers.image.created="$DATE"
 COPY --from=build /src/bin/chowki /usr/local/bin/chowki
 COPY --from=build /out/etc/chowki /etc/chowki
+COPY --from=build /out/usr/share/licenses/chowki /usr/share/licenses/chowki
 # 65532 is the nonroot user of the distroless images.
 # Copying the folder's parent keeps the folder's mode.
 COPY --from=build --chown=65532:65532 /out/var/lib/ /var/lib/
