@@ -1,3 +1,2 @@
-// Package policy enforces the models and endpoints that each virtual key may
-// use.
+// Package policy decides which models each virtual key may use.
 package policy

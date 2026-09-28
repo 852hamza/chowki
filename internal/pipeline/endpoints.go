@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/852hamza/chowki/internal/config"
+	"github.com/852hamza/chowki/internal/policy"
 	"github.com/852hamza/chowki/internal/providers"
 	"github.com/852hamza/chowki/internal/usage"
 )
@@ -146,7 +147,7 @@ func (g *Gateway) Models() http.Handler {
 			Data   []model `json:"data"`
 		}{Object: "list", Data: []model{}}
 		for _, m := range g.Router.Models(OpenAIChat.accepts()) {
-			if allowed(c.key.AllowedModels, m.ID) {
+			if policy.AllowsModel(c.key.AllowedModels, m.ID) {
 				list.Data = append(list.Data, model{ID: m.ID, Object: "model", OwnedBy: m.Owner})
 			}
 		}

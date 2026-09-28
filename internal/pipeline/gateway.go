@@ -13,7 +13,6 @@ import (
 	"maps"
 	"mime"
 	"net/http"
-	"path"
 	"slices"
 	"strconv"
 	"strings"
@@ -25,6 +24,7 @@ import (
 	"github.com/852hamza/chowki/internal/catalog"
 	"github.com/852hamza/chowki/internal/config"
 	"github.com/852hamza/chowki/internal/metrics"
+	"github.com/852hamza/chowki/internal/policy"
 	"github.com/852hamza/chowki/internal/promptcache"
 	"github.com/852hamza/chowki/internal/providers"
 	"github.com/852hamza/chowki/internal/ratelimit"
@@ -176,14 +176,16 @@ func (g *Gateway) handle(ctx context.Context, c *call, r *http.Request) *apiErro
 	if e != nil {
 		return e
 	}
+	// Check the model before redaction, so that a request the key may not
+	// send isn't scanned, and its findings aren't counted.
+	if !policy.AllowsModel(c.key.AllowedModels, req.model) {
+		return &apiError{http.StatusForbidden, codeModelNotAllowed, fmt.Sprintf(
+			"This key may not use the model %q. It may use: %s.", req.model, strings.Join(c.key.AllowedModels, ", "))}
+	}
 	if body, obj, e = g.redact(c, body, obj); e != nil {
 		return e
 	}
 
-	if !allowed(c.key.AllowedModels, req.model) {
-		return &apiError{http.StatusForbidden, codeModelNotAllowed, fmt.Sprintf(
-			"This key may not use the model %q. It may use: %s.", req.model, strings.Join(c.key.AllowedModels, ", "))}
-	}
 	targets, err := g.Router.Resolve(c.ep.accepts(), req.model, time.Now())
 	var re *router.Error
 	if errors.As(err, &re) {
@@ -417,21 +419,6 @@ func (g *Gateway) upstreamError(c *call, err error) *apiError {
 	g.Logger.Warn("upstream call failed", "request_id", c.id, "provider", c.provider.Name, "error", err)
 	return &apiError{http.StatusBadGateway, codeUpstreamFailed,
 		fmt.Sprintf("The provider %q couldn't be reached.", c.provider.Name)}
-}
-
-// allowed reports whether a key whose allowlist is patterns may request a
-// model; an empty list allows every model. Patterns match as path.Match
-// does, so "openai/*" allows every model of the provider openai.
-func allowed(patterns []string, model string) bool {
-	if len(patterns) == 0 {
-		return true
-	}
-	for _, p := range patterns {
-		if ok, _ := path.Match(p, model); ok {
-			return true
-		}
-	}
-	return false
 }
 
 func providerType(f usage.Family) string {
