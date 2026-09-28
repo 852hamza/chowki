@@ -6,7 +6,6 @@ GITHUB_REPO=chowki
 WEBSITE_URL=https://852hamza.github.io/chowki
 DOCS_URL=https://852hamza.github.io/chowki
 # Values of earlier identities. `make sync-check` fails if one appears again.
-RETIRED=https://852hamza.github.io/chowki/docs
 RETIRED=https://chowki.dev
 RETIRED=https://chowki.dev/docs
 RETIRED=https://github.com/852hamza/chowki/tree/main/docs

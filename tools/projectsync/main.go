@@ -82,6 +82,9 @@ func syncRepo(ctx context.Context, root string, out io.Writer) error {
 		}
 		lock = lockState{id: cur, retired: retire(lock, cur)}
 	}
+	// Filter the lock on every sync, so that a rule that retires less also
+	// applies to values that an earlier sync retired.
+	lock.retired = retire(lockState{id: cur, retired: lock.retired}, cur)
 
 	changed, err := writeDefaults(root, cur)
 	if err != nil {
@@ -220,12 +223,15 @@ func rewriteFiles(ctx context.Context, root string, m *matcher) ([]string, error
 
 // retire returns the values that files must no longer contain once cur
 // replaces the locked identity. Values of cur are never retired, so renaming
-// back to an earlier identity works.
+// back to an earlier identity works. Neither are addresses under cur's
+// website: moving DOCS_URL from <site>/docs to <site> leaves the pages under
+// <site>/docs/ live, and links to them must stay allowed.
 func retire(lock lockState, cur buildinfo.Identity) []string {
 	keep := identityValues(cur)
+	site := strings.TrimSuffix(cur.WebsiteURL(), "/") + "/"
 	var retired []string
 	for _, v := range slices.Concat(lock.retired, identityValues(lock.id)) {
-		if !slices.Contains(keep, v) {
+		if !slices.Contains(keep, v) && !strings.HasPrefix(v, site) {
 			retired = append(retired, v)
 		}
 	}

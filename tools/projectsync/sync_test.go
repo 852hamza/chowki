@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -335,4 +336,20 @@ func readFile(t *testing.T, root, rel string) string {
 		t.Fatal(err)
 	}
 	return string(data)
+}
+
+// Moving DOCS_URL from the site's /docs to the site itself doesn't retire
+// the old address, under which the site still serves its pages.
+func TestRetireKeepsAddressesUnderTheSite(t *testing.T) {
+	site := "https://acme.example/widget"
+	old := buildinfo.Identity{Domain: "acme.example", Owner: "acme", Repo: "widget", Website: site}
+	cur := old
+	cur.Docs = site
+	if got := retire(lockState{id: old}, cur); len(got) != 0 {
+		t.Errorf("retire = %q, want nothing: %s/docs still serves pages", got, site)
+	}
+	cur = buildinfo.Identity{Domain: "zeta.example", Owner: "zeta", Repo: "widget"}
+	if got := retire(lockState{id: old}, cur); !slices.Contains(got, site+"/docs") {
+		t.Errorf("retire = %q, want the old site's docs retired once the site moves", got)
+	}
 }
