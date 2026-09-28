@@ -109,9 +109,16 @@ func serve(ctx context.Context, configPath string, ln net.Listener, logOut io.Wr
 	}
 	defer func() { _ = ln.Close() }() // no-op once the server has closed it
 
+	// Opening the database applies pending migrations; the log says so, as
+	// an upgrade's record.
+	before, _ := store.InspectSQLite(ctx, cfg.Storage.DSN) // a new database has nothing to upgrade
 	st, err := store.OpenSQLite(ctx, cfg.Storage.DSN)
 	if err != nil {
 		return err
+	}
+	if before.Path != "" && before.Version > 0 && before.Version < before.Latest {
+		logger.Info("upgraded the database", "path", before.Path, "from_schema", before.Version,
+			"to_schema", before.Latest)
 	}
 	ps, names, err := setUpProviders(ctx, cfg, st, keys, logger)
 	if err != nil {

@@ -34,6 +34,8 @@ Commands:
   project    List projects and set their budgets
   admin      Create, list and revoke admin tokens
   usage      Report token usage, cost and savings
+  backup     Copy the database to a file, while the gateway runs
+  restore    Replace the database with a backup
   scan       Find secrets in a repository, .env files or MCP configurations
   setup      Connect an app or coding agent to the gateway
   doctor     Check the installation and configuration
@@ -175,6 +177,45 @@ Flags:
   --from    the first day, such as 2026-09-01
   --to      the last day, such as 2026-09-30
   --by      also break the totals down by key, model or day
+  --config  the configuration file; by default $CHOWKI_CONFIG, or chowki.yaml
+```
+
+
+## `chowki backup`
+
+Copy the database to a file, while the gateway runs.
+
+```text
+Usage:
+  chowki backup [--config <FILE>] <BACKUP>
+
+Writes a consistent copy of the database to BACKUP, a new file that only
+you can read, or to stdout when BACKUP is -. It works while chowki serve
+runs, and doesn't upgrade the database, so back up before you upgrade
+Chowki.
+
+The copy holds stored provider keys and cached answers, which open only
+with the master key: keep the two together, and apart from the gateway.
+
+Flags:
+  --config  the configuration file; by default $CHOWKI_CONFIG, or chowki.yaml
+```
+
+
+## `chowki restore`
+
+Replace the database with a backup.
+
+```text
+Usage:
+  chowki restore [--config <FILE>] <BACKUP>
+
+Replaces the database with BACKUP, a file that chowki backup wrote, or
+stdin when BACKUP is -, after checking it. Stop chowki serve first, and
+start it again after. The replaced database stays next to it, as
+<NAME>.before-restore-<TIME>.
+
+Flags:
   --config  the configuration file; by default $CHOWKI_CONFIG, or chowki.yaml
 ```
 

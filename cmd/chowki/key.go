@@ -226,11 +226,7 @@ func withStore(ctx context.Context, configPath string, stderr io.Writer, command
 func withConfigStore(ctx context.Context, configPath string, stderr io.Writer, command string,
 	fn func(cfg *config.Config, env func(string) (string, bool), st store.Store) error) int {
 	err := func() error {
-		env, err := config.DotEnv(".env")
-		if err != nil {
-			return err
-		}
-		cfg, err := config.Load(configPath, env)
+		cfg, env, err := loadConfig(configPath)
 		if err != nil {
 			return err
 		}

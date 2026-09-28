@@ -3,12 +3,14 @@ package main
 import (
 	"bytes"
 	"context"
+	"database/sql"
 	"io"
 	"net"
 	"net/http"
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/852hamza/chowki/internal/testutil"
 )
@@ -107,5 +109,44 @@ func TestServeErrors(t *testing.T) {
 				t.Errorf("chowki serve = %d, stderr %q; want %q", code, stderr.String(), tt.want)
 			}
 		})
+	}
+}
+
+// Starting on an older schema upgrades it, and the log says so.
+func TestServeLogsUpgrade(t *testing.T) {
+	initDir(t)
+	writeConfig(t, "http://127.0.0.1:1")
+	db, err := sql.Open("sqlite", "file:data/chowki.db")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, q := range []string{"DROP TABLE provider_keys", "DELETE FROM schema_migrations WHERE version = 9"} {
+		if _, err := db.ExecContext(t.Context(), q); err != nil {
+			t.Fatal(err)
+		}
+	}
+	_ = db.Close()
+	ln, err := (&net.ListenConfig{}).Listen(t.Context(), "tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var logs bytes.Buffer
+	ctx, cancel := context.WithCancel(t.Context())
+	errc := make(chan error, 1)
+	go func() { errc <- serve(ctx, "chowki.yaml", ln, &logs) }()
+	for range 100 { // until it serves
+		req, _ := http.NewRequestWithContext(t.Context(), http.MethodGet, "http://"+ln.Addr().String()+"/readyz", nil)
+		if resp, err := http.DefaultClient.Do(req); err == nil {
+			_ = resp.Body.Close()
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	cancel()
+	if err := <-errc; err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(logs.String(), `"msg":"upgraded the database","path":"data/chowki.db","from_schema":8,"to_schema":9`) {
+		t.Errorf("logs:\n%s", logs.String())
 	}
 }

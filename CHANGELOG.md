@@ -126,6 +126,10 @@ All notable changes to Chowki are recorded in this file. The format is based on
   later and HTTP/2, and load a renewed certificate without a restart. `server.read_timeout`, 60
   seconds by default, limits how long a client may take to send a request; responses may stream
   for longer. `chowki doctor` checks the certificate and warns 14 days before it expires.
+- `chowki backup` writes a consistent copy of the database while the gateway runs, and
+  `chowki restore` puts one back after checking it, and keeps the database it replaces. With `-`,
+  they stream through stdout and stdin, as `docker compose exec -T` needs. `chowki serve` logs
+  when it upgrades the database's schema.
 - `make loadtest` measures the gateway's overhead at 200 requests per second on 2 CPUs, against a
   fake provider, and fails when the p99 is over 25 ms or a gateway built with `-race` reports a
   race.
