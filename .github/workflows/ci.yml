@@ -35,6 +35,24 @@ jobs:
       - run: go vet ./...
       - run: make test
 
+  platforms:
+    name: macOS and Windows
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          check-latest: true
+          cache-dependency-path: go.mod
+      # Releases include binaries for macOS and Windows, so the code, tests
+      # included, must compile for them, although the tests run on Linux.
+      - run: GOOS=darwin go vet ./...
+      - run: GOOS=windows go vet ./...
+
   race:
     name: Race detector
     runs-on: ubuntu-latest

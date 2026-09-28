@@ -69,8 +69,9 @@ already made on your branch, run `git rebase --signoff main`.
 
 ## Pull requests
 
-CI checks every pull request: build, tests with the race detector, lint, known vulnerabilities, the
-project identity, and each commit's subject and sign-off. Before you open a pull request:
+CI checks every pull request: build, tests with the race detector, compilation for macOS and
+Windows, lint, known vulnerabilities, the project identity, and each commit's subject and sign-off.
+Before you open a pull request:
 
 1. Run `make build test lint sync-check`.
 2. Update the developer guide pages for any user-visible change, following the
