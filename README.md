@@ -88,6 +88,8 @@ make build
 - [Measure the gateway's overhead](docs/operations/performance.md): run the load test on your
   hardware.
 - [Architecture](docs/concepts/architecture.md): how a request flows through Chowki.
+- [Security model](docs/concepts/security.md): what Chowki stores, encrypts and logs, and what it
+  guards against.
 - [Set up a development environment](docs/contributing/development-setup.md): build and test
   Chowki.
 - [Code structure](docs/contributing/code-structure.md): where each part of the code lives.
