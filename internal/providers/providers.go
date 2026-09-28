@@ -79,6 +79,18 @@ const (
 // is forwarded, least of all the client's key.
 var forwarded = []string{"anthropic-version", "anthropic-beta"}
 
+// Forwarded returns the headers of client that Do forwards to the provider.
+// They can change the provider's answer.
+func Forwarded(client http.Header) http.Header {
+	h := http.Header{}
+	for _, name := range forwarded {
+		if v := client.Values(name); len(v) > 0 {
+			h[http.CanonicalHeaderKey(name)] = v
+		}
+	}
+	return h
+}
+
 // Do sends a JSON request body to the provider's endpoint, authenticated
 // with the provider key, and returns the response. The caller must close
 // the response body.
@@ -91,10 +103,8 @@ func (p *Provider) Do(ctx context.Context, endpoint string, body []byte, client 
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("User-Agent", "chowki/"+buildinfo.Version())
-	for _, h := range forwarded {
-		if v := client.Values(h); len(v) > 0 {
-			req.Header[http.CanonicalHeaderKey(h)] = v
-		}
+	for name, v := range Forwarded(client) {
+		req.Header[name] = v
 	}
 	if key := p.key.Reveal(); key != "" {
 		switch p.Type {

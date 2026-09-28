@@ -92,11 +92,12 @@ func TestCreateAndVerify(t *testing.T) {
 	st := openStore(t)
 	ctx := t.Context()
 	now := time.Date(2026, 9, 27, 12, 0, 0, 0, time.UTC)
-	key, k, err := Create(ctx, st, "team", "alice", now)
+	key, k, err := Create(ctx, st, "team", store.Key{Name: "alice", BudgetUSD: 50}, now)
 	if err != nil {
 		t.Fatalf("Create() error = %v", err)
 	}
-	if k.Name != "alice" || k.Project != "team" || k.Prefix != key[:PrefixLen] || !k.CreatedAt.Equal(now) {
+	if k.Name != "alice" || k.Project != "team" || k.Prefix != key[:PrefixLen] || !k.CreatedAt.Equal(now) ||
+		k.BudgetUSD != 50 {
 		t.Errorf("Create() stored %+v", k)
 	}
 
@@ -172,10 +173,10 @@ func TestVerifyReportsStoreErrors(t *testing.T) {
 }
 
 func TestCreateRetriesUsedPrefixes(t *testing.T) {
-	if _, _, err := Create(t.Context(), &fakeStore{existsFor: 2}, "p", "n", time.Now()); err != nil {
+	if _, _, err := Create(t.Context(), &fakeStore{existsFor: 2}, "p", store.Key{Name: "n"}, time.Now()); err != nil {
 		t.Errorf("Create() after two used prefixes: %v", err)
 	}
-	if _, _, err := Create(t.Context(), &fakeStore{existsFor: 5}, "p", "n", time.Now()); err == nil {
+	if _, _, err := Create(t.Context(), &fakeStore{existsFor: 5}, "p", store.Key{Name: "n"}, time.Now()); err == nil {
 		t.Error("Create() succeeded although every prefix was used")
 	}
 }

@@ -15,12 +15,17 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/852hamza/chowki/internal/budget"
 	"github.com/852hamza/chowki/internal/buildinfo"
+	"github.com/852hamza/chowki/internal/cache"
 	"github.com/852hamza/chowki/internal/catalog"
 	"github.com/852hamza/chowki/internal/config"
 	"github.com/852hamza/chowki/internal/netguard"
 	"github.com/852hamza/chowki/internal/pipeline"
+	"github.com/852hamza/chowki/internal/promptcache"
 	"github.com/852hamza/chowki/internal/providers"
+	"github.com/852hamza/chowki/internal/ratelimit"
+	"github.com/852hamza/chowki/internal/redact"
 	"github.com/852hamza/chowki/internal/secretbox"
 	"github.com/852hamza/chowki/internal/server"
 	"github.com/852hamza/chowki/internal/store"
@@ -57,9 +62,16 @@ func serve(ctx context.Context, configPath string, ln net.Listener, logOut io.Wr
 	if len(cfg.Providers) == 0 {
 		return errors.New("the configuration has no providers; add one under providers")
 	}
-	// The master key isn't used by M1 features yet, but a missing or
-	// exposed key should stop the gateway now, not when it's first needed.
-	if _, err := secretbox.LoadKey(cfg.Security.MasterKeyFile, env); err != nil {
+	masterKey, err := secretbox.LoadKey(cfg.Security.MasterKeyFile, env)
+	if err != nil {
+		return err
+	}
+	cacheBox, err := secretbox.New(masterKey, "cache")
+	if err != nil {
+		return err
+	}
+	redactionKey, err := secretbox.DeriveKey(masterKey, "redaction")
+	if err != nil {
 		return err
 	}
 	cat, err := catalog.Default()
@@ -94,24 +106,42 @@ func serve(ctx context.Context, configPath string, ln net.Listener, logOut io.Wr
 	if err != nil {
 		return err
 	}
+	budgets, err := budget.Load(ctx, st, time.Now(), logger)
+	if err != nil {
+		_ = st.Close() // the load error is the one to report
+		return err
+	}
+	responses, err := cache.New(ctx, st, cacheBox, cache.Options{Default: cfg.Defaults.Cache,
+		TTL: cfg.Defaults.CacheTTL, MaxBytes: int64(cfg.Storage.CacheMaxMB) << 20}, logger)
+	if err != nil {
+		_ = st.Close()
+		return err
+	}
 	requests := store.NewRequestLog(st, logger)
 	retentionCtx, stopRetention := context.WithCancel(context.Background())
 	var wg sync.WaitGroup
 	wg.Go(func() { store.RunRetention(retentionCtx, st, cfg.RetentionDays, 24*time.Hour, logger) })
 	// Shut down in order: requests are done when server.Run returns; then
-	// the last records are saved, and only then the database closes.
+	// the last records and cache entries are saved, and only then the
+	// database closes.
 	defer func() {
 		stopRetention()
 		wg.Wait()
 		requests.Close()
+		responses.Close()
 		if err := st.Close(); err != nil {
 			logger.Error("close database", "error", err)
 		}
 	}()
 
 	gw := &pipeline.Gateway{
-		Store: st, Requests: requests, Providers: ps, Catalog: cat, Logger: logger,
+		Store: st, Requests: requests, Redactor: redact.New(redactionKey, cfg.Defaults.Redaction),
+		Cache: responses, Limits: ratelimit.New(), Budgets: budgets,
+		Providers: ps, Catalog: cat, Logger: logger,
 		MaxBody: int64(cfg.Server.MaxBodyMB) << 20, Timeout: cfg.Server.UpstreamTimeout,
+	}
+	if cfg.Defaults.PromptCache == "auto" {
+		gw.PromptCache = promptcache.New()
 	}
 	logger.Info("chowki started", "version", buildinfo.Version(), "providers", names, "priced_models", cat.Len())
 	return server.Run(ctx, ln, server.Routes(gw), logger)

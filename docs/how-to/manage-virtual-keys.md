@@ -38,6 +38,13 @@ revoke one key without touching the others or your provider keys.
 
 2. Give the key to its user through a secret store or another private channel.
 
+To limit what a key can spend each month, add `--budget-usd`; see
+[Set monthly budgets](set-budgets.md). To limit its requests and tokens per minute, add `--rpm` and
+`--tpm`; see [Set rate limits](set-rate-limits.md). To answer repeated requests from the cache, add
+`--cache exact`; see [Cache responses](cache-responses.md). To choose what happens to secrets and
+personal data in its prompts, add `--redaction`; see
+[Redact secrets and personal data](redact-sensitive-data.md).
+
 Chowki stores only the key's prefix, its first 12 characters, and its SHA-256 hash. If a key is
 lost, revoke it and create a new one.
 
@@ -56,25 +63,28 @@ chowki key list
 Output:
 
 ```text
-PREFIX        NAME    PROJECT  CREATED               STATUS
-chowki_n5jcb  alice   default  2026-09-27 04:41 UTC  active
-chowki_dezmK  ci-bot  team-a   2026-09-27 04:43 UTC  active
+PREFIX        NAME      PROJECT  SPENT 2026-09  BUDGET  RPM   TPM     CACHE    REDACTION  CREATED               STATUS
+chowki_nKaBn  alice     team-a   $3.00          $50.00  none  none    default  default    2026-09-27 09:45 UTC  active
+chowki_E615T  ci-bot    team-a   $1.00          none    60    100000  default  default    2026-09-27 09:45 UTC  active
+chowki_jlIEY  docs-bot  team-a   $0.00          none    none  none    exact    default    2026-09-27 09:45 UTC  active
 ```
 
-The list shows each key's prefix, never the key itself.
+The list shows each key's prefix, never the key itself. It also shows what the key spent this
+month (UTC), its monthly budget, its limits of requests (`RPM`) and tokens (`TPM`) per minute,
+whether it uses the exact cache (`CACHE`), and its redaction mode (`REDACTION`).
 
 ## Revoke a key
 
 1. Revoke a key by its prefix:
 
    ```sh
-   chowki key revoke chowki_dezmK
+   chowki key revoke chowki_E615T
    ```
 
    Output:
 
    ```text
-   Revoked virtual key chowki_dezmK ("ci-bot"). Requests with it now fail.
+   Revoked virtual key chowki_E615T ("ci-bot"). Requests with it now fail.
    ```
 
 You can also pass the full key instead of the prefix. Revoking is permanent, and revoking a key
@@ -102,5 +112,6 @@ the key as `revoked` with the time.
 
 ## Related
 
-- [Configuration reference](../reference/configuration.md) ·
+- [Set monthly budgets](set-budgets.md) · [Set rate limits](set-rate-limits.md) ·
+  [Configuration reference](../reference/configuration.md) ·
   [Architecture](../concepts/architecture.md)

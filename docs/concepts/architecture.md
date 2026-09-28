@@ -48,27 +48,35 @@ Each request passes these stages in order:
 
 ```mermaid
 flowchart TD
-  A[Parse] --> B[Authenticate] --> C[Policy] --> D[Rate limit] --> E[Budget check]
-  E --> F[Redact] --> G[Exact cache] --> H[Route] --> I[Prompt-cache optimizer]
+  A[Parse] --> B[Authenticate] --> C[Policy] --> D[Rate limit] --> E[Redact]
+  E --> F[Route] --> G[Exact cache] --> H[Token limit and budget] --> I[Prompt-cache optimizer]
   I --> J[Upstream call] --> K[Account] --> L[Persist]
 ```
 
 1. **Parse**: enforce the body size limit and detect the API family from the path.
 2. **Authenticate**: verify the virtual key and reject revoked keys.
 3. **Policy**: check the models and endpoints that the key may use.
-4. **Rate limit**: enforce requests and tokens per minute for the key.
-5. **Budget check**: reject the request when the key has used up its budget.
-6. **Redact**: find secrets and personal data, then mask them, block the request or raise an alert,
-   depending on the policy.
+4. **Rate limit**: enforce the key's limit of requests per minute, before Chowki reads the request
+   body.
+5. **Redact**: find secrets and personal data in the text of the request, then mask them with
+   placeholders, block the request or log an alert, depending on the key's mode. See
+   [Redact secrets and personal data](../how-to/redact-sensitive-data.md).
+6. **Route**: resolve an alias, such as `fast`, to a provider and model.
 7. **Exact cache**: for a non-streaming request identical to an earlier one, return the stored
-   response. The cache is opt-in.
-8. **Route**: resolve an alias, such as `fast`, to a provider and model.
-9. **Prompt-cache optimizer**: for Anthropic, mark stable prompt prefixes, so that repeated
-   prefixes cost less.
+   response. The cache is opt-in. A cached answer costs nothing, so the next stage doesn't apply to
+   it.
+8. **Token limit and budget**: enforce the key's limit of tokens per minute, and reject the request
+   when the key or its project has used up its monthly budget. Both count a request at its
+   estimated input until the response reports its actual usage; the budget estimate uses the
+   model's price, which is why this stage follows routing.
+9. **Prompt-cache optimizer**: for Anthropic, mark a prompt prefix that repeats, so that the
+   provider caches it and repeated prefixes cost less. Requests that set their own `cache_control`
+   stay as they are.
 10. **Upstream call**: call the provider with the provider key and a timeout, and relay a streamed
     answer chunk by chunk.
 11. **Account**: read the token usage that the provider reported, and compute cost and savings.
-12. **Persist**: save the request metadata and update spend and metrics.
+12. **Persist**: save the request metadata together with the spend that it adds, and update
+    metrics.
 
 When Chowki rejects a request, it answers in the error format of the API family that you called,
 so your SDK shows the error correctly.
@@ -81,7 +89,7 @@ so your SDK shows the error correctly.
 | Provider key | The key of your account with a provider. Only Chowki holds it, encrypted with AES-256-GCM. |
 | Alias | A model name, such as `fast`, that Chowki resolves to one or more provider models in fallback order |
 | API family | The request format that a client speaks: OpenAI, Anthropic or Gemini |
-| Project | A group of virtual keys |
+| Project | A group of virtual keys, which can share a monthly budget |
 
 ## Design choices and trade-offs
 

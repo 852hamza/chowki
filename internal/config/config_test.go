@@ -29,12 +29,18 @@ server:
 storage:
   driver: sqlite
   dsn: "file:/var/lib/chowki/chowki.db"
+  cache_max_mb: 64
 security:
   master_key_file: /etc/chowki/master.key
   allow_private_upstreams: false
 log:
   level: debug
 retention_days: 30
+defaults:
+  cache: exact
+  cache_ttl: 10m
+  prompt_cache: "off"
+  redaction: block
 providers:
   - name: openai
     type: openai
@@ -72,10 +78,11 @@ func TestParseFile(t *testing.T) {
 	}
 	want := Config{
 		Server:        Server{Listen: "127.0.0.1:9090", MaxBodyMB: 5, UpstreamTimeout: 90 * time.Second},
-		Storage:       Storage{Driver: "sqlite", DSN: "file:/var/lib/chowki/chowki.db"},
+		Storage:       Storage{Driver: "sqlite", DSN: "file:/var/lib/chowki/chowki.db", CacheMaxMB: 64},
 		Security:      Security{MasterKeyFile: "/etc/chowki/master.key", AllowPrivateUpstreams: false},
 		Log:           Log{Level: "debug"},
 		RetentionDays: 30,
+		Defaults:      Defaults{Cache: "exact", CacheTTL: 10 * time.Minute, PromptCache: "off", Redaction: "block"},
 		Providers: []Provider{
 			{Name: "openai", Type: TypeOpenAI, BaseURL: "https://api.openai.com/v1", APIKeyEnv: "OPENAI_API_KEY",
 				APIKey: "sk-EXAMPLE-openai"},
@@ -98,13 +105,17 @@ func TestParseEnvOverrides(t *testing.T) {
 		"CHOWKI_SECURITY_ALLOW_PRIVATE_UPSTREAMS": "true",
 		"CHOWKI_LOG_LEVEL":                        "warn",
 		"CHOWKI_RETENTION_DAYS":                   "7",
+		"CHOWKI_STORAGE_CACHE_MAX_MB":             "0",
+		"CHOWKI_DEFAULTS_CACHE":                   "off",
+		"CHOWKI_DEFAULTS_CACHE_TTL":               "30s",
 	}))
 	if err != nil {
 		t.Fatalf("Parse() error = %v", err)
 	}
 	got := []any{cfg.Server.Listen, cfg.Server.MaxBodyMB, cfg.Server.UpstreamTimeout, cfg.Storage.DSN,
-		cfg.Security.AllowPrivateUpstreams, cfg.Log.Level, cfg.RetentionDays}
-	want := []any{":7000", 64, 2 * time.Minute, "file:other.db", true, "warn", 7}
+		cfg.Security.AllowPrivateUpstreams, cfg.Log.Level, cfg.RetentionDays, cfg.Storage.CacheMaxMB,
+		cfg.Defaults.Cache, cfg.Defaults.CacheTTL}
+	want := []any{":7000", 64, 2 * time.Minute, "file:other.db", true, "warn", 7, 0, "off", 30 * time.Second}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("overridden settings = %v, want %v", got, want)
 	}
@@ -113,9 +124,10 @@ func TestParseEnvOverrides(t *testing.T) {
 func TestEnvVars(t *testing.T) {
 	want := []string{
 		"CHOWKI_SERVER_LISTEN", "CHOWKI_SERVER_MAX_BODY_MB", "CHOWKI_SERVER_UPSTREAM_TIMEOUT",
-		"CHOWKI_STORAGE_DRIVER", "CHOWKI_STORAGE_DSN",
+		"CHOWKI_STORAGE_DRIVER", "CHOWKI_STORAGE_DSN", "CHOWKI_STORAGE_CACHE_MAX_MB",
 		"CHOWKI_SECURITY_MASTER_KEY_FILE", "CHOWKI_SECURITY_ALLOW_PRIVATE_UPSTREAMS",
-		"CHOWKI_LOG_LEVEL", "CHOWKI_RETENTION_DAYS",
+		"CHOWKI_LOG_LEVEL", "CHOWKI_RETENTION_DAYS", "CHOWKI_DEFAULTS_CACHE", "CHOWKI_DEFAULTS_CACHE_TTL",
+		"CHOWKI_DEFAULTS_PROMPT_CACHE", "CHOWKI_DEFAULTS_REDACTION",
 	}
 	if got := EnvVars(); !reflect.DeepEqual(got, want) {
 		t.Errorf("EnvVars() = %q, want %q", got, want)
@@ -141,6 +153,9 @@ func TestParseErrors(t *testing.T) {
 		{"storage", "storage:\n  driver: postgres\n  dsn: \"\"\n", nil, []string{"storage.driver", "storage.dsn"}},
 		{"timeout", "server:\n  upstream_timeout: -1s\n", nil, []string{"server.upstream_timeout"}},
 		{"master key file", "security:\n  master_key_file: \"\"\n", nil, []string{"security.master_key_file"}},
+		{"cache", "storage:\n  cache_max_mb: -1\ndefaults:\n  cache: always\n  cache_ttl: 0s\n  prompt_cache: on\n" +
+			"  redaction: strict\n", nil, []string{"storage.cache_max_mb", "defaults.cache: must be off or exact",
+			"defaults.cache_ttl", "defaults.prompt_cache: must be auto or off", "defaults.redaction"}},
 		{"provider name", strings.Replace(provider(""), "name: p", "name: Open/AI", 1), nil,
 			[]string{"providers[0].name"}},
 		{"duplicate provider", provider("") + "  - name: p\n    type: openai\n    base_url: https://x.example.com\n", nil,

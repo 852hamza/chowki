@@ -29,8 +29,36 @@ type Store interface {
 	// RevokeKey marks the key with the given prefix as revoked at the given
 	// time, unless it's revoked already, and returns it as stored.
 	RevokeKey(ctx context.Context, prefix string, at time.Time) (Key, error)
-	// InsertRequests saves request records in one transaction.
+	// UpdateKey changes the settings of the key with the given prefix and
+	// returns it as stored, or ErrNotFound.
+	UpdateKey(ctx context.Context, prefix string, u KeyUpdate) (Key, error)
+	// ListProjects returns every project, by name.
+	ListProjects(ctx context.Context) ([]Project, error)
+	// UpdateProject changes the settings of the project with the given name
+	// and returns it as stored, or ErrNotFound.
+	UpdateProject(ctx context.Context, name string, u ProjectUpdate) (Project, error)
+	// InsertRequests saves request records in one transaction, and adds
+	// their cost to the spend of their keys.
 	InsertRequests(ctx context.Context, rs []Request) error
+	// SpendByKey returns the spend of each key in a period, a calendar
+	// month as Period formats it. Keys without spend are left out.
+	SpendByKey(ctx context.Context, period string) ([]KeySpend, error)
+	// CacheEntry returns the cache entry with the given hash unless it
+	// expired by now, or ErrNotFound.
+	CacheEntry(ctx context.Context, hash []byte, now time.Time) (CacheEntry, error)
+	// PutCacheEntry saves a cache entry, replacing one with the same hash,
+	// and returns the size of the entry it replaced, or 0.
+	PutCacheEntry(ctx context.Context, e CacheEntry) (replaced int64, err error)
+	// TouchCacheEntry counts a hit on the cache entry with the given hash.
+	TouchCacheEntry(ctx context.Context, hash []byte, now time.Time) error
+	// DeleteExpiredCacheEntries deletes the cache entries that expired by
+	// now, and returns the size it freed.
+	DeleteExpiredCacheEntries(ctx context.Context, now time.Time) (freed int64, err error)
+	// EvictCacheEntries deletes the least recently used cache entries until
+	// it has freed at least size bytes, and returns the size it freed.
+	EvictCacheEntries(ctx context.Context, size int64) (freed int64, err error)
+	// CacheSize returns the total size of the cache entries.
+	CacheSize(ctx context.Context) (int64, error)
 	// DeleteRequestsBefore deletes the records of requests that started
 	// before t, and returns how many it deleted.
 	DeleteRequestsBefore(ctx context.Context, t time.Time) (int64, error)
@@ -42,9 +70,18 @@ type Store interface {
 
 // Project groups virtual keys.
 type Project struct {
-	ID        int64
-	Name      string
+	ID   int64
+	Name string
+	// BudgetUSD is the project's monthly budget; 0 means none.
+	BudgetUSD float64
 	CreatedAt time.Time
+}
+
+// ProjectUpdate lists the settings of a project to change; nil fields stay
+// as they are.
+type ProjectUpdate struct {
+	// BudgetUSD is the new monthly budget; 0 removes it.
+	BudgetUSD *float64
 }
 
 // Key is a stored virtual key. The key itself is never stored, only its
@@ -53,17 +90,49 @@ type Key struct {
 	ID        int64
 	ProjectID int64
 	// Project is the project name. Reads fill it in; CreateKey ignores it.
-	Project   string
-	Name      string
-	Prefix    string
-	Hash      [32]byte
-	CreatedAt time.Time
+	Project string
+	Name    string
+	Prefix  string
+	Hash    [32]byte
+	// BudgetUSD is the key's monthly budget; 0 means none.
+	BudgetUSD float64
+	// ProjectBudgetUSD is the monthly budget of the key's project; 0 means
+	// none. Reads fill it in; CreateKey ignores it.
+	ProjectBudgetUSD float64
+	// RPM and TPM limit the key's requests and tokens per minute; 0 means
+	// no limit.
+	RPM, TPM int64
+	// CacheMode is exact or off; empty follows the configuration.
+	CacheMode string
+	// RedactionMode is off, mask, block or alert; empty follows the
+	// configuration.
+	RedactionMode string
+	CreatedAt     time.Time
 	// RevokedAt is zero while the key is active.
 	RevokedAt time.Time
 }
 
 // Revoked reports whether the key is revoked.
 func (k Key) Revoked() bool { return !k.RevokedAt.IsZero() }
+
+// KeyUpdate lists the settings of a key to change; nil fields stay as they
+// are, and 0 removes a limit.
+type KeyUpdate struct {
+	BudgetUSD *float64
+	RPM, TPM  *int64
+	// CacheMode and RedactionMode "" follow the configuration.
+	CacheMode, RedactionMode *string
+}
+
+// KeySpend is what a key spent in a period.
+type KeySpend struct {
+	KeyID, ProjectID int64
+	USD              float64
+}
+
+// Period returns the calendar month in UTC that spend at t counts
+// towards, such as "2026-09".
+func Period(t time.Time) string { return t.UTC().Format("2006-01") }
 
 // Request is the metadata of one gateway request. It never holds prompts,
 // responses or keys.
@@ -88,7 +157,30 @@ type Request struct {
 	CostUSD       *float64
 	SavingsUSD    float64
 	SavingsMethod string // empty when there are no savings
+	// CacheStatus is hit, miss or bypass; empty when the request was
+	// rejected before the exact cache.
+	CacheStatus string
+	// Redactions counts what redaction found, by type; nil when nothing.
+	Redactions map[string]int
 }
+
+// CacheEntry is a response in the exact cache.
+type CacheEntry struct {
+	// Hash identifies the request that the response answers.
+	Hash []byte
+	// Ciphertext is the response body, sealed so that only the gateway can
+	// read it.
+	Ciphertext  []byte
+	ContentType string
+	// CostUSD is the cost of the request that got the response; nil when
+	// the model was unpriced.
+	CostUSD   *float64
+	CreatedAt time.Time
+	ExpiresAt time.Time
+}
+
+// Size is the size of the entry that counts towards the cache's limit.
+func (e CacheEntry) Size() int64 { return int64(len(e.Ciphertext)) }
 
 // Tokens is the token usage of a request. Input counts every prompt token,
 // including CacheRead and CacheWrite; Output includes Reasoning.

@@ -168,21 +168,87 @@ func (s *SQLite) EnsureProject(ctx context.Context, name string) (Project, error
 		ON CONFLICT (name) DO NOTHING`, name, time.Now().UnixMilli()); err != nil {
 		return Project{}, fmt.Errorf("create project: %w", err)
 	}
-	var p Project
-	var created int64
-	err := s.db.QueryRowContext(ctx, `SELECT id, name, created_at FROM projects WHERE name = ?`, name).
-		Scan(&p.ID, &p.Name, &created)
+	p, err := s.projectWhere(ctx, name)
 	if err != nil {
 		return Project{}, fmt.Errorf("read project: %w", err)
 	}
+	return p, nil
+}
+
+const projectColumns = `SELECT id, name, monthly_budget_usd, created_at FROM projects`
+
+func (s *SQLite) projectWhere(ctx context.Context, name string) (Project, error) {
+	p, err := scanProject(s.db.QueryRowContext(ctx, projectColumns+" WHERE name = ?", name))
+	if errors.Is(err, sql.ErrNoRows) {
+		return Project{}, ErrNotFound
+	}
+	return p, err
+}
+
+func scanProject(row interface{ Scan(...any) error }) (Project, error) {
+	var p Project
+	var budget sql.NullFloat64
+	var created int64
+	if err := row.Scan(&p.ID, &p.Name, &budget, &created); err != nil {
+		return Project{}, err
+	}
+	p.BudgetUSD = budget.Float64
 	p.CreatedAt = time.UnixMilli(created).UTC()
 	return p, nil
 }
 
+// ListProjects implements Store.
+func (s *SQLite) ListProjects(ctx context.Context) ([]Project, error) {
+	rows, err := s.db.QueryContext(ctx, projectColumns+" ORDER BY name")
+	if err != nil {
+		return nil, fmt.Errorf("list projects: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	var ps []Project
+	for rows.Next() {
+		p, err := scanProject(rows)
+		if err != nil {
+			return nil, fmt.Errorf("list projects: %w", err)
+		}
+		ps = append(ps, p)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("list projects: %w", err)
+	}
+	return ps, nil
+}
+
+// UpdateProject implements Store.
+func (s *SQLite) UpdateProject(ctx context.Context, name string, u ProjectUpdate) (Project, error) {
+	if u.BudgetUSD != nil {
+		if _, err := s.db.ExecContext(ctx, `UPDATE projects SET monthly_budget_usd = ? WHERE name = ?`,
+			nullIfZero(*u.BudgetUSD), name); err != nil {
+			return Project{}, fmt.Errorf("update project: %w", err)
+		}
+	}
+	p, err := s.projectWhere(ctx, name)
+	if err != nil && !errors.Is(err, ErrNotFound) {
+		return Project{}, fmt.Errorf("read project: %w", err)
+	}
+	return p, err
+}
+
+// nullIfZero stores the zero value, which means "no limit" or "the
+// default", as NULL.
+func nullIfZero[T int64 | float64 | string](v T) any {
+	var zero T
+	if v == zero {
+		return nil
+	}
+	return v
+}
+
 // CreateKey implements Store.
 func (s *SQLite) CreateKey(ctx context.Context, k Key) (Key, error) {
-	res, err := s.db.ExecContext(ctx, `INSERT INTO virtual_keys (project_id, name, prefix, key_hash, created_at)
-		VALUES (?, ?, ?, ?, ?)`, k.ProjectID, k.Name, k.Prefix, k.Hash[:], k.CreatedAt.UnixMilli())
+	res, err := s.db.ExecContext(ctx, `INSERT INTO virtual_keys (project_id, name, prefix, key_hash,
+		monthly_budget_usd, rpm, tpm, cache_mode, redaction_mode, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		k.ProjectID, k.Name, k.Prefix, k.Hash[:], nullIfZero(k.BudgetUSD), nullIfZero(k.RPM), nullIfZero(k.TPM),
+		nullIfZero(k.CacheMode), nullIfZero(k.RedactionMode), k.CreatedAt.UnixMilli())
 	var se *sqlite.Error
 	if errors.As(err, &se) && se.Code() == sqlite3.SQLITE_CONSTRAINT_UNIQUE {
 		return Key{}, fmt.Errorf("create key: prefix %s: %w", k.Prefix, ErrExists)
@@ -202,7 +268,8 @@ func (s *SQLite) KeyByPrefix(ctx context.Context, prefix string) (Key, error) {
 	return s.keyWhere(ctx, "k.prefix = ?", prefix)
 }
 
-const keyColumns = `SELECT k.id, k.project_id, p.name, k.name, k.prefix, k.key_hash, k.created_at, k.revoked_at
+const keyColumns = `SELECT k.id, k.project_id, p.name, k.name, k.prefix, k.key_hash, k.monthly_budget_usd,
+	p.monthly_budget_usd, k.rpm, k.tpm, k.cache_mode, k.redaction_mode, k.created_at, k.revoked_at
 	FROM virtual_keys k JOIN projects p ON p.id = k.project_id`
 
 func (s *SQLite) keyWhere(ctx context.Context, where string, arg any) (Key, error) {
@@ -240,15 +307,20 @@ func (s *SQLite) ListKeys(ctx context.Context) ([]Key, error) {
 func scanKey(row interface{ Scan(...any) error }) (Key, error) {
 	var k Key
 	var hash []byte
+	var budget, projectBudget sql.NullFloat64
+	var rpm, tpm, revoked sql.NullInt64
+	var cacheMode, redactionMode sql.NullString
 	var created int64
-	var revoked sql.NullInt64
-	if err := row.Scan(&k.ID, &k.ProjectID, &k.Project, &k.Name, &k.Prefix, &hash, &created, &revoked); err != nil {
+	if err := row.Scan(&k.ID, &k.ProjectID, &k.Project, &k.Name, &k.Prefix, &hash, &budget, &projectBudget,
+		&rpm, &tpm, &cacheMode, &redactionMode, &created, &revoked); err != nil {
 		return Key{}, err
 	}
 	if len(hash) != len(k.Hash) {
 		return Key{}, fmt.Errorf("key %s has a %d-byte hash", k.Prefix, len(hash))
 	}
 	copy(k.Hash[:], hash)
+	k.BudgetUSD, k.ProjectBudgetUSD = budget.Float64, projectBudget.Float64
+	k.RPM, k.TPM, k.CacheMode, k.RedactionMode = rpm.Int64, tpm.Int64, cacheMode.String, redactionMode.String
 	k.CreatedAt = time.UnixMilli(created).UTC()
 	if revoked.Valid {
 		k.RevokedAt = time.UnixMilli(revoked.Int64).UTC()
@@ -265,13 +337,58 @@ func (s *SQLite) RevokeKey(ctx context.Context, prefix string, at time.Time) (Ke
 	return s.KeyByPrefix(ctx, prefix)
 }
 
+// UpdateKey implements Store.
+func (s *SQLite) UpdateKey(ctx context.Context, prefix string, u KeyUpdate) (Key, error) {
+	// Each setting is a pair of arguments: whether to change it, and its value.
+	if _, err := s.db.ExecContext(ctx, `UPDATE virtual_keys SET
+		monthly_budget_usd = CASE WHEN ? THEN ? ELSE monthly_budget_usd END,
+		rpm = CASE WHEN ? THEN ? ELSE rpm END,
+		tpm = CASE WHEN ? THEN ? ELSE tpm END,
+		cache_mode = CASE WHEN ? THEN ? ELSE cache_mode END,
+		redaction_mode = CASE WHEN ? THEN ? ELSE redaction_mode END
+		WHERE prefix = ?`,
+		u.BudgetUSD != nil, optional(u.BudgetUSD), u.RPM != nil, optional(u.RPM), u.TPM != nil, optional(u.TPM),
+		u.CacheMode != nil, optional(u.CacheMode), u.RedactionMode != nil, optional(u.RedactionMode),
+		prefix); err != nil {
+		return Key{}, fmt.Errorf("update key: %w", err)
+	}
+	return s.KeyByPrefix(ctx, prefix)
+}
+
+// optional returns what to store for a setting that may be unset: NULL when
+// it's unset or zero.
+func optional[T int64 | float64 | string](v *T) any {
+	if v == nil {
+		return nil
+	}
+	return nullIfZero(*v)
+}
+
 // InsertRequests implements Store.
 func (s *SQLite) InsertRequests(ctx context.Context, rs []Request) error {
+	type month struct {
+		key    int64
+		period string
+	}
+	spend := map[month]float64{}
+	for _, r := range rs {
+		if r.CostUSD != nil && *r.CostUSD > 0 {
+			spend[month{r.KeyID, Period(r.Time)}] += *r.CostUSD
+		}
+	}
 	err := s.inTx(ctx, func(tx *sql.Tx) error {
+		for m, usd := range spend {
+			if _, err := tx.ExecContext(ctx, `INSERT INTO spend (key_id, period, spent_usd) VALUES (?, ?, ?)
+				ON CONFLICT (key_id, period) DO UPDATE SET spent_usd = spent_usd + excluded.spent_usd`,
+				m.key, m.period, usd); err != nil {
+				return err
+			}
+		}
 		stmt, err := tx.PrepareContext(ctx, `INSERT INTO requests (id, ts, key_id, project_id, api_family,
 			endpoint, provider, model, stream, status, error_type, latency_ms, ttfb_ms, input_tokens,
 			output_tokens, cache_read_tokens, cache_write_tokens, reasoning_tokens, cost_usd, savings_usd,
-			savings_method) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+			savings_method, cache_status, redactions)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
 		if err != nil {
 			return err
 		}
@@ -284,13 +401,19 @@ func (s *SQLite) InsertRequests(ctx context.Context, rs []Request) error {
 			if r.CostUSD != nil {
 				cost = *r.CostUSD
 			}
+			var redactions string
+			if len(r.Redactions) > 0 {
+				b, _ := json.Marshal(r.Redactions) // a map of counts always marshals
+				redactions = string(b)
+			}
 			tokens := [5]any{}
 			if t := r.Tokens; t != nil {
 				tokens = [5]any{t.Input, t.Output, t.CacheRead, t.CacheWrite, t.Reasoning}
 			}
 			if _, err := stmt.ExecContext(ctx, r.ID, r.Time.UnixMilli(), r.KeyID, r.ProjectID, r.APIFamily,
 				r.Endpoint, r.Provider, r.Model, r.Stream, r.Status, r.ErrorType, r.Latency.Milliseconds(), ttfb,
-				tokens[0], tokens[1], tokens[2], tokens[3], tokens[4], cost, r.SavingsUSD, r.SavingsMethod); err != nil {
+				tokens[0], tokens[1], tokens[2], tokens[3], tokens[4], cost, r.SavingsUSD, r.SavingsMethod,
+				r.CacheStatus, redactions); err != nil {
 				return err
 			}
 		}
@@ -300,6 +423,28 @@ func (s *SQLite) InsertRequests(ctx context.Context, rs []Request) error {
 		return fmt.Errorf("save requests: %w", err)
 	}
 	return nil
+}
+
+// SpendByKey implements Store.
+func (s *SQLite) SpendByKey(ctx context.Context, period string) ([]KeySpend, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT s.key_id, k.project_id, s.spent_usd FROM spend s
+		JOIN virtual_keys k ON k.id = s.key_id WHERE s.period = ? ORDER BY s.key_id`, period)
+	if err != nil {
+		return nil, fmt.Errorf("read spend: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	var spend []KeySpend
+	for rows.Next() {
+		var ks KeySpend
+		if err := rows.Scan(&ks.KeyID, &ks.ProjectID, &ks.USD); err != nil {
+			return nil, fmt.Errorf("read spend: %w", err)
+		}
+		spend = append(spend, ks)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("read spend: %w", err)
+	}
+	return spend, nil
 }
 
 // DeleteRequestsBefore implements Store.

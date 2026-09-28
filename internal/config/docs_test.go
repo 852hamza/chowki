@@ -21,7 +21,7 @@ func TestReferenceListsEverySetting(t *testing.T) {
 		}
 		// CHOWKI_SERVER_LISTEN documents the section `server.listen`.
 		path := strings.ToLower(strings.TrimPrefix(name, EnvPrefix))
-		for _, section := range []string{"server", "storage", "security", "log"} {
+		for _, section := range []string{"server", "storage", "security", "log", "defaults"} {
 			if rest, ok := strings.CutPrefix(path, section+"_"); ok {
 				path = section + "." + rest
 			}

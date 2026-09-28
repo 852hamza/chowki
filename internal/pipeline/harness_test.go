@@ -14,11 +14,16 @@ import (
 	"time"
 
 	"github.com/852hamza/chowki/internal/auth"
+	"github.com/852hamza/chowki/internal/budget"
+	"github.com/852hamza/chowki/internal/cache"
 	"github.com/852hamza/chowki/internal/catalog"
 	"github.com/852hamza/chowki/internal/config"
 	"github.com/852hamza/chowki/internal/netguard"
 	"github.com/852hamza/chowki/internal/pipeline"
 	"github.com/852hamza/chowki/internal/providers"
+	"github.com/852hamza/chowki/internal/ratelimit"
+	"github.com/852hamza/chowki/internal/redact"
+	"github.com/852hamza/chowki/internal/secretbox"
 	"github.com/852hamza/chowki/internal/server"
 	"github.com/852hamza/chowki/internal/store"
 	"github.com/852hamza/chowki/internal/testutil"
@@ -35,7 +40,7 @@ const (
 const testCatalog = `{"models":[
  {"provider":"openai","model":"gpt-test","price":{"input":2,"output":10,"cache_read":0.2,"cache_write":2.5},
   "source":"https://example.com/pricing","updated":"2026-09-27"},
- {"provider":"anthropic","model":"claude-test","price":{"input":4,"output":20,"cache_read":0.2,"cache_write":5,
+ {"provider":"anthropic","model":"claude-test","min_cacheable_tokens":512,"price":{"input":4,"output":20,"cache_read":0.2,"cache_write":5,
   "cache_write_1h":8},"source":"https://example.com/pricing","updated":"2026-09-27"}]}`
 
 // recordingStore captures the request records that the gateway saves.
@@ -76,6 +81,7 @@ type harness struct {
 	gw        *pipeline.Gateway
 	url       string
 	key       string // a valid virtual key
+	dbPath    string
 	st        *recordingStore
 	logs      *syncBuffer
 	openai    *testutil.Server
@@ -90,12 +96,13 @@ func newHarness(t testing.TB, oa, an testutil.Config, opts ...option) *harness {
 	oa.APIKey, an.APIKey = openAIKey, anthropicKey
 	h := &harness{t: t, openai: testutil.NewOpenAI(t, oa), anthropic: testutil.NewAnthropic(t, an), logs: &syncBuffer{}}
 
-	sq, err := store.OpenSQLite(t.Context(), "file:"+filepath.Join(t.TempDir(), "chowki.db"))
+	h.dbPath = filepath.Join(t.TempDir(), "chowki.db")
+	sq, err := store.OpenSQLite(t.Context(), "file:"+h.dbPath)
 	if err != nil {
 		t.Fatal(err)
 	}
 	h.st = &recordingStore{SQLite: sq}
-	if h.key, _, err = auth.Create(t.Context(), sq, "default", "test", time.Now()); err != nil {
+	if h.key, _, err = auth.Create(t.Context(), sq, "default", store.Key{Name: "test"}, time.Now()); err != nil {
 		t.Fatal(err)
 	}
 	cat, err := catalog.Load([]byte(testCatalog))
@@ -103,7 +110,13 @@ func newHarness(t testing.TB, oa, an testutil.Config, opts ...option) *harness {
 		t.Fatal(err)
 	}
 	logger := slog.New(slog.NewJSONHandler(h.logs, nil))
-	h.gw = &pipeline.Gateway{Store: h.st, Catalog: cat, Logger: logger, MaxBody: 1 << 20, Timeout: 10 * time.Second}
+	budgets, err := budget.Load(t.Context(), sq, time.Now(), logger)
+	if err != nil {
+		t.Fatal(err)
+	}
+	h.gw = &pipeline.Gateway{Store: h.st, Redactor: redact.New([]byte("redaction secret"), redact.ModeMask),
+		Cache: h.openCache(logger), Limits: ratelimit.New(), Budgets: budgets, Catalog: cat, Logger: logger,
+		MaxBody: 1 << 20, Timeout: 10 * time.Second}
 	cfgs := []config.Provider{
 		{Name: "openai", Type: config.TypeOpenAI, BaseURL: h.openai.URL + "/v1", APIKeyEnv: "OPENAI_API_KEY", APIKey: openAIKey},
 		{Name: "anthropic", Type: config.TypeAnthropic, BaseURL: h.anthropic.URL, APIKeyEnv: "ANTHROPIC_API_KEY",
@@ -126,13 +139,49 @@ func newHarness(t testing.TB, oa, an testutil.Config, opts ...option) *harness {
 	return h
 }
 
-// flush saves the queued request records. The harness takes no more
-// requests after it.
+// openCache returns an exact cache on the harness's database, off unless a
+// key or a request turns it on.
+func (h *harness) openCache(logger *slog.Logger) *cache.Cache {
+	h.t.Helper()
+	box, err := secretbox.New(bytes.Repeat([]byte{7}, secretbox.KeySize), "cache")
+	if err != nil {
+		h.t.Fatal(err)
+	}
+	c, err := cache.New(context.Background(), h.st, box, cache.Options{Default: cache.ModeOff, TTL: time.Hour,
+		MaxBytes: 1 << 20}, logger)
+	if err != nil {
+		h.t.Fatal(err)
+	}
+	return c
+}
+
+// flush saves the queued request records and cache entries. The harness
+// takes no more requests after it.
 func (h *harness) flush() {
 	if !h.closed {
 		h.closed = true
 		h.gw.Requests.Close()
+		h.gw.Cache.Close()
 	}
+}
+
+// restart replaces the gateway with a new one on the same database, as a
+// restart of the process would.
+func (h *harness) restart() {
+	h.t.Helper()
+	h.flush()
+	gw := *h.gw
+	gw.Limits = ratelimit.New()
+	gw.Cache = h.openCache(gw.Logger)
+	var err error
+	if gw.Budgets, err = budget.Load(context.Background(), h.st, time.Now(), gw.Logger); err != nil {
+		h.t.Fatal(err)
+	}
+	gw.Requests = store.NewRequestLog(h.st, gw.Logger)
+	h.gw, h.closed = &gw, false
+	srv := httptest.NewServer(server.Routes(h.gw))
+	h.t.Cleanup(srv.Close)
+	h.url = srv.URL
 }
 
 // records returns the saved request records.

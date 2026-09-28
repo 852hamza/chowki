@@ -2,10 +2,12 @@ package main
 
 import (
 	"bytes"
+	"database/sql"
 	"errors"
 	"regexp"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/852hamza/chowki/internal/auth"
 	"github.com/852hamza/chowki/internal/store"
@@ -96,6 +98,19 @@ func TestKeyErrors(t *testing.T) {
 		{[]string{"key", "list", "extra"}, exitUsage, ""},
 		{[]string{"key", "revoke"}, exitUsage, "Usage:"},
 		{[]string{"key", "revoke", "chowki_nope1"}, exitError, `no virtual key has the prefix "chowki_nope1"`},
+		{[]string{"key", "create", "--name", "a", "--budget-usd", "-1"}, exitUsage, "must be an amount of 0 or more"},
+		{[]string{"key", "create", "--name", "a", "--budget-usd", "NaN"}, exitUsage, "must be an amount of 0 or more"},
+		{[]string{"key", "create", "--name", "a", "--budget-usd", "ten"}, exitUsage, "invalid value"},
+		{[]string{"key", "update", "chowki_nope1"}, exitUsage, "nothing to change"},
+		{[]string{"key", "create", "--name", "a", "--rpm", "-1"}, exitUsage, "--rpm must be 0 or more"},
+		{[]string{"key", "create", "--name", "a", "--tpm", "1.5"}, exitUsage, "invalid value"},
+		{[]string{"key", "update", "--tpm", "-5", "chowki_nope1"}, exitUsage, "--tpm must be 0 or more"},
+		{[]string{"key", "create", "--name", "a", "--cache", "always"}, exitUsage, "--cache must be exact, off or default"},
+		{[]string{"key", "create", "--name", "a", "--redaction", "hide"}, exitUsage, "--redaction must be mask, block"},
+		{[]string{"key", "update", "--budget-usd", "5"}, exitUsage, "Usage:"},
+		{[]string{"key", "update", "--budget-usd", "Inf", "chowki_nope1"}, exitUsage, "must be an amount"},
+		{[]string{"key", "update", "--budget-usd", "5", "chowki_nope1"}, exitError,
+			`no virtual key has the prefix "chowki_nope1"`},
 		{[]string{"key", "list", "--config", "missing.yaml"}, exitError, "read config"},
 	}
 	for _, tt := range tests {
@@ -110,4 +125,114 @@ func TestKeyErrors(t *testing.T) {
 	if out := runOK(t, "key", "help"); !strings.Contains(out, "chowki key create") {
 		t.Errorf("key help = %q", out)
 	}
+}
+
+func TestKeyBudgets(t *testing.T) {
+	initDir(t)
+	out := runOK(t, "key", "create", "--name", "alice", "--budget-usd", "50")
+	m := printedKeyRE.FindStringSubmatch(out)
+	if m == nil || !strings.Contains(out, "\nSettings:\n  Monthly budget:       $50.00\n") {
+		t.Fatalf("create output = %q", out)
+	}
+	prefix := m[1][:auth.PrefixLen]
+
+	st, err := store.OpenSQLite(t.Context(), "file:data/chowki.db")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = st.Close() }()
+	k, err := st.KeyByPrefix(t.Context(), prefix)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cost := 12.345
+	if err := st.InsertRequests(t.Context(), []store.Request{{ID: "r1", Time: time.Now(), KeyID: k.ID,
+		ProjectID: k.ProjectID, CostUSD: &cost}}); err != nil {
+		t.Fatal(err)
+	}
+	list := runOK(t, "key", "list")
+	for _, want := range []string{"SPENT " + store.Period(time.Now()), "BUDGET", "$12.35", "$50.00"} {
+		if !strings.Contains(list, want) {
+			t.Errorf("list doesn't contain %q:\n%s", want, list)
+		}
+	}
+
+	if out := runOK(t, "key", "update", "--budget-usd", "75.5", m[1]); !strings.Contains(out,
+		"Updated the settings of virtual key "+prefix+` ("alice"):`+"\n  Monthly budget:       $75.50\n") {
+		t.Errorf("update output = %q", out)
+	}
+	if out := runOK(t, "key", "update", "--budget-usd", "0", prefix); !strings.Contains(out,
+		"Monthly budget:       none") {
+		t.Errorf("update to 0 output = %q", out)
+	}
+	if list := runOK(t, "key", "list"); !strings.Contains(list, "none") {
+		t.Errorf("list after removing the budget:\n%s", list)
+	}
+	if n := countAudit(t, "key.update", prefix); n != 2 {
+		t.Errorf("audit log has %d key.update entries, want 2", n)
+	}
+}
+
+func TestKeyRateLimits(t *testing.T) {
+	initDir(t)
+	out := runOK(t, "key", "create", "--name", "ci-bot", "--rpm", "60", "--tpm", "100000")
+	m := printedKeyRE.FindStringSubmatch(out)
+	if m == nil || !strings.Contains(out, "  Monthly budget:       none\n  Requests per minute:  60\n"+
+		"  Tokens per minute:    100000\n") {
+		t.Fatalf("create output = %q", out)
+	}
+	prefix := m[1][:auth.PrefixLen]
+	list := runOK(t, "key", "list")
+	if fields := strings.Fields(strings.Split(list, "\n")[1]); len(fields) < 7 || fields[5] != "60" ||
+		fields[6] != "100000" || !strings.Contains(list, "RPM") {
+		t.Errorf("list doesn't show 60 RPM and 100000 TPM:\n%s", list)
+	}
+	if out := runOK(t, "key", "update", "--rpm", "0", "--tpm", "5000", prefix); !strings.Contains(out,
+		"  Requests per minute:  none\n  Tokens per minute:    5000\n") {
+		t.Errorf("update output = %q", out)
+	}
+}
+
+func TestKeyCacheMode(t *testing.T) {
+	initDir(t)
+	out := runOK(t, "key", "create", "--name", "bot", "--cache", "exact")
+	m := printedKeyRE.FindStringSubmatch(out)
+	if m == nil || !strings.Contains(out, "  Exact cache:          exact\n") {
+		t.Fatalf("create output = %q", out)
+	}
+	prefix := m[1][:auth.PrefixLen]
+	if fields := strings.Fields(strings.Split(runOK(t, "key", "list"), "\n")[1]); len(fields) < 8 || fields[7] != "exact" {
+		t.Errorf("list row = %q; want the cache mode exact", fields)
+	}
+	if out := runOK(t, "key", "update", "--cache", "default", prefix); !strings.Contains(out,
+		"  Exact cache:          default\n") {
+		t.Errorf("update output = %q", out)
+	}
+	if out := runOK(t, "key", "update", "--redaction", "block", prefix); !strings.Contains(out,
+		"  Redaction:            block\n") {
+		t.Errorf("update output = %q", out)
+	}
+	if fields := strings.Fields(strings.Split(runOK(t, "key", "list"), "\n")[1]); len(fields) < 9 || fields[8] != "block" {
+		t.Errorf("list row = %q; want the redaction mode block", fields)
+	}
+	// A key without settings doesn't print them.
+	if out := runOK(t, "key", "create", "--name", "plain"); strings.Contains(out, "Settings:") {
+		t.Errorf("create output of a key without settings = %q", out)
+	}
+}
+
+// countAudit counts the audit log entries of an action on a target.
+func countAudit(t *testing.T, action, target string) int {
+	t.Helper()
+	db, err := sql.Open("sqlite", "file:data/chowki.db")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+	var n int
+	if err := db.QueryRowContext(t.Context(), `SELECT count(*) FROM audit_log WHERE action = ? AND target = ?`,
+		action, target).Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	return n
 }

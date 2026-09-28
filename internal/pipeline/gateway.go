@@ -10,16 +10,23 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"maps"
 	"mime"
 	"net/http"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/852hamza/chowki/internal/auth"
+	"github.com/852hamza/chowki/internal/budget"
+	"github.com/852hamza/chowki/internal/cache"
 	"github.com/852hamza/chowki/internal/catalog"
 	"github.com/852hamza/chowki/internal/config"
+	"github.com/852hamza/chowki/internal/promptcache"
 	"github.com/852hamza/chowki/internal/providers"
+	"github.com/852hamza/chowki/internal/ratelimit"
+	"github.com/852hamza/chowki/internal/redact"
 	"github.com/852hamza/chowki/internal/sse"
 	"github.com/852hamza/chowki/internal/store"
 	"github.com/852hamza/chowki/internal/usage"
@@ -30,20 +37,34 @@ const (
 	RequestIDHeader = "x-chowki-request-id"
 	// CostHeader carries the cost of a priced, non-streaming request in USD.
 	CostHeader = "x-chowki-cost-usd"
+	// CacheHeader says whether the exact cache answered a request: hit, miss
+	// or bypass. In a request, "on" or "off" overrides the key's setting.
+	CacheHeader = "x-chowki-cache"
+	// RedactionsHeader counts the secrets and personal data that redaction
+	// found in a request.
+	RedactionsHeader = "x-chowki-redactions"
 )
 
 // maxResponse limits a non-streaming response that the gateway reads.
 const maxResponse = 64 << 20
 
 // Gateway serves the API endpoints: it authenticates each request with a
-// virtual key, routes it to a provider, relays the response and records
-// the request's metadata, usage and cost.
+// virtual key, answers it from the exact cache or routes it to a provider
+// within the key's rate limits and budgets, relays the response and
+// records the request's metadata, usage and cost.
 type Gateway struct {
-	Store     store.Store
-	Requests  *store.RequestLog
-	Providers map[string]*providers.Provider
-	Catalog   *catalog.Catalog
-	Logger    *slog.Logger
+	Store    store.Store
+	Requests *store.RequestLog
+	Redactor *redact.Redactor
+	Cache    *cache.Cache
+	Limits   *ratelimit.Limiter
+	Budgets  *budget.Tracker
+	// PromptCache marks repeated Anthropic prompt prefixes for caching;
+	// nil leaves requests as clients send them.
+	PromptCache *promptcache.Optimizer
+	Providers   map[string]*providers.Provider
+	Catalog     *catalog.Catalog
+	Logger      *slog.Logger
 	// MaxBody is the largest request body, in bytes.
 	MaxBody int64
 	// Timeout limits each upstream call, streams included.
@@ -79,6 +100,14 @@ type call struct {
 	stream   bool
 	errType  string
 	report   usage.Report
+	tokens   *ratelimit.Ticket // nil without a limit of tokens per minute
+	ticket   *budget.Ticket    // nil until the budgets admit the request
+	cache    string            // the cache status; empty before the cache
+	cacheKey [32]byte          // for a miss, where relayBody stores the response
+	savedUSD *float64          // for a hit, what the original request cost
+	marked   bool              // the prompt-cache optimizer added a breakpoint
+	// redactions counts what redaction found, by type, never the values.
+	redactions map[string]int
 }
 
 func (g *Gateway) serve(w http.ResponseWriter, r *http.Request, f usage.Family) {
@@ -99,6 +128,11 @@ func (g *Gateway) handle(ctx context.Context, c *call, r *http.Request) *apiErro
 	if e := g.authenticate(ctx, c, r); e != nil {
 		return e
 	}
+	// Count the request before reading its body, too, so that a key over
+	// its limit can't make the gateway read large bodies.
+	if err := g.Limits.AllowRequest(c.key.ID, c.key.RPM, time.Now()); err != nil {
+		return rateLimited(c, err)
+	}
 
 	body, err := io.ReadAll(http.MaxBytesReader(c.w, r.Body, g.MaxBody))
 	var tooLarge *http.MaxBytesError
@@ -117,6 +151,9 @@ func (g *Gateway) handle(ctx context.Context, c *call, r *http.Request) *apiErro
 	if e != nil {
 		return e
 	}
+	if body, obj, e = g.redact(c, body, obj); e != nil {
+		return e
+	}
 
 	p, model, e := g.route(c.family, req.model)
 	if e != nil {
@@ -127,6 +164,10 @@ func (g *Gateway) handle(ctx context.Context, c *call, r *http.Request) *apiErro
 		g.Logger.Error("provider key isn't set", "request_id", c.id, "provider", p.Name, "variable", env)
 		return &apiError{http.StatusInternalServerError, codeProviderKeyMissing,
 			fmt.Sprintf("The provider %q has no key; the gateway's admin must set %s.", p.Name, env)}
+	}
+
+	if e := g.useCache(ctx, c, r, body); e != nil || c.cache == cache.StatusHit {
+		return e
 	}
 
 	// Change the body only where needed; everything else reaches the
@@ -142,8 +183,17 @@ func (g *Gateway) handle(ctx context.Context, c *call, r *http.Request) *apiErro
 		req.streamOptions["include_usage"] = json.RawMessage("true")
 		edits["stream_options"], _ = json.Marshal(req.streamOptions) // raw JSON values always marshal
 	}
+	if c.family == usage.Anthropic && g.PromptCache != nil {
+		if field, value, ok := g.PromptCache.Breakpoint(g.prefix(c, obj, body), time.Now()); ok {
+			edits[field], c.marked = value, true
+		}
+	}
 	if len(edits) > 0 {
 		body = obj.with(edits)
+	}
+
+	if e := g.admit(c, body); e != nil {
+		return e
 	}
 
 	upstreamCtx, cancel := context.WithTimeout(ctx, g.Timeout)
@@ -240,6 +290,140 @@ func readRequest(f usage.Family, o *object) (request, *apiError) {
 	return req, nil
 }
 
+// redact applies the key's redaction mode to the text of a request: mask
+// replaces the secrets and personal data that the detectors find with
+// placeholders, block rejects the request, and alert forwards it and logs
+// what was found. Records and logs count the findings by type; they never
+// hold the values.
+func (g *Gateway) redact(c *call, body []byte, obj *object) ([]byte, *object, *apiError) {
+	mode := g.Redactor.Mode(c.key.RedactionMode)
+	if mode == redact.ModeOff {
+		return body, obj, nil
+	}
+	out, counts, err := g.Redactor.Request(string(c.family), body, mode == redact.ModeMask)
+	if err != nil {
+		return nil, nil, &apiError{http.StatusBadRequest, codeInvalidRequest, "The request body couldn't be read."}
+	}
+	if len(counts) == 0 {
+		return body, obj, nil
+	}
+	c.redactions = counts
+	total := 0
+	for _, n := range counts {
+		total += n
+	}
+	c.w.Header().Set(RedactionsHeader, strconv.Itoa(total))
+	switch mode {
+	case redact.ModeBlock:
+		return nil, nil, &apiError{http.StatusBadRequest, codeSensitiveData, fmt.Sprintf(
+			"The request contains data that this key may not send: %s. Remove it and send the request again.",
+			strings.Join(slices.Sorted(maps.Keys(counts)), ", "))}
+	case redact.ModeAlert:
+		g.Logger.Warn("sensitive data in a request", "request_id", c.id, "key_id", c.key.ID, "redactions", counts)
+		return body, obj, nil
+	}
+	if obj, err = parseObject(out); err != nil { // only string contents changed, so it parses
+		return nil, nil, &apiError{http.StatusInternalServerError, codeInternal, "The gateway couldn't redact the request."}
+	}
+	return out, obj, nil
+}
+
+// useCache answers a request from the exact cache when it can, which also
+// spares it the token limit and the budgets: a hit costs nothing. It sets
+// the request's cache status and its header; for a miss, relayBody stores
+// the response. Only non-streaming requests use the cache.
+func (g *Gateway) useCache(ctx context.Context, c *call, r *http.Request, body []byte) *apiError {
+	header := strings.ToLower(strings.TrimSpace(r.Header.Get(CacheHeader)))
+	if header != "" && header != "on" && header != "off" {
+		return &apiError{http.StatusBadRequest, codeInvalidRequest, `The x-chowki-cache header must be "on" or "off".`}
+	}
+	c.cache = cache.StatusBypass
+	var hit cache.Response
+	if !c.stream && g.Cache.On(c.key.CacheMode, header) {
+		key, err := cache.Key(cache.Request{Family: string(c.family), Endpoint: endpointPath(c.family),
+			Provider: c.provider.Name, Model: c.model, Project: c.key.ProjectID,
+			Headers: providers.Forwarded(r.Header), Body: body})
+		if err == nil { // the body parsed already, so it always does
+			var ok bool
+			if hit, ok = g.Cache.Get(ctx, key, time.Now()); ok {
+				c.cache, c.savedUSD = cache.StatusHit, hit.CostUSD
+			} else {
+				c.cache, c.cacheKey = cache.StatusMiss, key
+			}
+		}
+	}
+	c.w.Header().Set(CacheHeader, c.cache)
+	if c.cache == cache.StatusHit {
+		c.w.Header().Set("Content-Type", hit.ContentType)
+		c.w.Header().Set(CostHeader, fmt.Sprintf("%.8f", 0.0))
+		c.w.WriteHeader(http.StatusOK)
+		if _, err := c.w.Write(hit.Body); err != nil {
+			c.errType = "client_closed"
+		}
+	}
+	return nil
+}
+
+// prefix returns what the prompt-cache optimizer reads from an Anthropic
+// request.
+func (g *Gateway) prefix(c *call, obj *object, body []byte) promptcache.Request {
+	r := promptcache.Request{Provider: c.provider.Name, Model: c.model, Body: body}
+	if m, ok := g.Catalog.Find(c.provider.Name, c.model); ok {
+		r.MinTokens = m.MinCacheableTokens
+	}
+	r.System, _ = obj.raw("system")
+	r.Tools, _ = obj.raw("tools")
+	r.ToolChoice, _ = obj.raw("tool_choice")
+	r.Thinking, _ = obj.raw("thinking")
+	return r
+}
+
+// admit checks the key's limit of tokens per minute and the budgets of the
+// key and its project. The request holds its estimated input tokens and
+// their cost until finish settles what it actually used, so that parallel
+// requests can't all slip under a limit that is nearly reached.
+func (g *Gateway) admit(c *call, body []byte) *apiError {
+	k := c.key
+	hasBudget := k.BudgetUSD > 0 || k.ProjectBudgetUSD > 0
+	var tokens int64
+	if k.TPM > 0 || hasBudget {
+		tokens = usage.EstimateTokens(body)
+	}
+	tk, err := g.Limits.TakeTokens(k.ID, k.TPM, tokens, time.Now())
+	if err != nil {
+		return rateLimited(c, err)
+	}
+	c.tokens = tk
+
+	var estimate float64
+	if hasBudget {
+		if m, ok := g.Catalog.Find(c.provider.Name, c.model); ok {
+			estimate = float64(tokens) * m.PriceFor(tokens).Input / 1e6
+		}
+	}
+	t, err := g.Budgets.Admit(k, estimate, c.start)
+	if err != nil {
+		// Retrying can't help until the month ends or the budget is raised.
+		// The official OpenAI and Anthropic SDKs obey this header.
+		c.w.Header().Set("x-should-retry", "false")
+		return &apiError{http.StatusTooManyRequests, codeBudgetExceeded, err.Error()}
+	}
+	c.ticket = t
+	return nil
+}
+
+// rateLimited answers a request over a rate limit, with the wait in the
+// headers that clients use: Retry-After, and retry-after-ms, which the
+// official OpenAI and Anthropic SDKs prefer for its precision.
+func rateLimited(c *call, err error) *apiError {
+	var e *ratelimit.ExceededError
+	if errors.As(err, &e) {
+		c.w.Header().Set("Retry-After", strconv.FormatInt(int64(e.RetryAfter()/time.Second), 10))
+		c.w.Header().Set("retry-after-ms", strconv.FormatInt(max(e.Wait.Milliseconds(), 1), 10))
+	}
+	return &apiError{http.StatusTooManyRequests, codeRateLimited, err.Error()}
+}
+
 // route picks the provider for a model: "<provider>/<model>" names it;
 // otherwise the provider that the catalog lists for the model, or the only
 // provider of the API family.
@@ -303,11 +487,12 @@ func (g *Gateway) relayBody(c *call, resp *http.Response) *apiError {
 			fmt.Sprintf("The response of the provider %q couldn't be read.", c.provider.Name)}
 	}
 	copyHeaders(c.w.Header(), resp.Header)
+	var cost usage.Cost
 	if resp.StatusCode == http.StatusOK {
 		if rep, err := usage.ParseResponse(c.family, data); err == nil {
 			c.report = rep
 		}
-		if cost := g.cost(c); cost.USD != nil {
+		if cost = g.cost(c); cost.USD != nil {
 			c.w.Header().Set(CostHeader, fmt.Sprintf("%.8f", *cost.USD))
 		}
 	} else {
@@ -316,6 +501,10 @@ func (g *Gateway) relayBody(c *call, resp *http.Response) *apiError {
 	c.w.WriteHeader(resp.StatusCode)
 	if _, err := c.w.Write(data); err != nil {
 		c.errType = "client_closed"
+	}
+	if c.cache == cache.StatusMiss && resp.StatusCode == http.StatusOK {
+		g.Cache.Put(c.cacheKey, cache.Response{Body: data, ContentType: resp.Header.Get("Content-Type"),
+			CostUSD: cost.USD}, time.Now())
 	}
 	return nil
 }
@@ -422,11 +611,34 @@ func (g *Gateway) finish(c *call) {
 			CacheWrite: u.CacheWrite, Reasoning: u.Reasoning}
 	}
 	cost := g.cost(c)
+	if c.cache == cache.StatusHit {
+		cost = hitCost(c.savedUSD)
+	}
 	rec.CostUSD, rec.SavingsUSD, rec.SavingsMethod = cost.USD, cost.SavingsUSD, cost.SavingsMethod
+	rec.CacheStatus, rec.Redactions = c.cache, c.redactions
 	g.Requests.Add(rec)
+	var spent float64 // an unpriced request counts as free: its cost is unknown
+	if cost.USD != nil {
+		spent = *cost.USD
+	}
+	g.Budgets.Settle(c.ticket, spent, time.Now())
+	var used int64 // 0 without usage: a failed request returns its tokens
+	if u := c.report.Usage; u != nil {
+		used = u.Input + u.Output
+	}
+	g.Limits.Settle(c.tokens, used, time.Now())
 
 	attrs = append(attrs, "key_id", c.key.ID, "provider", rec.Provider, "model", rec.Model, "stream", c.stream,
 		"ttfb_ms", ttfb.Milliseconds())
+	if c.cache != "" {
+		attrs = append(attrs, "cache", c.cache)
+	}
+	if c.marked {
+		attrs = append(attrs, "prompt_cache_breakpoint", true)
+	}
+	if len(c.redactions) > 0 {
+		attrs = append(attrs, "redactions", c.redactions)
+	}
 	if t := rec.Tokens; t != nil {
 		attrs = append(attrs, "input_tokens", t.Input, "output_tokens", t.Output, "cache_read_tokens", t.CacheRead,
 			"cache_write_tokens", t.CacheWrite)
@@ -437,6 +649,17 @@ func (g *Gateway) finish(c *call) {
 		attrs = append(attrs, "unpriced", cost.Reason)
 	}
 	g.Logger.Info("request", attrs...)
+}
+
+// hitCost is the cost of an answer from the exact cache: nothing, and it
+// saves what the original request cost, when that is known.
+func hitCost(original *float64) usage.Cost {
+	free := 0.0
+	cost := usage.Cost{USD: &free, SavingsMethod: usage.SavingsExactCache}
+	if original != nil {
+		cost.SavingsUSD = *original
+	}
+	return cost
 }
 
 func endpointPath(f usage.Family) string {
