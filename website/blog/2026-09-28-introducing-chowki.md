@@ -3,8 +3,6 @@ slug: introducing-chowki
 title: Introducing Chowki, a self-hosted AI gateway
 description: Chowki puts one checkpoint between your apps, agents and AI providers, to save tokens, keep secrets in and report honest costs.
 tags: [release]
-# Remove at the release, with the Blog link of the navbar; see docs/contributing/releasing.md.
-draft: true
 ---
 
 Most teams now send prompts to several AI providers, from apps, scripts and coding agents. The
@@ -43,8 +41,14 @@ it on your hardware.
 
 ## Try it
 
-[Send your first request](/docs/get-started/quickstart), or
-[install Chowki](/docs/get-started/install) with Docker Compose. Then
+Install the latest release on Linux or macOS:
+
+```sh
+curl -fsSL https://github.com/852hamza/chowki/raw/main/install.sh | sh
+```
+
+Then [send your first request](/docs/get-started/quickstart), or run Chowki with
+[Docker Compose](/docs/get-started/install#run-with-docker-compose). Then
 [connect your coding agent](/docs/how-to/connect-claude-code), and watch its costs in the
 dashboard.
 

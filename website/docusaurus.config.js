@@ -71,6 +71,7 @@ const config = {
         logo: {alt: 'Chowki', src: 'img/icon.svg'},
         items: [
           {type: 'docSidebar', sidebarId: 'guide', position: 'left', label: 'Guide'},
+          {to: '/blog', label: 'Blog', position: 'left'},
           {href: repoUrl, label: 'GitHub', position: 'right'},
         ],
       },
@@ -88,6 +89,8 @@ const config = {
             title: 'Project',
             items: [
               {label: 'GitHub', href: repoUrl},
+              {label: 'Releases', href: `${repoUrl}/releases`},
+              {label: 'Blog', to: '/blog'},
               {label: 'Report a bug', href: `${repoUrl}/issues`},
             ],
           },

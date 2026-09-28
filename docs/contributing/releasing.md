@@ -59,8 +59,8 @@ The archives, their checksums and SBOMs land in `dist/`.
    it; a re-run replaces the draft.
 5. The first time, GitHub may create the image's package as private: make it public in the
    package's settings, so that `docker pull` works without signing in.
-6. For the first release, publish the launch post: in `website/blog`, remove `draft: true` from the
-   post, and add the Blog link to the navbar in `website/docusaurus.config.js`.
+6. To announce the release, add a post to `website/blog`, named after its date, such as
+   `2026-10-01-chowki-0-2.md`. The Docs workflow publishes it with the site.
 
 ## Verify a release
 
