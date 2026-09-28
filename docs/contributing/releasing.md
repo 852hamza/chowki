@@ -55,6 +55,8 @@ The archives, their checksums and SBOMs land in `dist/`.
    files, and publish it.
 5. The first time, GitHub may create the image's package as private: make it public in the
    package's settings, so that `docker pull` works without signing in.
+6. For the first release, publish the launch post: in `website/blog`, remove `draft: true` from the
+   post, and add the Blog link to the navbar in `website/docusaurus.config.js`.
 
 ## Verify a release
 
