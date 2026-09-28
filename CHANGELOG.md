@@ -130,6 +130,11 @@ All notable changes to Chowki are recorded in this file. The format is based on
   `chowki restore` puts one back after checking it, and keeps the database it replaces. With `-`,
   they stream through stdout and stdin, as `docker compose exec -T` needs. `chowki serve` logs
   when it upgrades the database's schema.
+- Releases: a `v*` tag builds archives for Linux, macOS and Windows on amd64 and arm64, with the
+  licenses of every module in them, checksums and SPDX SBOMs, and container images for
+  `linux/amd64` and `linux/arm64`, all with signed build provenance, as a draft release.
+  `tools/licenses` fails the release, and CI, on a module under a license that the binary may not
+  include.
 - `make loadtest` measures the gateway's overhead at 200 requests per second on 2 CPUs, against a
   fake provider, and fails when the p99 is over 25 ms or a gateway built with `-race` reports a
   race.
