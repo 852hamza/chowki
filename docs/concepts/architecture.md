@@ -4,20 +4,17 @@ description: How Chowki handles a request, from the virtual key check to cost ac
 type: concept
 since: v0.1
 edition: community
-last_reviewed: 2026-09-27
+last_reviewed: 2026-09-28
 ---
 
 Chowki is a gateway between your applications and LLM providers. Every request passes the same
 checks, so keys, budgets, redaction and cost reports apply to all of your AI traffic in one place.
 
-> **Note:** Chowki is in early development. This page describes the design of the first release;
-> the [changelog](https://github.com/852hamza/chowki/blob/main/CHANGELOG.md) shows which parts exist.
-
 ## How it works
 
 Your applications, SDKs and coding agents change two settings: the base URL, which points at
-Chowki, and the API key, which becomes a Chowki virtual key. Chowki checks each request, forwards it
-to a provider with the provider key, streams the answer back, and records usage and cost.
+Chowki, and the API key, which becomes a Chowki virtual key. Chowki checks each request, forwards
+it to a provider with the provider key, streams the answer back, and records usage and cost.
 
 ```mermaid
 flowchart LR
@@ -49,16 +46,18 @@ Each request passes these stages in order:
 
 ```mermaid
 flowchart TD
-  A[Parse] --> B[Authenticate] --> C[Policy] --> D[Rate limit] --> E[Redact]
+  A[Authenticate] --> B[Rate limit] --> C[Parse] --> D[Policy] --> E[Redact]
   E --> F[Route] --> G[Exact cache] --> H[Token limit and budget] --> I[Prompt-cache optimizer]
   I --> J[Upstream call] --> K[Account] --> L[Persist]
 ```
 
-1. **Parse**: enforce the body size limit and detect the API family from the path.
-2. **Authenticate**: verify the virtual key and reject revoked keys.
-3. **Policy**: check the models and endpoints that the key may use.
-4. **Rate limit**: enforce the key's limit of requests per minute, before Chowki reads the request
-   body.
+1. **Authenticate**: verify the virtual key and reject revoked keys.
+2. **Rate limit**: enforce the key's limit of requests per minute. These two stages come before
+   Chowki reads the request body, so that a client without a valid key, or over its limit, can't
+   make it read large bodies.
+3. **Parse**: read the body up to the size limit, and find the model that the request names.
+4. **Policy**: check that the key may use the model. A request that it may not send is refused
+   before redaction, so its content isn't scanned.
 5. **Redact**: find secrets and personal data in the text of the request, then mask them with
    placeholders, block the request or log an alert, depending on the key's mode. See
    [Redact secrets and personal data](../how-to/redact-sensitive-data.md).
@@ -108,7 +107,8 @@ endpoint and error code.
 - **Honest numbers.** Cost and savings come from the token usage that providers report. When a
   provider reports no usage, Chowki records the tokens as unknown instead of guessing.
 - **Low overhead.** The target for Chowki's own overhead, without the provider's time, is under
-  5 ms at the median and under 25 ms at the 99th percentile.
+  5 ms at the median and under 25 ms at the 99th percentile. See
+  [Performance](../operations/performance.md) for how it's measured.
 - **Reports from daily sums.** With each batch of request records, Chowki updates sums by day, key
   and model. The dashboard and the admin API read these sums, so reports stay fast as requests
   pile up, count whole days in UTC, and outlive the retention of request records.
@@ -122,6 +122,8 @@ endpoint and error code.
 - The exact cache serves only non-streaming requests.
 - The prompt-cache optimizer works only with Anthropic. OpenAI caches prompts automatically, and
   Chowki keeps requests byte-stable so that this caching keeps working.
+- The optimizer changes only requests sent in the Anthropic format. OpenAI-format requests that
+  Chowki translates for Anthropic models aren't marked.
 
 ## Related
 

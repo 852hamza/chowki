@@ -13,12 +13,13 @@ type Secret struct {
 // Secrets returns an example of each type of secret and personal data
 // that Chowki's redaction finds. The values are assembled from pieces, so
 // that secret scanners, such as GitHub's push protection, don't flag the
-// source; none of them is real.
+// source; none of them is real. None says "example" either, which Chowki's
+// scanner reads as a placeholder.
 func Secrets() []Secret {
 	return []Secret{
 		{"private_key", "", "-----BEGIN RSA " + "PRIVATE KEY-----\n" +
 			"MIIEowIBAAKCAQEAu1SU1LfVLPHCozMxH2Mo4lgOEePzNm0tRgeLezV6ffAt0gun\n-----END RSA " + "PRIVATE KEY-----"},
-		{"aws_access_key", "", "AKIA" + "IOSFODNN7EXAMPLE"},
+		{"aws_access_key", "", "AKIA" + "QX7RT2LM9VZ3PK4W"},
 		{"github_token", "", "ghp" + "_" + strings.Repeat("A1b2C3d4E5f6", 3)},
 		{"slack_token", "", "xox" + "b-123456789012-1234567890123-" + strings.Repeat("AbCdEfGh", 3)},
 		{"anthropic_key", "", "sk-" + "ant-api03-" + strings.Repeat("Ab1-Cd2_", 5)},

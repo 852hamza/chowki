@@ -29,7 +29,7 @@ func TestRun(t *testing.T) {
 			name:       "version with arguments",
 			args:       []string{"version", "extra"},
 			wantCode:   exitUsage,
-			wantStderr: []string{"takes no arguments"},
+			wantStderr: []string{`unexpected argument "extra"`},
 		},
 		{
 			name:     "help",
@@ -47,15 +47,6 @@ func TestRun(t *testing.T) {
 			wantStderr: []string{`unknown command "bogus"`},
 		},
 	}
-	for _, name := range []string{"provider", "usage", "scan", "setup", "doctor"} {
-		tests = append(tests, runCase{
-			name:       name + " stub",
-			args:       []string{name, "--flag"},
-			wantCode:   exitError,
-			wantStderr: []string{"chowki " + name + ": not implemented yet"},
-		})
-	}
-
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var stdout, stderr bytes.Buffer

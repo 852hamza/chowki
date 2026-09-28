@@ -11,8 +11,6 @@ Chowki serves health checks for load balancers and orchestrators, and its own me
 Prometheus, on the same address as the API. Metrics count since the gateway started; they start
 again from zero after a restart.
 
-<!-- Written by hand for now; a test checks that it lists every metric. -->
-
 ## Endpoints
 
 | Endpoint | Answers |
@@ -25,12 +23,31 @@ again from zero after a restart.
 > your costs, so don't expose the gateway's port to the internet without a reverse proxy that
 > blocks `/metrics`.
 
+## Summary
+
+<!-- Generated from what the registry exports, by TestMetricsSummary in internal/metrics; run make docs. -->
+<!-- generated:summary -->
+
+| Metric | Type | Labels | Description |
+|---|---|---|---|
+| [`chowki_requests_total`](#chowki_requests_total) | Counter | `cache`, `family`, `model`, `provider`, `status` | Requests that the gateway finished, by API family, provider, model, HTTP status and exact cache status. |
+| [`chowki_tokens_total`](#chowki_tokens_total) | Counter | `type` | Tokens that providers reported, by type. input counts every prompt token, cached or not. |
+| [`chowki_cost_usd_total`](#chowki_cost_usd_total) | Counter | None | Cost of priced requests, in US dollars. |
+| [`chowki_savings_usd`](#chowki_savings_usd) | Gauge | `method` | Net savings since the gateway started, in US dollars, by method; they can be negative. |
+| [`chowki_redactions_total`](#chowki_redactions_total) | Counter | `type` | Secrets and personal data that redaction found, by type. |
+| [`chowki_upstream_latency_seconds`](#chowki_upstream_latency_seconds) | Histogram | None | Time that providers took to answer, streams included. |
+| [`chowki_overhead_seconds`](#chowki_overhead_seconds) | Histogram | None | Time that the gateway itself added to a request. |
+
+<!-- end generated:summary -->
+
+<!-- The sections below are written by hand; a test checks that there is one for every metric. -->
+
 ## `chowki_requests_total`
 
 | | |
 |---|---|
 | Type | Counter |
-| Labels | `family` (`openai` or `anthropic`), `provider`, `model`, `status` (the HTTP status sent to the client), `cache` (`hit`, `miss`, `bypass`, or empty for a request rejected earlier) |
+| Labels | `family` (`openai`, `anthropic` or `gemini`), `provider`, `model`, `status` (the HTTP status sent to the client), `cache` (`hit`, `miss`, `bypass`, or empty for a request rejected earlier) |
 | Since | v0.1 |
 
 Requests that the gateway finished. A request rejected before it has a provider, for example for

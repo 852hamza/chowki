@@ -30,7 +30,7 @@ func TestRunShutsDownGracefully(t *testing.T) {
 	var logs bytes.Buffer
 	ctx, cancel := context.WithCancel(t.Context())
 	errc := make(chan error, 1)
-	go func() { errc <- Run(ctx, ln, h, slog.New(slog.NewTextHandler(&logs, nil))) }()
+	go func() { errc <- Run(ctx, ln, h, slog.New(slog.NewTextHandler(&logs, nil)), Options{}) }()
 
 	body := make(chan string, 1)
 	go func() {
@@ -94,7 +94,7 @@ func TestRunReportsServeErrors(t *testing.T) {
 		t.Fatal(err)
 	}
 	_ = ln.Close() // Serve fails at once on a closed listener
-	if err := Run(t.Context(), ln, http.NotFoundHandler(), slog.New(slog.DiscardHandler)); err == nil {
+	if err := Run(t.Context(), ln, http.NotFoundHandler(), slog.New(slog.DiscardHandler), Options{}); err == nil {
 		t.Error("Run() on a closed listener succeeded")
 	}
 }

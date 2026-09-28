@@ -1,0 +1,39 @@
+# Chowki with Docker Compose: the gateway, with its database and master key
+# in a volume. Run the commands in this folder:
+#
+#   docker compose run --rm chowki init
+#   docker compose run --rm chowki key create --name <NAME>
+#   docker compose up -d
+#
+# docs/get-started/install.md explains them.
+name: chowki
+services:
+  chowki:
+    image: chowki:dev
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    restart: unless-stopped
+    # Provider keys, such as OPENAI_API_KEY, from .env in this folder.
+    env_file:
+      - path: .env
+        required: false
+    ports:
+      # Only this machine reaches the gateway. To serve others, put a
+      # proxy with TLS in front of it.
+      - "127.0.0.1:8080:8080"
+    volumes:
+      - data:/var/lib/chowki
+    # A provider on the Docker host, such as Ollama, is at
+    # http://host.docker.internal:<PORT>.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+volumes:
+  data:

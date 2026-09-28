@@ -50,7 +50,7 @@ func runKey(args []string, stdout, stderr io.Writer) int {
 func keyCreate(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	flags := flag.NewFlagSet("chowki key create", flag.ContinueOnError)
 	flags.SetOutput(stderr)
-	configPath := flags.String("config", defaultConfig, "configuration file")
+	configPath := flags.String("config", defaultConfig(), "configuration file")
 	name := flags.String("name", "", "who or what uses the key, such as alice or ci-bot (required)")
 	project := flags.String("project", "default", "project that the key belongs to")
 	settings := addSettingFlags(flags)
@@ -99,7 +99,7 @@ func keyCreate(ctx context.Context, args []string, stdout, stderr io.Writer) int
 func keyList(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	flags := flag.NewFlagSet("chowki key list", flag.ContinueOnError)
 	flags.SetOutput(stderr)
-	configPath := flags.String("config", defaultConfig, "configuration file")
+	configPath := flags.String("config", defaultConfig(), "configuration file")
 	if err := flags.Parse(args); err != nil || flags.NArg() > 0 {
 		return exitUsage
 	}
@@ -140,7 +140,7 @@ func keyList(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 func keyUpdate(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	flags := flag.NewFlagSet("chowki key update", flag.ContinueOnError)
 	flags.SetOutput(stderr)
-	configPath := flags.String("config", defaultConfig, "configuration file")
+	configPath := flags.String("config", defaultConfig(), "configuration file")
 	settings := addSettingFlags(flags)
 	if err := flags.Parse(args); err != nil || flags.NArg() != 1 {
 		if err == nil {
@@ -182,7 +182,7 @@ func keyUpdate(ctx context.Context, args []string, stdout, stderr io.Writer) int
 func keyRevoke(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	flags := flag.NewFlagSet("chowki key revoke", flag.ContinueOnError)
 	flags.SetOutput(stderr)
-	configPath := flags.String("config", defaultConfig, "configuration file")
+	configPath := flags.String("config", defaultConfig(), "configuration file")
 	if err := flags.Parse(args); err != nil || flags.NArg() != 1 {
 		if err == nil {
 			fmt.Fprint(stderr, keyUsage)
@@ -215,12 +215,18 @@ func keyRevoke(ctx context.Context, args []string, stdout, stderr io.Writer) int
 // withStore loads the configuration, opens the database, runs fn and
 // reports its error as the command's.
 func withStore(ctx context.Context, configPath string, stderr io.Writer, command string, fn func(store.Store) error) int {
+	return withConfigStore(ctx, configPath, stderr, command, func(_ *config.Config, _ func(string) (string, bool),
+		st store.Store) error {
+		return fn(st)
+	})
+}
+
+// withConfigStore is withStore for commands that need the configuration
+// and the environment too.
+func withConfigStore(ctx context.Context, configPath string, stderr io.Writer, command string,
+	fn func(cfg *config.Config, env func(string) (string, bool), st store.Store) error) int {
 	err := func() error {
-		env, err := config.DotEnv(".env")
-		if err != nil {
-			return err
-		}
-		cfg, err := config.Load(configPath, env)
+		cfg, env, err := loadConfig(configPath)
 		if err != nil {
 			return err
 		}
@@ -229,7 +235,7 @@ func withStore(ctx context.Context, configPath string, stderr io.Writer, command
 			return err
 		}
 		defer func() { _ = st.Close() }() // read errors surface through fn
-		return fn(st)
+		return fn(cfg, env, st)
 	}()
 	if err != nil {
 		fmt.Fprintf(stderr, "%s: %v\n", command, err)

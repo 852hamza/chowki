@@ -1,0 +1,22 @@
+{
+  "name": "chowki-docs",
+  "private": true,
+  "description": "The Chowki documentation site, built from ../docs.",
+  "scripts": {
+    "start": "docusaurus start",
+    "build": "docusaurus build",
+    "serve": "docusaurus serve",
+    "clear": "docusaurus clear",
+    "docusaurus": "docusaurus"
+  },
+  "dependencies": {
+    "@docusaurus/core": "3.10.2",
+    "@docusaurus/preset-classic": "3.10.2",
+    "docusaurus-lunr-search": "3.6.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "engines": {
+    "node": ">=20.0"
+  }
+}

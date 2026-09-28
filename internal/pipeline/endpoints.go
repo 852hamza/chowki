@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/852hamza/chowki/internal/config"
+	"github.com/852hamza/chowki/internal/policy"
 	"github.com/852hamza/chowki/internal/providers"
 	"github.com/852hamza/chowki/internal/usage"
 )
@@ -36,6 +37,7 @@ type Endpoint struct {
 // The endpoints that the gateway relays.
 var (
 	OpenAIChat           = Endpoint{usage.OpenAI, "/v1/chat/completions", providers.ChatCompletions, kindChat}
+	OpenAIResponses      = Endpoint{usage.OpenAI, "/v1/responses", providers.Responses, kindChat}
 	OpenAIEmbeddings     = Endpoint{usage.OpenAI, "/v1/embeddings", providers.Embeddings, kindEmbeddings}
 	AnthropicMessages    = Endpoint{usage.Anthropic, "/anthropic/v1/messages", providers.Messages, kindChat}
 	AnthropicCountTokens = Endpoint{usage.Anthropic, "/anthropic/v1/messages/count_tokens", providers.CountTokens,
@@ -43,7 +45,7 @@ var (
 )
 
 // Endpoints are the endpoints with fixed paths that the gateway relays.
-var Endpoints = []Endpoint{OpenAIChat, OpenAIEmbeddings, AnthropicMessages, AnthropicCountTokens}
+var Endpoints = []Endpoint{OpenAIChat, OpenAIResponses, OpenAIEmbeddings, AnthropicMessages, AnthropicCountTokens}
 
 // geminiPrefix is where the gateway serves Gemini's model methods, whose
 // paths go on with the model and the method.
@@ -73,6 +75,14 @@ func (ep Endpoint) accepts() []string {
 	return []string{providerType(ep.Family)}
 }
 
+// usage returns the format of the usage in the endpoint's answers.
+func (ep Endpoint) usage() usage.Family {
+	if ep == OpenAIResponses {
+		return usage.OpenAIResponses
+	}
+	return ep.Family
+}
+
 // target returns the provider's path for a request to model.
 func (ep Endpoint) target(model string) string {
 	if ep.Family == usage.Gemini {
@@ -88,6 +98,8 @@ func (ep Endpoint) redactionKind() string {
 		return "gemini-embeddings"
 	case ep.kind == kindEmbeddings:
 		return "embeddings"
+	case ep == OpenAIResponses:
+		return "responses"
 	}
 	return string(ep.Family)
 }
@@ -135,7 +147,7 @@ func (g *Gateway) Models() http.Handler {
 			Data   []model `json:"data"`
 		}{Object: "list", Data: []model{}}
 		for _, m := range g.Router.Models(OpenAIChat.accepts()) {
-			if allowed(c.key.AllowedModels, m.ID) {
+			if policy.AllowsModel(c.key.AllowedModels, m.ID) {
 				list.Data = append(list.Data, model{ID: m.ID, Object: "model", OwnedBy: m.Owner})
 			}
 		}

@@ -11,7 +11,8 @@ import (
 
 // Request finds secrets and personal data in the text of a request body of
 // kind "openai", "anthropic" or "gemini", for their chat endpoints,
-// "embeddings" for OpenAI embeddings, or "gemini-embeddings": message
+// "responses" for OpenAI's Responses API, "embeddings" for OpenAI
+// embeddings, or "gemini-embeddings": message
 // contents and their text parts, system prompts, tool results and documents
 // given as text, and the input of embeddings. It never reads images, audio
 // or any other field. It counts the findings by type, and with mask it also
@@ -152,6 +153,30 @@ func textFields(family string, root *node) []*node {
 			for _, r := range list.elements() {
 				for _, c := range r.all("content") {
 					geminiContent(c, text)
+				}
+			}
+		}
+		return out
+	case "responses":
+		// OpenAI's Responses API: instructions, and input as a string or
+		// a list of items, whose content is a string or input_text parts,
+		// or whose output is a tool's result.
+		for _, n := range root.all("instructions") {
+			text(n)
+		}
+		for _, in := range root.all("input") {
+			text(in)
+			for _, item := range in.elements() {
+				for _, c := range item.all("content") {
+					text(c)
+					for _, p := range c.elements() {
+						for _, t := range p.all("text") {
+							text(t)
+						}
+					}
+				}
+				for _, o := range item.all("output") {
+					text(o)
 				}
 			}
 		}

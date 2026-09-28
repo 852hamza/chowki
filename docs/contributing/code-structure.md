@@ -38,7 +38,7 @@ packages in order, calls the provider through an adapter, and records the usage.
 | `internal/server/` | HTTP server, middleware, graceful shutdown and error responses |
 | `internal/pipeline/` | Runs the request stages in order |
 | `internal/auth/` | Virtual keys: generate, hash and verify |
-| `internal/policy/` | Models and endpoints that each virtual key may use |
+| `internal/policy/` | The models that each virtual key may use |
 | `internal/ratelimit/` | Limits on requests and tokens per minute |
 | `internal/budget/` | Spend tracking and budget enforcement |
 | `internal/redact/` | Detection and masking of secrets and personal data |
@@ -77,8 +77,8 @@ packages in order, calls the provider through an adapter, and records the usage.
 
 ## Design choices and trade-offs
 
-- **Standard library first.** Chowki depends on as few modules as possible, and only on modules with
-  free, permissive licenses. Each dependency has an [architecture decision record](../adr/) that
+- **Standard library first.** Chowki depends on as few modules as possible, and only on modules
+  with free, permissive licenses. Each dependency has an [architecture decision record](../adr/) that
   explains why the standard library isn't enough.
 - **One package per stage.** Each stage takes a clear input and returns a clear output, so you can
   test it on its own with table-driven tests.

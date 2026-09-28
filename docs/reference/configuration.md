@@ -13,7 +13,7 @@ This page lists every setting of `chowki.yaml`, the file that `chowki init` crea
 Chowki builds its configuration in this order, and a later source wins:
 
 1. The defaults on this page.
-2. `chowki.yaml`, or the file that `--config` names.
+2. `chowki.yaml`, or the file that `--config` or `CHOWKI_CONFIG` names.
 3. Environment variables: `CHOWKI_` plus the setting's path in capitals, with `_` between the
    parts. For example, `CHOWKI_SERVER_LISTEN` sets `server.listen`. Lists, such as `providers`, can
    only be set in the file.
@@ -21,10 +21,40 @@ Chowki builds its configuration in this order, and a later source wins:
 Chowki also reads a `.env` file from the folder where it runs. Variables that are set in the real
 environment win over `.env`.
 
-An unknown setting in `chowki.yaml`, such as a misspelled name, is an error. So is a provider key in
-the file: keys come only from environment variables.
+An unknown setting in `chowki.yaml`, such as a misspelled name, is an error. So is a provider key
+in the file: keys come from environment variables, or from the database, where
+[`chowki provider set-key`](../how-to/manage-provider-keys.md) stores them encrypted.
 
-<!-- Written by hand for now; a test checks that it lists every environment variable. -->
+## Summary
+
+<!-- Generated from the code by TestConfigurationSummary in internal/config; run make docs. -->
+<!-- generated:summary -->
+
+| Setting | Environment variable | Default |
+|---|---|---|
+| [`server.listen`](#serverlisten) | `CHOWKI_SERVER_LISTEN` | `:8080` |
+| [`server.max_body_mb`](#servermax_body_mb) | `CHOWKI_SERVER_MAX_BODY_MB` | `20` |
+| [`server.upstream_timeout`](#serverupstream_timeout) | `CHOWKI_SERVER_UPSTREAM_TIMEOUT` | `10m` |
+| [`server.read_timeout`](#serverread_timeout) | `CHOWKI_SERVER_READ_TIMEOUT` | `1m` |
+| [`server.tls_cert_file`](#servertls_cert_file) | `CHOWKI_SERVER_TLS_CERT_FILE` | None |
+| [`server.tls_key_file`](#servertls_key_file) | `CHOWKI_SERVER_TLS_KEY_FILE` | None |
+| [`storage.driver`](#storagedriver) | `CHOWKI_STORAGE_DRIVER` | `sqlite` |
+| [`storage.dsn`](#storagedsn) | `CHOWKI_STORAGE_DSN` | `file:data/chowki.db` |
+| [`storage.cache_max_mb`](#storagecache_max_mb) | `CHOWKI_STORAGE_CACHE_MAX_MB` | `256` |
+| [`security.master_key_file`](#securitymaster_key_file) | `CHOWKI_SECURITY_MASTER_KEY_FILE` | `.chowki/master.key` |
+| [`security.allow_private_upstreams`](#securityallow_private_upstreams) | `CHOWKI_SECURITY_ALLOW_PRIVATE_UPSTREAMS` | `true` |
+| [`log.level`](#loglevel) | `CHOWKI_LOG_LEVEL` | `info` |
+| [`retention_days`](#retention_days) | `CHOWKI_RETENTION_DAYS` | `90` |
+| [`defaults.cache`](#defaultscache) | `CHOWKI_DEFAULTS_CACHE` | `off` |
+| [`defaults.cache_ttl`](#defaultscache_ttl) | `CHOWKI_DEFAULTS_CACHE_TTL` | `1h` |
+| [`defaults.prompt_cache`](#defaultsprompt_cache) | `CHOWKI_DEFAULTS_PROMPT_CACHE` | `auto` |
+| [`defaults.redaction`](#defaultsredaction) | `CHOWKI_DEFAULTS_REDACTION` | `mask` |
+| [`providers`](#providers) | None: only in the file | None |
+| [`aliases`](#aliases) | None: only in the file | None |
+
+<!-- end generated:summary -->
+
+<!-- The sections below are written by hand; a test checks that there is one for every setting. -->
 
 ## `server.listen`
 
@@ -70,6 +100,49 @@ The largest request body that the gateway accepts, in MiB. A larger request gets
 How long one call to a provider may take, including a whole streamed response. Long agent calls
 need several minutes. A call that takes longer fails with a 504 error. A duration needs a unit: `s`
 for seconds, `m` for minutes or `h` for hours.
+
+## `server.read_timeout`
+
+| | |
+|---|---|
+| Type | Duration, such as `30s` or `2m` |
+| Default | `60s` |
+| Allowed values | Greater than zero |
+| Environment variable | `CHOWKI_SERVER_READ_TIMEOUT` |
+| Since | v0.1 |
+
+How long a client may take to send a request, its headers and its body, so that slow clients can't
+hold connections open. It doesn't limit the response: a stream lasts as long as
+`server.upstream_timeout` allows. Raise it for clients that send large requests over slow links.
+
+## `server.tls_cert_file`
+
+| | |
+|---|---|
+| Type | File path |
+| Default | None |
+| Allowed values | A PEM file with the certificate, then any intermediate certificates |
+| Environment variable | `CHOWKI_SERVER_TLS_CERT_FILE` |
+| Since | v0.1 |
+
+With `server.tls_key_file`, makes the gateway serve HTTPS instead of HTTP, with TLS 1.2 or later.
+Set both or neither. When the files change, as when a certificate is renewed, the gateway loads
+them again within 30 seconds, without a restart. Without them, run the gateway behind a reverse
+proxy that serves HTTPS, unless clients reach it only from the same machine. See
+[Serve over HTTPS](../how-to/serve-over-https.md).
+
+## `server.tls_key_file`
+
+| | |
+|---|---|
+| Type | File path |
+| Default | None |
+| Allowed values | A PEM file with the certificate's private key |
+| Environment variable | `CHOWKI_SERVER_TLS_KEY_FILE` |
+| Since | v0.1 |
+
+The private key of `server.tls_cert_file`. Make the file readable only by the user that runs the
+gateway.
 
 ## `storage.driver`
 
@@ -233,7 +306,7 @@ The APIs that Chowki forwards requests to. Each provider has these fields:
 | `name` | Yes | A unique name of lowercase letters, digits, `-` and `_`. Clients name a provider in the model, such as `openai/gpt-6-luna`. |
 | `type` | Yes | The API the provider speaks: `openai` for OpenAI and every OpenAI-compatible API, `anthropic`, or `gemini`. |
 | `base_url` | Yes | The API's base URL, as its SDKs use it: with `/v1` for OpenAI-compatible APIs, without a version for Anthropic and Gemini. |
-| `api_key_env` | No | The environment variable, or `.env` entry, that holds the provider key. Leave it out for a provider that needs no key, such as a local Ollama server. |
+| `api_key_env` | No | The environment variable, or `.env` entry, that holds the provider key. When it isn't set, Chowki uses the key that `chowki provider set-key` stored, if any. Leave it out for a provider that needs no key, such as a local Ollama server. |
 | `free_tier` | No | `true` when the provider doesn't bill your requests, such as on the free tier of the Gemini API. Chowki then records their cost as $0, and they spend no budget. Default `false`. |
 
 Example:
@@ -285,7 +358,9 @@ See [Route requests with aliases and fallback](../how-to/routing-and-fallback.md
 
 | Variable | Description |
 |---|---|
+| `CHOWKI_CONFIG` | The configuration file that commands read without `--config`, instead of `chowki.yaml`. The container image sets it to `/etc/chowki/chowki.yaml`. Set it in the environment: Chowki chooses the file before it reads `.env`. |
 | `CHOWKI_MASTER_KEY` | The master key: 32 random bytes in base64. Takes precedence over `security.master_key_file`. |
+| `CHOWKI_PUBLIC_URL` | The gateway's address that `chowki setup` prints, such as `https://gateway.example.com`. It defaults to `http://localhost:8080`. |
 | The variables named by `api_key_env` | Provider keys, such as `OPENAI_API_KEY`. |
 
 ## The `.env` file

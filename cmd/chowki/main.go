@@ -4,6 +4,8 @@ package main
 
 import (
 	"context"
+	"errors"
+	"flag"
 	"fmt"
 	"io"
 	"os"
@@ -36,14 +38,16 @@ func commands() []command {
 	return []command{
 		{"serve", "Run the gateway", runServe},
 		{"init", "Create a configuration, a master key and the database", runInit},
-		{"provider", "Manage provider keys", notImplemented("provider")},
+		{"provider", "List providers, and store their keys encrypted", runProvider},
 		{"key", "Create, list, update and revoke virtual keys", runKey},
 		{"project", "List projects and set their budgets", runProject},
 		{"admin", "Create, list and revoke admin tokens", runAdmin},
-		{"usage", "Report token usage, cost and savings", notImplemented("usage")},
-		{"scan", "Find secrets in a repository, .env files or MCP configurations", notImplemented("scan")},
-		{"setup", "Connect an app or coding agent to the gateway", notImplemented("setup")},
-		{"doctor", "Check the installation and configuration", notImplemented("doctor")},
+		{"usage", "Report token usage, cost and savings", runUsage},
+		{"backup", "Copy the database to a file, while the gateway runs", runBackup},
+		{"restore", "Replace the database with a backup", runRestore},
+		{"scan", "Find secrets in a repository, .env files or MCP configurations", runScan},
+		{"setup", "Connect an app or coding agent to the gateway", runSetup},
+		{"doctor", "Check the installation and configuration", runDoctor},
 		{"version", "Print version information", runVersion},
 	}
 }
@@ -103,22 +107,42 @@ func usage(w io.Writer) {
 	fmt.Fprintf(w, "\nDocumentation: %s\nReport a bug:  %s\n", id.DocsURL(), id.IssuesURL())
 }
 
+const versionUsage = `Usage:
+  chowki version
+
+Prints the version, commit and build date of chowki, its Go version and
+platform, and its repository.
+`
+
+// parseCommand parses the flags of a command that takes no arguments. On
+// --help it prints usage to stdout; on a mistake, the mistake and usage to
+// stderr. When ok is false, the command stops with code.
+func parseCommand(flags *flag.FlagSet, args []string, usage string, stdout, stderr io.Writer) (code int, ok bool) {
+	flags.SetOutput(io.Discard)
+	err := flags.Parse(args)
+	switch {
+	case errors.Is(err, flag.ErrHelp):
+		fmt.Fprint(stdout, usage)
+		return exitOK, false
+	case err != nil:
+		fmt.Fprintf(stderr, "%s: %v\n\n%s", flags.Name(), err, usage)
+		return exitUsage, false
+	case flags.NArg() > 0:
+		fmt.Fprintf(stderr, "%s: unexpected argument %q\n\n%s", flags.Name(), flags.Arg(0), usage)
+		return exitUsage, false
+	}
+	return exitOK, true
+}
+
 func runVersion(args []string, stdout, stderr io.Writer) int {
-	if len(args) > 0 {
-		fmt.Fprintln(stderr, "chowki version: takes no arguments")
-		return exitUsage
+	if code, ok := parseCommand(flag.NewFlagSet("chowki version", flag.ContinueOnError), args, versionUsage,
+		stdout, stderr); !ok {
+		return code
 	}
 	fmt.Fprintf(stdout, "chowki %s\ncommit: %s\ndate:   %s\ngo:     %s %s/%s\nrepo:   %s\n",
 		buildinfo.Version(), orUnknown(buildinfo.Commit()), orUnknown(buildinfo.Date()),
 		runtime.Version(), runtime.GOOS, runtime.GOARCH, buildinfo.Project().RepoURL())
 	return exitOK
-}
-
-func notImplemented(name string) func([]string, io.Writer, io.Writer) int {
-	return func(_ []string, _, stderr io.Writer) int {
-		fmt.Fprintf(stderr, "chowki %s: not implemented yet\n", name)
-		return exitError
-	}
 }
 
 func orUnknown(s string) string {

@@ -4,6 +4,7 @@ description: Build Chowki, create a virtual key, and send a chat request through
 type: tutorial
 since: v0.1
 edition: community
+sidebar_position: 1
 last_reviewed: 2026-09-27
 ---
 
@@ -19,7 +20,7 @@ You will:
 ## Before you begin
 
 - Go 1.27 or later, Git and GNU Make, to build Chowki from source. Binary releases come with the
-  first release.
+  first release. To run Chowki in a container instead, see [Install Chowki](install.md).
 - An OpenAI API key. The request in this tutorial is billed to your OpenAI account and costs a
   small fraction of a cent.
 - curl.
@@ -60,8 +61,8 @@ a folder of its own.
      3. Start the gateway:    chowki serve
    ```
 
-You now have `chowki.yaml`, which lists the OpenAI and Anthropic providers, a master key that only
-you can read, and an empty database.
+You now have `chowki.yaml`, which lists the OpenAI, Anthropic and Gemini providers, a master key
+that only you can read, and an empty database.
 
 ## Step 2: Add your OpenAI key
 
@@ -162,6 +163,10 @@ token counts and cost.
 
 ## Troubleshooting
 
+When something doesn't work, run `chowki doctor` in the Chowki folder: it checks the configuration,
+the keys, the database and the port, and says what to fix. See
+[Check your setup](../how-to/check-your-setup.md).
+
 | Symptom | Cause | Fix |
 |---|---|---|
 | `chowki serve` fails with `address already in use` | Another program uses port 8080. | Start with `CHOWKI_SERVER_LISTEN=:8081 chowki serve`, and send requests to port 8081. |
@@ -180,6 +185,11 @@ Point an SDK or tool at Chowki by changing two settings:
 
 Name the provider in the model, such as `openai/gpt-6-luna`, unless your configuration has only one
 provider for that API.
+
+`chowki setup <TOOL>` prints the settings for Claude Code, the Codex CLI, the Gemini CLI, the
+official SDKs and Ollama; run `chowki setup` for the list. See
+[Connect Claude Code](../how-to/connect-claude-code.md) and
+[Connect the SDKs](../how-to/connect-sdks.md).
 
 ## Clean up
 

@@ -129,3 +129,26 @@ func TestRedactionAlertAndOff(t *testing.T) {
 		})
 	}
 }
+
+// A request for a model that the key may not use is refused before
+// redaction, so its findings are neither reported nor counted.
+func TestModelCheckedBeforeRedaction(t *testing.T) {
+	h := newHarness(t, testutil.Config{}, testutil.Config{})
+	setKeyRedaction(t, h, "block")
+	models := []string{"claude-*"}
+	if _, err := h.st.UpdateKey(t.Context(), h.key[:auth.PrefixLen], store.KeyUpdate{AllowedModels: &models}); err != nil {
+		t.Fatal(err)
+	}
+	resp := h.post(t.Context(), "/v1/chat/completions",
+		`{"model":"gpt-test","messages":[{"role":"user","content":"mail jane.doe@company.io"}]}`)
+	if got := readBody(t, resp); resp.StatusCode != http.StatusForbidden ||
+		!strings.Contains(got, `"code":"model_not_allowed"`) || resp.Header.Get(pipeline.RedactionsHeader) != "" {
+		t.Errorf("status %d, %s %q, body %s; want 403 model_not_allowed and no redactions", resp.StatusCode,
+			pipeline.RedactionsHeader, resp.Header.Get(pipeline.RedactionsHeader), got)
+	}
+	for _, r := range h.records() {
+		if len(r.Redactions) != 0 {
+			t.Errorf("record = %+v; want no redactions", r)
+		}
+	}
+}

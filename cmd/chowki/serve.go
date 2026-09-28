@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"maps"
 	"net"
 	"os"
 	"os/signal"
@@ -25,6 +26,7 @@ import (
 	"github.com/852hamza/chowki/internal/netguard"
 	"github.com/852hamza/chowki/internal/pipeline"
 	"github.com/852hamza/chowki/internal/promptcache"
+	"github.com/852hamza/chowki/internal/providerkeys"
 	"github.com/852hamza/chowki/internal/providers"
 	"github.com/852hamza/chowki/internal/ratelimit"
 	"github.com/852hamza/chowki/internal/redact"
@@ -36,12 +38,23 @@ import (
 	"github.com/852hamza/chowki/internal/web"
 )
 
-func runServe(args []string, _, stderr io.Writer) int {
+const serveUsage = `Usage:
+  chowki serve [--config <FILE>]
+
+Runs the gateway. It listens on server.listen and relays requests to the
+providers, until it gets an interrupt or SIGTERM; then it stops taking
+requests and waits up to 30 seconds for those in flight. It reads .env from
+the current folder, and writes its log to stderr, in JSON.
+
+Flags:
+  --config  the configuration file; by default $CHOWKI_CONFIG, or chowki.yaml
+`
+
+func runServe(args []string, stdout, stderr io.Writer) int {
 	flags := flag.NewFlagSet("chowki serve", flag.ContinueOnError)
-	flags.SetOutput(stderr)
-	configPath := flags.String("config", defaultConfig, "configuration file")
-	if err := flags.Parse(args); err != nil || flags.NArg() > 0 {
-		return exitUsage
+	configPath := flags.String("config", defaultConfig(), "")
+	if code, ok := parseCommand(flags, args, serveUsage, stdout, stderr); !ok {
+		return code
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -83,24 +96,9 @@ func serve(ctx context.Context, configPath string, ln net.Listener, logOut io.Wr
 	if err != nil {
 		return err
 	}
-	ps, err := providers.New(cfg.Providers, netguard.Policy{AllowPrivate: cfg.Security.AllowPrivateUpstreams})
+	keys, err := providerkeys.New(masterKey)
 	if err != nil {
 		return err
-	}
-	routes, err := router.New(ps, cat, cfg.Aliases)
-	if err != nil {
-		return err
-	}
-	names := make([]string, 0, len(ps))
-	for name := range ps {
-		names = append(names, name)
-	}
-	slices.Sort(names)
-	for _, name := range names {
-		if env := ps[name].MissingKey(); env != "" {
-			logger.Warn("provider key isn't set; requests to this provider fail until it is",
-				"provider", name, "variable", env)
-		}
 	}
 
 	// Listen before starting anything else, so a taken port fails fast.
@@ -111,8 +109,25 @@ func serve(ctx context.Context, configPath string, ln net.Listener, logOut io.Wr
 	}
 	defer func() { _ = ln.Close() }() // no-op once the server has closed it
 
+	// Opening the database applies pending migrations; the log says so, as
+	// an upgrade's record.
+	before, _ := store.InspectSQLite(ctx, cfg.Storage.DSN) // a new database has nothing to upgrade
 	st, err := store.OpenSQLite(ctx, cfg.Storage.DSN)
 	if err != nil {
+		return err
+	}
+	if before.Path != "" && before.Version > 0 && before.Version < before.Latest {
+		logger.Info("upgraded the database", "path", before.Path, "from_schema", before.Version,
+			"to_schema", before.Latest)
+	}
+	ps, names, err := setUpProviders(ctx, cfg, st, keys, logger)
+	if err != nil {
+		_ = st.Close() // the setup error is the one to report
+		return err
+	}
+	routes, err := router.New(ps, cat, cfg.Aliases)
+	if err != nil {
+		_ = st.Close()
 		return err
 	}
 	budgets, err := budget.Load(ctx, st, time.Now(), logger)
@@ -156,7 +171,38 @@ func serve(ctx context.Context, configPath string, ln net.Listener, logOut io.Wr
 	logger.Info("chowki started", "version", buildinfo.Version(), "providers", names, "priced_models", cat.Len())
 	api := &admin.API{Store: st, Logger: logger}
 	ui := &web.UI{Store: st, Logger: logger}
-	return server.Run(ctx, ln, server.Routes(gw, api.Handler(), ui.Handler()), logger)
+	return server.Run(ctx, ln, server.Routes(gw, api.Handler(), ui.Handler()), logger, server.Options{
+		ReadTimeout: cfg.Server.ReadTimeout, CertFile: cfg.Server.TLSCertFile, KeyFile: cfg.Server.TLSKeyFile})
+}
+
+// setUpProviders gives the providers their stored keys where the
+// environment gives none, and returns them with their names in order. A
+// provider without a key gets a warning: its requests fail until it has
+// one.
+func setUpProviders(ctx context.Context, cfg *config.Config, st store.Store, keys *providerkeys.Keys,
+	logger *slog.Logger) (map[string]*providers.Provider, []string, error) {
+	used, errs, err := providerkeys.Apply(ctx, st, keys, cfg.Providers)
+	if err != nil {
+		return nil, nil, err
+	}
+	for _, e := range errs {
+		logger.Warn("stored provider key can't be used", "error", e)
+	}
+	if len(used) > 0 {
+		logger.Info("using stored provider keys", "providers", used)
+	}
+	ps, err := providers.New(cfg.Providers, netguard.Policy{AllowPrivate: cfg.Security.AllowPrivateUpstreams})
+	if err != nil {
+		return nil, nil, err
+	}
+	names := slices.Sorted(maps.Keys(ps))
+	for _, name := range names {
+		if env := ps[name].MissingKey(); env != "" {
+			logger.Warn("provider key isn't set; requests to this provider fail until it is",
+				"provider", name, "variable", env)
+		}
+	}
+	return ps, names, nil
 }
 
 func logLevel(name string) slog.Level {

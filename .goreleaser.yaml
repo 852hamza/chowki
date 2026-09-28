@@ -1,0 +1,69 @@
+# GoReleaser builds a release from a v* tag: binaries for Linux, macOS and
+# Windows on amd64 and arm64, archives with the licenses of every module in
+# them, checksums and SBOMs. .github/workflows/release.yml runs it; see
+# docs/contributing/releasing.md.
+version: 2
+
+project_name: chowki
+
+before:
+  hooks:
+    - go mod verify
+    # Also fails the release on a module under a license that the binary
+    # may not include.
+    - go run ./tools/licenses --out build/licenses
+
+builds:
+  - id: chowki
+    main: ./cmd/chowki
+    binary: chowki
+    env:
+      - CGO_ENABLED=0
+    goos: [linux, darwin, windows]
+    goarch: [amd64, arm64]
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w
+      - -X github.com/852hamza/chowki/internal/buildinfo.version={{ .Tag }}
+      - -X github.com/852hamza/chowki/internal/buildinfo.commit={{ .FullCommit }}
+      - -X github.com/852hamza/chowki/internal/buildinfo.date={{ .CommitDate }}
+    # Files in the archives carry the commit's time, so that the same tag
+    # always builds the same archives.
+    mod_timestamp: "{{ .CommitTimestamp }}"
+
+archives:
+  - id: chowki
+    formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      - LICENSE
+      - NOTICE
+      - README.md
+      - CHANGELOG.md
+      # A single file's dst names the file.
+      - src: build/licenses/README.txt
+        dst: third_party_licenses/README.txt
+      - src: build/licenses/**/*
+        dst: third_party_licenses
+
+checksum:
+  name_template: checksums.txt
+
+sboms:
+  - artifacts: archive
+
+release:
+  github:
+    owner: 852hamza
+    name: chowki
+  # A maintainer reads the draft and publishes it.
+  draft: true
+  prerelease: auto
+
+# The release notes come from CHANGELOG.md, through --release-notes.
+changelog:
+  disable: true

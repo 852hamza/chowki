@@ -30,4 +30,4 @@ Reference pages marked "generated" are produced from the code. Don't edit them b
 This guide covers Chowki Community, the open-source edition. Chowki Enterprise has its own guide. Community pages mention an Enterprise feature only with an **Enterprise** badge and a link.
 
 ## Publishing
-The site is built with Docusaurus (MIT license), versioned per minor release, searchable offline, and published to GitHub Pages.
+The site is built with Docusaurus (MIT license), versioned per minor release, searchable offline, and published to GitHub Pages. Its source is in `website/`; `npm ci && npm run start` there serves it locally, and `npm run build` checks every link.

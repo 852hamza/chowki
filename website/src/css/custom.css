@@ -1,0 +1,20 @@
+/* Colors of the site, in light and dark mode. */
+:root {
+  --ifm-color-primary: #0f766e;
+  --ifm-color-primary-dark: #0d6a63;
+  --ifm-color-primary-darker: #0c645d;
+  --ifm-color-primary-darkest: #0a524d;
+  --ifm-color-primary-light: #11827a;
+  --ifm-color-primary-lighter: #128880;
+  --ifm-color-primary-lightest: #149a91;
+}
+
+[data-theme='dark'] {
+  --ifm-color-primary: #2dd4bf;
+  --ifm-color-primary-dark: #22c8b3;
+  --ifm-color-primary-darker: #20bda9;
+  --ifm-color-primary-darkest: #1a9b8b;
+  --ifm-color-primary-light: #45dac7;
+  --ifm-color-primary-lighter: #52dccb;
+  --ifm-color-primary-lightest: #78e4d6;
+}

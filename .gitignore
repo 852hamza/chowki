@@ -15,7 +15,11 @@ data/
 
 # Build and test output
 bin/
+build/
 dist/
+website/node_modules/
+website/build/
+website/.docusaurus/
 coverage.out
 *.test
 

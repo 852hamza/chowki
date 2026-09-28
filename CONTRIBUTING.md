@@ -11,7 +11,8 @@ change needs before it can merge.
   before you write code.
 - Report security problems privately, never in a public issue. See [SECURITY.md](SECURITY.md).
 
-To set up your computer, follow [Set up a development environment](docs/contributing/development-setup.md).
+To set up your computer, follow
+[Set up a development environment](docs/contributing/development-setup.md).
 To find where a change belongs, read [Code structure](docs/contributing/code-structure.md).
 
 ## Rules for code

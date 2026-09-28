@@ -42,6 +42,13 @@ type Server struct {
 	MaxBodyMB int `yaml:"max_body_mb"`
 	// UpstreamTimeout limits one provider call, including a whole stream.
 	UpstreamTimeout time.Duration `yaml:"upstream_timeout"`
+	// ReadTimeout limits reading a request, its headers and its body, so
+	// that slow clients can't hold connections; responses aren't limited.
+	ReadTimeout time.Duration `yaml:"read_timeout"`
+	// TLSCertFile and TLSKeyFile, both or neither, make the gateway serve
+	// HTTPS with that certificate chain and key, in PEM files.
+	TLSCertFile string `yaml:"tls_cert_file"`
+	TLSKeyFile  string `yaml:"tls_key_file"`
 }
 
 // Storage configures the database.
@@ -117,7 +124,8 @@ const (
 // environment are read.
 func Default() Config {
 	return Config{
-		Server:        Server{Listen: ":8080", MaxBodyMB: 20, UpstreamTimeout: 10 * time.Minute},
+		Server: Server{Listen: ":8080", MaxBodyMB: 20, UpstreamTimeout: 10 * time.Minute,
+			ReadTimeout: time.Minute},
 		Storage:       Storage{Driver: "sqlite", DSN: "file:data/chowki.db", CacheMaxMB: 256},
 		Security:      Security{MasterKeyFile: ".chowki/master.key", AllowPrivateUpstreams: true},
 		Log:           Log{Level: "info"},
@@ -185,6 +193,12 @@ func (c *Config) validate() error {
 	}
 	if c.Server.UpstreamTimeout <= 0 {
 		add("server.upstream_timeout", "must be positive, such as 600s")
+	}
+	if c.Server.ReadTimeout <= 0 {
+		add("server.read_timeout", "must be positive, such as 60s")
+	}
+	if (c.Server.TLSCertFile == "") != (c.Server.TLSKeyFile == "") {
+		add("server.tls_cert_file", "set it and server.tls_key_file together, or neither")
 	}
 	if c.Storage.Driver != "sqlite" {
 		add("storage.driver", "must be sqlite")

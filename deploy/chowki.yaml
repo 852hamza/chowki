@@ -1,0 +1,56 @@
+# Chowki configuration of the container image, which reads it from
+# /etc/chowki/chowki.yaml. To change it, mount your own file there.
+# Every setting can also come from an environment variable: CHOWKI_ plus the
+# setting's path in capitals, such as CHOWKI_LOG_LEVEL for log.level.
+# Documentation: https://github.com/852hamza/chowki/tree/main/docs
+
+server:
+  listen: ":8080"          # address and port to listen on
+  max_body_mb: 20          # largest request body, in MiB
+  upstream_timeout: 600s   # limit for one provider call, including a whole stream
+  read_timeout: 60s        # limit for a client to send its request
+  # To serve HTTPS rather than HTTP, name a certificate and its key, in PEM files:
+  # tls_cert_file: /etc/chowki/tls/cert.pem
+  # tls_key_file: /etc/chowki/tls/key.pem
+
+storage:
+  driver: sqlite
+  dsn: "file:/var/lib/chowki/data/chowki.db"   # in the data volume
+  cache_max_mb: 256        # size of the exact response cache, in MiB; 0 turns the cache off
+
+security:
+  master_key_file: "/var/lib/chowki/master.key"   # created by chowki init; keep it private
+  allow_private_upstreams: true                   # allow providers on localhost or a private network
+
+log:
+  level: info              # debug, info, warn or error
+
+retention_days: 90         # days to keep request metadata
+
+# Settings of virtual keys that don't have their own.
+defaults:
+  cache: off               # off or exact: answer repeated non-streaming requests from the cache
+  cache_ttl: 1h            # how long a cached answer is reused
+  prompt_cache: auto       # auto or off: mark repeated Anthropic prompt prefixes for caching
+  redaction: mask          # off, mask, block or alert: secrets and personal data in prompts
+
+# The providers that Chowki forwards requests to. Keys never go in this file:
+# api_key_env names the environment variable, or .env entry, that holds each key.
+providers:
+  - name: openai
+    type: openai
+    base_url: https://api.openai.com/v1
+    api_key_env: OPENAI_API_KEY
+  - name: anthropic
+    type: anthropic
+    base_url: https://api.anthropic.com
+    api_key_env: ANTHROPIC_API_KEY
+  - name: gemini
+    type: gemini
+    base_url: https://generativelanguage.googleapis.com
+    api_key_env: GEMINI_API_KEY
+  # Any OpenAI-compatible API works the same way, for example Ollama on the
+  # Docker host:
+  # - name: ollama
+  #   type: openai
+  #   base_url: http://host.docker.internal:11434/v1

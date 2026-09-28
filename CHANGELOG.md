@@ -9,8 +9,7 @@ All notable changes to Chowki are recorded in this file. The format is based on
 ### Added
 
 - The `chowki` command. `chowki version` prints the version, commit, build date and repository
-  URL. The `provider`, `usage`, `scan`, `setup` and `doctor` commands exist but aren't
-  implemented yet.
+  URL.
 - Project identity in `project.env`. `make sync` applies it to the whole repository, and
   `make sync-check` finds leftovers of an earlier identity and hard-coded URLs in Go code.
 - Fake OpenAI-compatible, Anthropic and Gemini providers for tests, with JSON and streaming
@@ -63,7 +62,8 @@ All notable changes to Chowki are recorded in this file. The format is based on
   the client, Chowki tries the next target, at most two more. A target that fails three times in a
   row is skipped for 30 seconds.
 - Model allowlists per virtual key: `chowki key create|update --models "fast,openai/*"`. Other
-  models get 403 `model_not_allowed`. The key settings now show the models.
+  models get 403 `model_not_allowed`, before redaction scans the request. The key settings now
+  show the models.
 - More endpoints: `POST /v1/embeddings` (with redaction of the input and the exact cache),
   `GET /v1/models` (the aliases and catalog models that a key may use), and
   `POST /anthropic/v1/messages/count_tokens` (free: no budget or token limit).
@@ -95,8 +95,51 @@ All notable changes to Chowki are recorded in this file. The format is based on
   `GET /v1/models` lists their models.
 - The model catalog lists each model's context window, maximum output and capabilities: tools,
   vision, JSON output, caching and thinking.
+- `POST /v1/responses` relays OpenAI's Responses API to OpenAI-compatible providers, with usage,
+  cost, budgets, the exact cache and redaction, for clients such as the Codex CLI.
+- `chowki scan` finds secrets in a repository, `.env` files and MCP configurations: keys of AI
+  providers and clouds, private keys, tokens, and passwords assigned to settings, and with
+  `--pii`, personal data. It never prints the secrets. Reports come as text, JSON or SARIF 2.1.0,
+  and it exits with 1 when it finds any. `action.yml` runs it in GitHub Actions and uploads the
+  findings to code scanning.
 - A guide to DeepSeek, xAI, Mistral, Groq and OpenRouter as providers, with their base URLs.
   Usage from xAI, whose completion tokens exclude reasoning, now counts the reasoning as output,
   and Groq's usage in `x_groq` counts in streams.
+- `chowki setup <TOOL>` prints the settings that point Claude Code, the Codex CLI, the Gemini CLI,
+  the OpenAI, Anthropic and Google Gen AI SDKs, or Ollama at the gateway, with guides for each.
+- `chowki doctor` checks the `.env` file, the configuration, the master key, the providers' keys
+  and prices, the catalog, the database, the keys and the listen address, and says what to fix. It
+  changes nothing, and exits with 1 when a check fails.
+- A container image, built from `deploy/Dockerfile`: a static binary on a distroless base, about
+  18 MB, that runs as a non-root user and keeps its data in `/var/lib/chowki`. `deploy/compose.yaml`
+  runs it with Docker Compose, and `make docker` builds it. `CHOWKI_CONFIG` sets the configuration
+  file that commands read without `--config`.
+- `chowki usage` prints the requests, tokens, cost, savings, cache hits and redactions of a range
+  of days, in total and by key, model or day.
+- `chowki provider list` shows where each provider's key comes from, and `chowki provider set-key`
+  stores a key in the database, sealed with AES-256-GCM under the master key and bound to its
+  provider, for when the environment has none. It reads keys only from standard input.
+  `chowki serve` uses stored keys, and `chowki doctor` checks that they open.
+- A CLI reference, and summaries in the configuration, metrics and API references, generated from
+  the code; `make docs` rewrites them, and the tests fail while they're out of date. Every command
+  prints its usage with `--help`.
+- `server.tls_cert_file` and `server.tls_key_file` make the gateway serve HTTPS, with TLS 1.2 or
+  later and HTTP/2, and load a renewed certificate without a restart. `server.read_timeout`, 60
+  seconds by default, limits how long a client may take to send a request; responses may stream
+  for longer. `chowki doctor` checks the certificate and warns 14 days before it expires.
+- `chowki backup` writes a consistent copy of the database while the gateway runs, and
+  `chowki restore` puts one back after checking it, and keeps the database it replaces. With `-`,
+  they stream through stdout and stdin, as `docker compose exec -T` needs. `chowki serve` logs
+  when it upgrades the database's schema.
+- Releases: a `v*` tag builds archives for Linux, macOS and Windows on amd64 and arm64, with the
+  licenses of every module in them, checksums and SPDX SBOMs, and container images for
+  `linux/amd64` and `linux/arm64`, all with signed build provenance, as a draft release.
+  `tools/licenses` fails the release, and CI, on a module under a license that the binary may not
+  include.
+- A documentation site, built from `docs/` with Docusaurus in `website/`, with local search. Its
+  build fails on a broken link or anchor, and GitHub Pages publishes it from `main`.
+- `make loadtest` measures the gateway's overhead at 200 requests per second on 2 CPUs, against a
+  fake provider, and fails when the p99 is over 25 ms or a gateway built with `-race` reports a
+  race.
 
 [Unreleased]: https://github.com/852hamza/chowki/commits/main

@@ -9,8 +9,8 @@ Chowki has no release yet. Once it does, security fixes go into the latest relea
 
 ## Report a vulnerability
 
-Report a vulnerability privately through
-[GitHub private vulnerability reporting](https://github.com/852hamza/chowki/security/advisories/new).
+Report a vulnerability privately through GitHub private vulnerability reporting:
+<https://github.com/852hamza/chowki/security/advisories/new>.
 Don't open a public issue, pull request or discussion about it.
 
 Include:

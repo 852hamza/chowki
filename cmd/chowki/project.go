@@ -32,7 +32,7 @@ func runProject(args []string, stdout, stderr io.Writer) int {
 func projectList(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	flags := flag.NewFlagSet("chowki project list", flag.ContinueOnError)
 	flags.SetOutput(stderr)
-	configPath := flags.String("config", defaultConfig, "configuration file")
+	configPath := flags.String("config", defaultConfig(), "configuration file")
 	if err := flags.Parse(args); err != nil || flags.NArg() > 0 {
 		return exitUsage
 	}
@@ -77,7 +77,7 @@ func projectList(ctx context.Context, args []string, stdout, stderr io.Writer) i
 func projectUpdate(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	flags := flag.NewFlagSet("chowki project update", flag.ContinueOnError)
 	flags.SetOutput(stderr)
-	configPath := flags.String("config", defaultConfig, "configuration file")
+	configPath := flags.String("config", defaultConfig(), "configuration file")
 	budgetUSD := flags.Float64("budget-usd", 0, "monthly budget in US dollars; 0 removes it")
 	if err := flags.Parse(args); err != nil || flags.NArg() != 1 {
 		if err == nil {

@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"log/slog"
@@ -70,22 +71,45 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 	_ = json.NewEncoder(w).Encode(v) // the client may be gone; nothing to do then
 }
 
+// Options change how Run serves.
+type Options struct {
+	// ReadTimeout limits reading a request, its headers and its body. Once
+	// the body is read, the response may stream for as long as it needs:
+	// net/http lifts the deadline then.
+	ReadTimeout time.Duration
+	// CertFile and KeyFile, when set, make Run serve HTTPS with that
+	// certificate and key, which it loads again when the files change.
+	CertFile, KeyFile string
+}
+
 // Run serves h on ln until ctx ends, then shuts down gracefully: it stops
 // accepting connections and waits up to ShutdownTimeout for requests in
 // flight, then closes the rest.
-func Run(ctx context.Context, ln net.Listener, h http.Handler, logger *slog.Logger) error {
+func Run(ctx context.Context, ln net.Listener, h http.Handler, logger *slog.Logger, opts Options) error {
 	srv := &http.Server{
 		Handler:           h,
 		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       opts.ReadTimeout,
 		IdleTimeout:       2 * time.Minute,
 		MaxHeaderBytes:    64 << 10,
 		ErrorLog:          slog.NewLogLogger(logger.Handler(), slog.LevelWarn),
 		// No write timeout: a stream may last as long as the upstream
 		// timeout allows.
 	}
+	serve := func() error { return srv.Serve(ln) }
+	scheme := "http"
+	if opts.CertFile != "" || opts.KeyFile != "" {
+		certs, err := loadCertificate(opts.CertFile, opts.KeyFile, logger)
+		if err != nil {
+			return err
+		}
+		srv.TLSConfig = &tls.Config{MinVersion: tls.VersionTLS12, GetCertificate: certs.get}
+		serve = func() error { return srv.ServeTLS(ln, "", "") }
+		scheme = "https"
+	}
 	errc := make(chan error, 1)
-	go func() { errc <- srv.Serve(ln) }()
-	logger.Info("listening", "addr", ln.Addr().String())
+	go func() { errc <- serve() }()
+	logger.Info("listening", "addr", ln.Addr().String(), "scheme", scheme)
 
 	select {
 	case err := <-errc:

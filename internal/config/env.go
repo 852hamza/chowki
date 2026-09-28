@@ -17,7 +17,7 @@ const EnvPrefix = "CHOWKI_"
 // Lists, such as providers, can only be set in the file.
 func EnvVars() []string {
 	var names []string
-	walkSettings(reflect.ValueOf(&Config{}).Elem(), EnvPrefix, func(name string, _ reflect.Value) {
+	walkSettings(reflect.ValueOf(&Config{}).Elem(), EnvPrefix, "", func(name, _ string, _ reflect.Value) {
 		names = append(names, name)
 	})
 	return names
@@ -29,7 +29,7 @@ var durationType = reflect.TypeFor[time.Duration]()
 // name the variable but never show its value, which may be a secret.
 func applyEnv(cfg *Config, env func(string) (string, bool)) error {
 	var errs []error
-	walkSettings(reflect.ValueOf(cfg).Elem(), EnvPrefix, func(name string, field reflect.Value) {
+	walkSettings(reflect.ValueOf(cfg).Elem(), EnvPrefix, "", func(name, _ string, field reflect.Value) {
 		raw, ok := env(name)
 		if !ok {
 			return
@@ -42,8 +42,9 @@ func applyEnv(cfg *Config, env func(string) (string, bool)) error {
 }
 
 // walkSettings calls fn for every scalar setting in v, a struct, with the
-// name of its environment variable.
-func walkSettings(v reflect.Value, prefix string, fn func(name string, field reflect.Value)) {
+// name of its environment variable and its path in the file, such as
+// server.listen.
+func walkSettings(v reflect.Value, prefix, path string, fn func(name, path string, field reflect.Value)) {
 	t := v.Type()
 	for i := range t.NumField() {
 		tag, _, _ := strings.Cut(t.Field(i).Tag.Get("yaml"), ",")
@@ -53,9 +54,9 @@ func walkSettings(v reflect.Value, prefix string, fn func(name string, field ref
 		name := prefix + strings.ToUpper(tag)
 		switch f := v.Field(i); f.Kind() {
 		case reflect.Struct:
-			walkSettings(f, name+"_", fn)
+			walkSettings(f, name+"_", path+tag+".", fn)
 		case reflect.String, reflect.Int, reflect.Int64, reflect.Bool:
-			fn(name, f)
+			fn(name, path+tag, f)
 		}
 	}
 }

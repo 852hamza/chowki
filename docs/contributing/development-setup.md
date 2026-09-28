@@ -64,6 +64,16 @@ your change passes them the first time.
    also checks each commit message and sign-off; see the
    [contributing guide](https://github.com/852hamza/chowki/blob/main/CONTRIBUTING.md).
 
+6. If you changed a command's usage, a setting, a metric or an error code, rewrite the reference
+   pages that are generated from the code:
+
+   ```sh
+   make docs
+   ```
+
+   `make test` fails while a generated part of `docs/reference` is out of date, and names the
+   page.
+
 ## Verify
 
 Run the binary that you built:
@@ -96,8 +106,8 @@ short commit hash, followed by `-dirty` when you have uncommitted changes.
 ## Next steps
 
 - Find where your change belongs in [Code structure](code-structure.md).
-- Read the [contributing guide](https://github.com/852hamza/chowki/blob/main/CONTRIBUTING.md) before
-  you open a pull request.
+- Read the [contributing guide](https://github.com/852hamza/chowki/blob/main/CONTRIBUTING.md)
+  before you open a pull request.
 
 ## Related
 

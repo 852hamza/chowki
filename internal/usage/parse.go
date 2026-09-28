@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"strings"
 )
 
 // Family is the API format of a request and its response.
@@ -14,6 +15,9 @@ const (
 	OpenAI    Family = "openai"
 	Anthropic Family = "anthropic"
 	Gemini    Family = "gemini"
+	// OpenAIResponses is OpenAI's Responses API, whose usage differs from
+	// that of chat completions.
+	OpenAIResponses Family = "openai-responses"
 )
 
 // Usage is the token usage of one request, the same for every family.
@@ -183,6 +187,34 @@ type anthropicBody struct {
 	Usage *anthropicUsage `json:"usage"`
 }
 
+// Responses API usage: ResponseUsage in the openai-python SDK,
+// https://github.com/openai/openai-python/blob/main/src/openai/types/responses/response_usage.py.
+type responsesBody struct {
+	Model       string `json:"model"`
+	ServiceTier string `json:"service_tier"`
+	Usage       *struct {
+		InputTokens        int64 `json:"input_tokens"`
+		OutputTokens       int64 `json:"output_tokens"`
+		InputTokensDetails struct {
+			CachedTokens     int64 `json:"cached_tokens"`
+			CacheWriteTokens int64 `json:"cache_write_tokens"`
+		} `json:"input_tokens_details"`
+		OutputTokensDetails struct {
+			ReasoningTokens int64 `json:"reasoning_tokens"`
+		} `json:"output_tokens_details"`
+	} `json:"usage"`
+}
+
+// apply reads a response as chat completions count: the input includes
+// the cached tokens, and the output the reasoning.
+func (b responsesBody) apply(r *Report) {
+	openAIBody{Model: b.Model, ServiceTier: b.ServiceTier}.apply(r)
+	if u := b.Usage; u != nil {
+		r.Usage = &Usage{Input: u.InputTokens, Output: u.OutputTokens, CacheRead: u.InputTokensDetails.CachedTokens,
+			CacheWrite: u.InputTokensDetails.CacheWriteTokens, Reasoning: u.OutputTokensDetails.ReasoningTokens}
+	}
+}
+
 // Gemini usage metadata: UsageMetadata, and EmbeddingUsageMetadata for
 // embeddings, in the discovery document of the Gemini API,
 // https://generativelanguage.googleapis.com/$discovery/rest?version=v1beta.
@@ -268,6 +300,12 @@ func ParseResponse(f Family, body []byte) (Report, error) {
 			return r, fmt.Errorf("parse %s response: %w", f, err)
 		}
 		b.apply(&r)
+	case OpenAIResponses:
+		var b responsesBody
+		if err := json.Unmarshal(body, &b); err != nil {
+			return r, fmt.Errorf("parse %s response: %w", f, err)
+		}
+		b.apply(&r)
 	default:
 		return r, fmt.Errorf("unknown API family %q", f)
 	}
@@ -326,6 +364,19 @@ func (s *Stream) Event(name string, data []byte) {
 				}
 				s.anthropic.merge(*e.Usage)
 			}
+		}
+	case OpenAIResponses:
+		// The events that end a response carry it whole, usage included.
+		if !bytes.Contains(data, []byte(`"response.completed"`)) && !bytes.Contains(data, []byte(`"response.incomplete"`)) &&
+			!bytes.Contains(data, []byte(`"response.failed"`)) {
+			return
+		}
+		var e struct {
+			Type     string        `json:"type"`
+			Response responsesBody `json:"response"`
+		}
+		if json.Unmarshal(data, &e) == nil && strings.HasPrefix(e.Type, "response.") {
+			e.Response.apply(&s.report)
 		}
 	case Gemini:
 		// Chunks may repeat usageMetadata with growing counts: the last one

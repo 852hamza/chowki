@@ -113,22 +113,15 @@ func (s *SQLite) migrate(ctx context.Context) error {
 	if err := s.db.QueryRowContext(ctx, `SELECT coalesce(max(version), 0) FROM schema_migrations`).Scan(&current); err != nil {
 		return fmt.Errorf("migrate: %w", err)
 	}
-	names, err := fs.Glob(migrations, "migrations/*.sql")
+	ms, err := migrationList()
 	if err != nil {
 		return fmt.Errorf("migrate: %w", err)
 	}
-	slices.Sort(names)
-	latest := 0
-	for _, name := range names {
-		version, err := strconv.Atoi(strings.SplitN(filepath.Base(name), "_", 2)[0])
-		if err != nil {
-			return fmt.Errorf("migrate: bad migration name %s", name)
-		}
-		latest = version
-		if version <= current {
+	for _, m := range ms {
+		if m.version <= current {
 			continue
 		}
-		body, err := migrations.ReadFile(name)
+		body, err := migrations.ReadFile(m.name)
 		if err != nil {
 			return fmt.Errorf("migrate: %w", err)
 		}
@@ -137,17 +130,122 @@ func (s *SQLite) migrate(ctx context.Context) error {
 				return err
 			}
 			_, err := tx.ExecContext(ctx, `INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)`,
-				version, time.Now().UnixMilli())
+				m.version, time.Now().UnixMilli())
 			return err
 		}); err != nil {
-			return fmt.Errorf("migrate to version %d: %w", version, err)
+			return fmt.Errorf("migrate to version %d: %w", m.version, err)
 		}
 	}
-	if current > latest {
+	if latest := ms[len(ms)-1].version; current > latest {
 		return fmt.Errorf("migrate: the database has schema version %d, but this Chowki knows only up to %d; "+
 			"use a newer Chowki", current, latest)
 	}
 	return nil
+}
+
+// migration is a schema change, in migrations/<version>_<name>.sql.
+type migration struct {
+	version int
+	name    string
+}
+
+// migrationList returns the migrations in version order.
+func migrationList() ([]migration, error) {
+	names, err := fs.Glob(migrations, "migrations/*.sql")
+	if err != nil {
+		return nil, err
+	}
+	slices.Sort(names)
+	ms := make([]migration, 0, len(names))
+	for _, name := range names {
+		version, err := strconv.Atoi(strings.SplitN(filepath.Base(name), "_", 2)[0])
+		if err != nil {
+			return nil, fmt.Errorf("bad migration name %s", name)
+		}
+		ms = append(ms, migration{version, name})
+	}
+	return ms, nil
+}
+
+// Inspection is what InspectSQLite finds in a database.
+type Inspection struct {
+	// Path is the database file, or "" for an in-memory database.
+	Path string
+	// Version is the database's schema version, 0 before any migration.
+	Version int
+	// Latest is the newest schema version that this Chowki knows.
+	Latest int
+	// Keys and AdminTokens count the virtual keys and the admin tokens that
+	// aren't revoked, and ProviderKeys holds the sealed provider keys, by
+	// provider, once the schema is up to date.
+	Keys, AdminTokens int
+	ProviderKeys      map[string][]byte
+}
+
+// InspectSQLite reads the schema version of the SQLite database at dsn, and
+// counts its keys. It neither creates the database nor migrates it, so that
+// checks such as chowki doctor change nothing. A database file that doesn't
+// exist yet returns an error that wraps fs.ErrNotExist.
+func InspectSQLite(ctx context.Context, dsn string) (Inspection, error) {
+	ms, err := migrationList()
+	if err != nil {
+		return Inspection{}, err
+	}
+	full, path, err := prepareDSN(dsn)
+	if err != nil {
+		return Inspection{}, err
+	}
+	in := Inspection{Path: path, Latest: ms[len(ms)-1].version}
+	if path == "" {
+		return in, nil // an in-memory database starts empty every time
+	}
+	if _, err := os.Stat(path); err != nil {
+		return in, fmt.Errorf("database: %w", err)
+	}
+	// mode=rw opens the file without creating it, should it go away.
+	db, err := sql.Open("sqlite", full+"&mode=rw")
+	if err != nil {
+		return in, fmt.Errorf("open database: %w", err)
+	}
+	defer func() { _ = db.Close() }() // nothing was written
+	var tables int
+	if err := db.QueryRowContext(ctx, `SELECT count(*) FROM sqlite_master WHERE type = 'table' AND
+		name = 'schema_migrations'`).Scan(&tables); err != nil {
+		return in, fmt.Errorf("open database: %w", err)
+	}
+	if tables == 0 {
+		return in, nil
+	}
+	if err := db.QueryRowContext(ctx, `SELECT coalesce(max(version), 0) FROM schema_migrations`).
+		Scan(&in.Version); err != nil {
+		return in, fmt.Errorf("read schema version: %w", err)
+	}
+	if in.Version != in.Latest {
+		return in, nil // the tables may differ from what this Chowki knows
+	}
+	if err := db.QueryRowContext(ctx, `SELECT
+		(SELECT count(*) FROM virtual_keys WHERE revoked_at IS NULL),
+		(SELECT count(*) FROM admin_tokens WHERE revoked_at IS NULL)`).Scan(&in.Keys, &in.AdminTokens); err != nil {
+		return in, fmt.Errorf("count keys: %w", err)
+	}
+	rows, err := db.QueryContext(ctx, `SELECT provider, sealed FROM provider_keys`)
+	if err != nil {
+		return in, fmt.Errorf("read provider keys: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	in.ProviderKeys = map[string][]byte{}
+	for rows.Next() {
+		var name string
+		var sealed []byte
+		if err := rows.Scan(&name, &sealed); err != nil {
+			return in, fmt.Errorf("read provider keys: %w", err)
+		}
+		in.ProviderKeys[name] = sealed
+	}
+	if err := rows.Err(); err != nil {
+		return in, fmt.Errorf("read provider keys: %w", err)
+	}
+	return in, nil
 }
 
 func (s *SQLite) inTx(ctx context.Context, fn func(*sql.Tx) error) error {
