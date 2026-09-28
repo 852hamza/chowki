@@ -1,0 +1,16 @@
+# The build context holds only what the image build needs, so that secrets,
+# private notes and local data never reach it.
+*
+!go.mod
+!go.sum
+!Makefile
+!project.env
+!catalog
+!cmd
+!internal
+!pkg
+!deploy/chowki.yaml
+**/.env
+**/.env.*
+**/*.db
+**/*.db-*

@@ -12,7 +12,7 @@ VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null)
 COMMIT  ?= $(shell git rev-parse HEAD 2>/dev/null)
 DATE    ?= $(shell TZ=UTC0 git show -s --date=format-local:%Y-%m-%dT%H:%M:%SZ --format=%cd HEAD 2>/dev/null)
 
-# Evaluated only by `build`, so other targets don't run git.
+# Evaluated only by `build` and `docker`, so other targets don't run git.
 LDFLAGS = \
 	-X $(BUILDINFO).version=$(VERSION) \
 	-X $(BUILDINFO).commit=$(COMMIT) \
@@ -23,11 +23,23 @@ LDFLAGS = \
 	-X $(BUILDINFO).website=$(WEBSITE_URL) \
 	-X $(BUILDINFO).docs=$(DOCS_URL)
 
-.PHONY: build test race lint vuln sync sync-check help
+# Extra linker flags. The container image passes -s -w, which leave out the
+# symbol tables.
+EXTRA_LDFLAGS ?=
+
+# The tag that `make docker` gives the image, as deploy/compose.yaml names it.
+IMAGE ?= chowki:dev
+
+.PHONY: build docker test race lint vuln sync sync-check help
 
 ## build: compile bin/chowki with version and project identity
 build:
-	$(GO) build -trimpath -ldflags '$(LDFLAGS)' -o bin/chowki ./cmd/chowki
+	$(GO) build -trimpath -ldflags '$(LDFLAGS) $(EXTRA_LDFLAGS)' -o bin/chowki ./cmd/chowki
+
+## docker: build the container image $(IMAGE) from deploy/Dockerfile
+docker:
+	docker build -f deploy/Dockerfile --build-arg VERSION=$(VERSION) --build-arg COMMIT=$(COMMIT) \
+		--build-arg DATE=$(DATE) -t $(IMAGE) .
 
 ## test: run all tests
 test:

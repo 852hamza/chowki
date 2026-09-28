@@ -109,5 +109,9 @@ All notable changes to Chowki are recorded in this file. The format is based on
 - `chowki doctor` checks the `.env` file, the configuration, the master key, the providers' keys
   and prices, the catalog, the database, the keys and the listen address, and says what to fix. It
   changes nothing, and exits with 1 when a check fails.
+- A container image, built from `deploy/Dockerfile`: a static binary on a distroless base, about
+  18 MB, that runs as a non-root user and keeps its data in `/var/lib/chowki`. `deploy/compose.yaml`
+  runs it with Docker Compose, and `make docker` builds it. `CHOWKI_CONFIG` sets the configuration
+  file that commands read without `--config`.
 
 [Unreleased]: https://github.com/852hamza/chowki/commits/main
