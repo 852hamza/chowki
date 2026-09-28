@@ -17,6 +17,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"regexp"
+	"slices"
 	"strings"
 )
 
@@ -134,16 +135,32 @@ func subject(message string) string {
 	return strings.TrimSpace(s)
 }
 
+// Dependabot commits as its GitHub account but signs off with GitHub's
+// support address.
+const (
+	dependabotEmail   = "49699333+dependabot[bot]@users.noreply.github.com"
+	dependabotSignOff = "support@github.com"
+)
+
 // signedOff reports whether the message has a sign-off with the author's
-// email address.
+// email address, or with Dependabot's on a Dependabot commit.
 func signedOff(c commit) bool {
+	emails := []string{c.email}
+	if strings.EqualFold(c.email, dependabotEmail) {
+		emails = append(emails, dependabotSignOff)
+	}
 	for line := range strings.SplitSeq(c.message, "\n") {
 		line = strings.TrimSpace(line)
 		const prefix = "signed-off-by: "
 		if len(line) < len(prefix) || !strings.EqualFold(line[:len(prefix)], prefix) || !strings.HasSuffix(line, ">") {
 			continue
 		}
-		if i := strings.LastIndexByte(line, '<'); i >= 0 && strings.EqualFold(line[i+1:len(line)-1], c.email) {
+		i := strings.LastIndexByte(line, '<')
+		if i < 0 {
+			continue
+		}
+		email := line[i+1 : len(line)-1]
+		if slices.ContainsFunc(emails, func(e string) bool { return strings.EqualFold(email, e) }) {
 			return true
 		}
 	}

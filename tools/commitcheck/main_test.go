@@ -50,6 +50,27 @@ func TestProblems(t *testing.T) {
 	}
 }
 
+// Dependabot signs off with GitHub's support address, which only its own
+// commits may use. The subjects are the ones that .github/dependabot.yml
+// makes, for one update and for a group.
+func TestDependabotSignOff(t *testing.T) {
+	for _, subject := range []string{
+		"build(deps): bump modernc.org/sqlite from 1.59.0 to 1.60.0",
+		"ci(deps): bump the actions group across 1 directory with 6 updates",
+	} {
+		message := subject + "\n\nBumps ...\n\nSigned-off-by: dependabot[bot] <support@github.com>\n"
+		bot := commit{hash: "abc", name: "dependabot[bot]", email: "49699333+dependabot[bot]@users.noreply.github.com",
+			message: message}
+		if got := problems(bot); len(got) != 0 {
+			t.Errorf("Dependabot's %q: problems() = %q, want none", subject, got)
+		}
+		person := commit{hash: "abc", name: "Ada Lovelace", email: "ada@example.com", message: message}
+		if got := problems(person); len(got) != 1 || !strings.Contains(got[0], "Signed-off-by: Ada Lovelace") {
+			t.Errorf("a person's commit with Dependabot's sign-off: problems() = %q, want a missing sign-off", got)
+		}
+	}
+}
+
 func TestRun(t *testing.T) {
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git is not in PATH")
