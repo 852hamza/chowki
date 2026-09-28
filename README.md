@@ -60,6 +60,8 @@ make build
   DeepSeek, xAI, Mistral, Groq, OpenRouter and others.
 - [Use the dashboard](docs/how-to/use-the-dashboard.md): see spend, savings, redactions and
   budgets in a browser.
+- [Report usage and cost](docs/how-to/report-usage.md): print a range of days in the terminal,
+  by key, model or day.
 - [Scan for secrets](docs/how-to/scan-for-secrets.md): find keys and passwords in repositories,
   locally and in GitHub Actions.
 - [Connect Claude Code](docs/how-to/connect-claude-code.md),
