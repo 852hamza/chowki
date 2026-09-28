@@ -26,16 +26,16 @@ a single Go binary that stores its data in SQLite.
 
 ## Quickstart
 
-Build Chowki from source with Go 1.27 or later, Git and GNU Make, then follow
+Install the latest release on Linux or macOS, then follow
 [Send your first request](docs/get-started/quickstart.md) to create a virtual key and send a
 request through the gateway:
 
 ```sh
-git clone https://github.com/852hamza/chowki.git
-cd chowki
-make build
-./bin/chowki version
+curl -fsSL https://github.com/852hamza/chowki/raw/main/install.sh | sh
 ```
+
+To run Chowki with Docker Compose, or to build it from source, see
+[Install Chowki](docs/get-started/install.md).
 
 ## Documentation
 

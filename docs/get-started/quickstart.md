@@ -9,36 +9,36 @@ last_reviewed: 2026-09-27
 ---
 
 In this tutorial you set up Chowki on your computer and send a chat request through it with a
-virtual key. It takes about ten minutes.
+virtual key. It takes about five minutes.
 
 You will:
 
-1. Build Chowki and create its configuration, master key and database.
+1. Install Chowki and create its configuration, master key and database.
 2. Create a virtual key.
 3. Start the gateway, send a request through it, and see what it cost.
 
 ## Before you begin
 
-- Go 1.27 or later, Git and GNU Make, to build Chowki from source. Binary releases come with the
-  first release. To run Chowki in a container instead, see [Install Chowki](install.md).
+- Linux or macOS, on amd64 or arm64. On Windows, use Windows Subsystem for Linux. To run Chowki in
+  a container or build it from source instead, see [Install Chowki](install.md).
 - An OpenAI API key. The request in this tutorial is billed to your OpenAI account and costs a
   small fraction of a cent.
 - curl.
-- A Linux or macOS shell. The commands also work in Windows Subsystem for Linux.
 
-## Step 1: Build and initialize Chowki
+## Step 1: Install and initialize Chowki
 
 Chowki keeps its configuration, master key and database in the folder where you run it, so give it
 a folder of its own.
 
-1. Clone the repository, build Chowki, and add the binary to your `PATH` for this session:
+1. Install the latest release:
 
    ```sh
-   git clone https://github.com/852hamza/chowki.git
-   cd chowki
-   make build
-   export PATH="$PWD/bin:$PATH"
+   curl -fsSL https://github.com/852hamza/chowki/raw/main/install.sh | sh
    ```
+
+   The script downloads the binary for your system, checks it against the release's checksums, and
+   installs it in `/usr/local/bin`, or in `~/.local/bin` when you can't write to `/usr/local/bin`.
+   It prints the version that it installed. If it says to add a folder to your `PATH`, do so.
 
 2. Create a folder for the gateway and initialize it:
 

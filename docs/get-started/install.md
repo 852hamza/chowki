@@ -1,6 +1,6 @@
 ---
 title: Install Chowki
-description: Build Chowki from source, or run it in a container with Docker Compose or Docker.
+description: Install the Chowki binary, run it in a container with Docker Compose or Docker, or build it from source.
 type: how-to
 since: v0.1
 edition: community
@@ -8,14 +8,49 @@ sidebar_position: 2
 last_reviewed: 2026-09-28
 ---
 
-Chowki is a single binary. Build it from source, or run it in a container with Docker Compose or
-Docker. Binary releases and published images come with the first release.
+Chowki is a single binary. Install a release, run it in a container with Docker Compose or
+Docker, or build it from source.
 
 | Way | You need | Good for |
 |---|---|---|
+| [Install script](#install-the-binary) | Linux or macOS, and curl | The quickest start, on your computer or a server |
 | [Docker Compose](#run-with-docker-compose) | Docker Engine with the Compose plugin, and Git | A gateway on a server or on your computer |
 | [Docker](#run-with-docker) | Docker Engine, and Git | Your own container setup |
 | [From source](#build-from-source) | Go 1.27 or later, Git and GNU Make | Development, or a machine without Docker |
+
+## Install the binary
+
+Install the latest release with one command:
+
+```sh
+curl -fsSL https://github.com/852hamza/chowki/raw/main/install.sh | sh
+```
+
+The [script](https://github.com/852hamza/chowki/blob/main/install.sh) downloads the archive for
+your system from the latest GitHub release, checks it against the release's `checksums.txt`, and
+installs `chowki` in `/usr/local/bin`, or in `~/.local/bin` when you can't write to
+`/usr/local/bin`. Run it again to upgrade. These environment variables change what it does:
+
+| Variable | Effect |
+|---|---|
+| `CHOWKI_VERSION` | Installs this version, such as `v0.1.0`, instead of the latest. |
+| `CHOWKI_INSTALL_DIR` | Installs the binary in this folder. |
+| `CHOWKI_RELEASES_URL` | Downloads from this mirror of the releases page. |
+
+For example, to install a version for yourself only:
+
+```sh
+curl -fsSL https://github.com/852hamza/chowki/raw/main/install.sh |
+  CHOWKI_VERSION=v0.1.0 CHOWKI_INSTALL_DIR="$HOME/bin" sh
+```
+
+To install by hand, or on Windows, download the archive for your system from the
+[releases page](https://github.com/852hamza/chowki/releases), check it against `checksums.txt`,
+and put the `chowki` binary in a folder in your `PATH`. Each release also has an SBOM of every
+archive and signed build provenance; see
+[Verify a release](../contributing/releasing.md#verify-a-release).
+
+Then set up a folder for the gateway, as [Send your first request](quickstart.md) shows.
 
 ## Run with Docker Compose
 

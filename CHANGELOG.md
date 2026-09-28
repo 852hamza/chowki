@@ -139,6 +139,9 @@ All notable changes to Chowki are recorded in this file. The format is based on
 - A documentation site, built from `docs/` with Docusaurus in `website/`, with local search. Its
   build fails on a broken link or anchor, and GitHub Pages publishes it from `main` once the
   repository is public.
+- `install.sh` installs the latest release, or `CHOWKI_VERSION`, on Linux and macOS with one
+  command, after checking the download against the release's checksums. The quickstart starts with
+  it, so it no longer needs Go.
 - `make loadtest` measures the gateway's overhead at 200 requests per second on 2 CPUs, against a
   fake provider, and fails when the p99 is over 25 ms or a gateway built with `-race` reports a
   race.
