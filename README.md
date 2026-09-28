@@ -17,13 +17,15 @@ a single Go binary that stores its data in SQLite.
 
 *Chowki* (چوکی) means "checkpoint" in Urdu.
 
-> **Status:** early development. Chowki doesn't relay requests yet, so it isn't ready for use.
-> Follow the [changelog](CHANGELOG.md) to see what has landed.
+> **Status:** early development. Chowki relays OpenAI and Anthropic requests with virtual keys and
+> records their cost, but budgets, caching and redaction aren't built yet, so don't use it in
+> production. Follow the [changelog](CHANGELOG.md) to see what has landed.
 
 ## Quickstart
 
-A five-minute quickstart comes with the first release. Until then, you can build Chowki from
-source with Go 1.27 or later, Git and GNU Make:
+Build Chowki from source with Go 1.27 or later, Git and GNU Make, then follow
+[Send your first request](docs/get-started/quickstart.md) to create a virtual key and send a request
+through the gateway:
 
 ```sh
 git clone https://github.com/852hamza/chowki.git
@@ -34,6 +36,10 @@ make build
 
 ## Documentation
 
+- [Send your first request](docs/get-started/quickstart.md): set up Chowki in about ten minutes.
+- [Manage virtual keys](docs/how-to/manage-virtual-keys.md): create, list and revoke keys.
+- [Configuration reference](docs/reference/configuration.md): every setting and its environment
+  variable.
 - [Architecture](docs/concepts/architecture.md): how a request flows through Chowki.
 - [Set up a development environment](docs/contributing/development-setup.md): build and test
   Chowki.

@@ -57,9 +57,11 @@ packages in order, calls the provider through an adapter, and records the usage.
 | `internal/web/` | Dashboard |
 | `internal/metrics/` | Prometheus metrics endpoint |
 | `internal/config/` | Configuration loading and validation |
+| `internal/netguard/` | Which network addresses the gateway may connect to (SSRF protection) |
 | `internal/buildinfo/` | Version and project identity of the build |
 | `internal/testutil/` | Test helpers, including the fake providers |
 | `pkg/plugin/` | Public, stable interfaces for extensions |
+| `catalog/models.json` | The model catalog: official prices, each with its source page and date |
 | `tools/projectsync/` | The tool behind `make sync` and `make sync-check` |
 | `tools/commitcheck/` | The CI check of commit messages and sign-offs |
 | `docs/` | This developer guide and the architecture decision records |

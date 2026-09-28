@@ -1,0 +1,57 @@
+{
+  "models": [
+    {
+      "provider": "openai",
+      "model": "gpt-6-astra",
+      "price": {"input": 10, "output": 50, "cache_read": 1, "cache_write": 12.5},
+      "tiers": [{"above_input_tokens": 272000, "input": 20, "output": 75, "cache_read": 2, "cache_write": 25}],
+      "source": "https://developers.openai.com/api/docs/pricing",
+      "updated": "2026-09-27"
+    },
+    {
+      "provider": "openai",
+      "model": "gpt-6-sol",
+      "price": {"input": 2, "output": 10, "cache_read": 0.2, "cache_write": 2.5},
+      "tiers": [{"above_input_tokens": 272000, "input": 4, "output": 15, "cache_read": 0.4, "cache_write": 5}],
+      "source": "https://developers.openai.com/api/docs/pricing",
+      "updated": "2026-09-27"
+    },
+    {
+      "provider": "openai",
+      "model": "gpt-6-luna",
+      "price": {"input": 0.1, "output": 0.5, "cache_read": 0.01, "cache_write": 0.125},
+      "tiers": [{"above_input_tokens": 272000, "input": 0.2, "output": 0.75, "cache_read": 0.02, "cache_write": 0.25}],
+      "source": "https://developers.openai.com/api/docs/pricing",
+      "updated": "2026-09-27"
+    },
+    {
+      "provider": "anthropic",
+      "model": "claude-fable-5-1",
+      "price": {"input": 10, "output": 50, "cache_read": 0.25, "cache_write": 12.5, "cache_write_1h": 20},
+      "source": "https://platform.claude.com/docs/en/about-claude/pricing",
+      "updated": "2026-09-27"
+    },
+    {
+      "provider": "anthropic",
+      "model": "claude-opus-5-5",
+      "price": {"input": 4, "output": 20, "cache_read": 0.2, "cache_write": 5, "cache_write_1h": 8},
+      "source": "https://platform.claude.com/docs/en/about-claude/pricing",
+      "updated": "2026-09-27"
+    },
+    {
+      "provider": "anthropic",
+      "model": "claude-sonnet-5",
+      "price": {"input": 2, "output": 10, "cache_read": 0.2, "cache_write": 2.5, "cache_write_1h": 4},
+      "source": "https://platform.claude.com/docs/en/about-claude/pricing",
+      "updated": "2026-09-27"
+    },
+    {
+      "provider": "anthropic",
+      "model": "claude-haiku-4-5-20251001",
+      "aliases": ["claude-haiku-4-5"],
+      "price": {"input": 1, "output": 5, "cache_read": 0.1, "cache_write": 1.25, "cache_write_1h": 2},
+      "source": "https://platform.claude.com/docs/en/about-claude/pricing",
+      "updated": "2026-09-27"
+    }
+  ]
+}

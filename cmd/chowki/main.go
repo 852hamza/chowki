@@ -32,10 +32,10 @@ type command struct {
 
 func commands() []command {
 	return []command{
-		{"serve", "Run the gateway", notImplemented("serve")},
-		{"init", "Create a configuration and a master key", notImplemented("init")},
+		{"serve", "Run the gateway", runServe},
+		{"init", "Create a configuration, a master key and the database", runInit},
 		{"provider", "Manage provider keys", notImplemented("provider")},
-		{"key", "Manage virtual keys", notImplemented("key")},
+		{"key", "Create, list and revoke virtual keys", runKey},
 		{"usage", "Report token usage, cost and savings", notImplemented("usage")},
 		{"scan", "Find secrets in a repository, .env files or MCP configurations", notImplemented("scan")},
 		{"setup", "Connect an app or coding agent to the gateway", notImplemented("setup")},
