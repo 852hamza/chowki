@@ -6,8 +6,11 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+	"text/template"
 
 	"go.yaml.in/yaml/v3"
+
+	"github.com/852hamza/chowki/internal/buildinfo"
 )
 
 // The GitHub Action loads as YAML, pins every action it uses to a commit,
@@ -37,6 +40,48 @@ func TestAction(t *testing.T) {
 		}
 		if regexp.MustCompile(`\$\{\{\s*inputs\.`).MatchString(s.Run) {
 			t.Errorf("a script reads an input inline:\n%s", s.Run)
+		}
+	}
+}
+
+// A release takes its notes from CHANGELOG.md, which changelog.disable
+// would drop, and ends them with instructions for its own version; a re-run
+// of the workflow replaces its draft.
+func TestGoReleaserConfig(t *testing.T) {
+	var cfg struct {
+		Changelog struct {
+			Disable bool `yaml:"disable"`
+		} `yaml:"changelog"`
+		Release struct {
+			Draft                bool   `yaml:"draft"`
+			ReplaceExistingDraft bool   `yaml:"replace_existing_draft"`
+			Footer               string `yaml:"footer"`
+		} `yaml:"release"`
+	}
+	if err := yaml.Unmarshal([]byte(readDeploy(t, ".goreleaser.yaml")), &cfg); err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Changelog.Disable {
+		t.Error("changelog.disable is set, which drops the notes that the workflow passes with --release-notes")
+	}
+	if !strings.Contains(readDeploy(t, ".github/workflows/release.yml"), "--release-notes") {
+		t.Error("the Release workflow doesn't pass CHANGELOG.md's section with --release-notes")
+	}
+	if cfg.Release.Draft && !cfg.Release.ReplaceExistingDraft {
+		t.Error("a re-run of the Release workflow would add a second draft; set release.replace_existing_draft")
+	}
+	footer, err := template.New("footer").Parse(cfg.Release.Footer)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var b strings.Builder
+	if err := footer.Execute(&b, struct{ Tag, Version string }{"v1.2.3", "1.2.3"}); err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"CHOWKI_VERSION=v1.2.3 sh", "docker pull " + buildinfo.Project().Image() + ":1.2.3",
+		"chowki_1.2.3_linux_amd64.tar.gz --repo " + buildinfo.Project().Owner + "/" + buildinfo.Project().Repo} {
+		if !strings.Contains(b.String(), want) {
+			t.Errorf("the release footer for v1.2.3 lacks %q:\n%s", want, b.String())
 		}
 	}
 }

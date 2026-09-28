@@ -13,6 +13,12 @@ All notable changes to Chowki are recorded in this file. The format is based on
   names another image, such as a version to stay on or `chowki:dev` from `make docker`, and
   `CHOWKI_PORT` changes the port on this machine. To upgrade, run `docker compose pull`.
 
+### Fixed
+
+- GitHub releases take their notes from the version's section of `CHANGELOG.md`, followed by
+  instructions to install and verify that version. The notes of v0.1.0 came out empty. A re-run of
+  the Release workflow replaces its draft, instead of adding a second one.
+
 ## [0.1.0] - 2026-09-28
 
 The first release.

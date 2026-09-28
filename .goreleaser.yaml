@@ -60,10 +60,39 @@ release:
   github:
     owner: 852hamza
     name: chowki
-  # A maintainer reads the draft and publishes it.
+  # A maintainer reads the draft and publishes it. A re-run of the workflow
+  # replaces its draft, instead of adding a second one.
   draft: true
+  replace_existing_draft: true
   prerelease: auto
+  # The release notes are the version's section of CHANGELOG.md, which the
+  # workflow passes with --release-notes, and then this footer. Don't set
+  # changelog.disable: it also drops the --release-notes file.
+  footer: |
+    ## Install
 
-# The release notes come from CHANGELOG.md, through --release-notes.
-changelog:
-  disable: true
+    Linux or macOS:
+
+    ```sh
+    curl -fsSL https://github.com/852hamza/chowki/raw/main/install.sh | CHOWKI_VERSION={{ .Tag }} sh
+    ```
+
+    Docker, for linux/amd64 and linux/arm64:
+
+    ```sh
+    docker pull ghcr.io/852hamza/chowki:{{ .Version }}
+    ```
+
+    On Windows, download the zip for your system below. Then follow the
+    [quickstart](https://852hamza.github.io/chowki/docs/get-started/quickstart), or
+    [upgrade](https://852hamza.github.io/chowki/docs/operations/upgrade) a gateway that runs.
+
+    ## Verify
+
+    `checksums.txt` lists the SHA-256 of every file, each archive has an SBOM, and the archives and
+    images carry signed build provenance:
+
+    ```sh
+    sha256sum --check --ignore-missing checksums.txt
+    gh attestation verify chowki_{{ .Version }}_linux_amd64.tar.gz --repo 852hamza/chowki
+    ```
