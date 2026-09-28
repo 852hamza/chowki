@@ -125,11 +125,12 @@ func validate(id buildinfo.Identity) error {
 
 // identityValues returns the strings by which files refer to id.
 func identityValues(id buildinfo.Identity) []string {
-	return []string{id.Domain, id.Module(), id.RepoURL(), id.Image(), id.WebsiteURL(), id.DocsURL()}
+	return []string{id.Domain, id.Module(), id.RepoURL(), id.Image(), id.WebsiteURL(), id.DocsURL(), id.FullName()}
 }
 
 // hardcodedValues returns the values that Go code outside internal/buildinfo
-// must not contain. The module path is allowed because imports need it.
+// must not contain. The module path, and the full name within it, are allowed
+// because imports need them.
 func hardcodedValues(id buildinfo.Identity) []string {
 	return []string{id.Domain, id.RepoURL(), id.Image(), id.WebsiteURL(), id.DocsURL()}
 }

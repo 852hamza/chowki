@@ -133,7 +133,7 @@ func TestSyncRename(t *testing.T) {
 		t.Fatalf("readLock() error = %v", err)
 	}
 	wantRetired := []string{
-		"ghcr.io/acme/widget", "github.com/acme/widget", "https://github.com/acme/widget",
+		"acme/widget", "ghcr.io/acme/widget", "github.com/acme/widget", "https://github.com/acme/widget",
 		"https://widget.example", "https://widget.example/docs", "widget.example",
 	}
 	if lock.id != zeta || !reflect.DeepEqual(lock.retired, wantRetired) {

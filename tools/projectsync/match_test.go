@@ -21,6 +21,8 @@ func TestMatcherReplace(t *testing.T) {
 		{"bare owner and repo", "acme widget", "acme widget"},
 		{"no chained replacement", "a.example b.example", "b.example c.example"},
 		{"multibyte neighbors", "→widget.example←", "→gadget.example←"},
+		{"default value", "${IMAGE:-github.com/acme/widget:latest}", "${IMAGE:-github.com/zeta/widget:latest}"},
+		{"hyphen before a value", "x-github.com/acme/widget my-widget.example", "x-github.com/acme/widget my-widget.example"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -43,5 +45,20 @@ func TestMatcherPrefersLongestValue(t *testing.T) {
 	}
 	if pos, _ := newMatcher(nil, nil).find("anything", 0); pos != -1 {
 		t.Errorf("empty matcher find() = %d, want -1", pos)
+	}
+}
+
+// The full name, <owner>/<repo>, is replaced where it stands alone, such as
+// after gh --repo, and never inside a longer name.
+func TestMatcherFullName(t *testing.T) {
+	m := newMatcher([]string{"github.com/acme/widget", "acme/widget"}, []string{"github.com/zeta/widget", "zeta/widget"})
+	for in, want := range map[string]string{
+		"gh attestation verify x --repo acme/widget": "gh attestation verify x --repo zeta/widget",
+		"see github.com/acme/widget/issues":          "see github.com/zeta/widget/issues",
+		"myacme/widget acme/widgets acme/widget-x":   "myacme/widget acme/widgets acme/widget-x",
+	} {
+		if got, _ := m.replace(in); got != want {
+			t.Errorf("replace(%q) = %q, want %q", in, got, want)
+		}
 	}
 }

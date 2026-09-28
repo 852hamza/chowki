@@ -28,6 +28,10 @@ type Identity struct {
 // Module returns the Go module path, github.com/<Owner>/<Repo>.
 func (id Identity) Module() string { return "github.com/" + id.Owner + "/" + id.Repo }
 
+// FullName returns <Owner>/<Repo>, as GitHub names the repository, such as
+// in gh --repo.
+func (id Identity) FullName() string { return id.Owner + "/" + id.Repo }
+
 // RepoURL returns the repository URL, https://github.com/<Owner>/<Repo>.
 func (id Identity) RepoURL() string { return "https://" + id.Module() }
 

@@ -6,13 +6,15 @@ func TestIdentityDerivedValues(t *testing.T) {
 	tests := []struct {
 		name                       string
 		id                         Identity
-		module, repoURL, issues    string
+		module, fullName, repoURL  string
+		issues                     string
 		image, websiteURL, docsURL string
 	}{
 		{
 			name:       "defaults",
 			id:         Identity{Domain: "example.org", Owner: "acme", Repo: "widget"},
 			module:     "github.com/acme/widget",
+			fullName:   "acme/widget",
 			repoURL:    "https://github.com/acme/widget",
 			issues:     "https://github.com/acme/widget/issues",
 			image:      "ghcr.io/acme/widget",
@@ -23,6 +25,7 @@ func TestIdentityDerivedValues(t *testing.T) {
 			name:       "website override moves docs",
 			id:         Identity{Domain: "example.org", Owner: "acme", Repo: "widget", Website: "https://acme.github.io/widget/"},
 			module:     "github.com/acme/widget",
+			fullName:   "acme/widget",
 			repoURL:    "https://github.com/acme/widget",
 			issues:     "https://github.com/acme/widget/issues",
 			image:      "ghcr.io/acme/widget",
@@ -33,6 +36,7 @@ func TestIdentityDerivedValues(t *testing.T) {
 			name:       "docs override",
 			id:         Identity{Domain: "example.org", Owner: "acme", Repo: "widget", Docs: "https://docs.example.net"},
 			module:     "github.com/acme/widget",
+			fullName:   "acme/widget",
 			repoURL:    "https://github.com/acme/widget",
 			issues:     "https://github.com/acme/widget/issues",
 			image:      "ghcr.io/acme/widget",
@@ -43,6 +47,7 @@ func TestIdentityDerivedValues(t *testing.T) {
 			name:       "image is lowercase",
 			id:         Identity{Domain: "example.org", Owner: "AcMe", Repo: "Widget"},
 			module:     "github.com/AcMe/Widget",
+			fullName:   "AcMe/Widget",
 			repoURL:    "https://github.com/AcMe/Widget",
 			issues:     "https://github.com/AcMe/Widget/issues",
 			image:      "ghcr.io/acme/widget",
@@ -54,6 +59,7 @@ func TestIdentityDerivedValues(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			got := map[string][2]string{
 				"Module":     {tt.id.Module(), tt.module},
+				"FullName":   {tt.id.FullName(), tt.fullName},
 				"RepoURL":    {tt.id.RepoURL(), tt.repoURL},
 				"IssuesURL":  {tt.id.IssuesURL(), tt.issues},
 				"Image":      {tt.id.Image(), tt.image},

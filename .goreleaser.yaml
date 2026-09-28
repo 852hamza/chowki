@@ -56,10 +56,9 @@ checksum:
 sboms:
   - artifacts: archive
 
+# GoReleaser takes the repository to release to from the origin remote,
+# which the workflow's checkout sets.
 release:
-  github:
-    owner: 852hamza
-    name: chowki
   # A maintainer reads the draft and publishes it. A re-run of the workflow
   # replaces its draft, instead of adding a second one.
   draft: true

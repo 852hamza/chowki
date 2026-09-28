@@ -67,9 +67,12 @@ func (m *matcher) replace(text string) (string, bool) {
 	return b.String(), true
 }
 
-// matchAt reports whether v occurs as a whole token at text[i:].
+// matchAt reports whether v occurs as a whole token at text[i:]. A default
+// value, as in ${CHOWKI_IMAGE:-ghcr.io/acme/app:latest} in shell or Compose,
+// starts a token after its ":-".
 func matchAt(text string, i int, v string) bool {
-	if !strings.HasPrefix(text[i:], v) || i > 0 && isWordByte(text[i-1]) {
+	if !strings.HasPrefix(text[i:], v) ||
+		i > 0 && isWordByte(text[i-1]) && !strings.HasSuffix(text[:i], ":-") {
 		return false
 	}
 	end := i + len(v)

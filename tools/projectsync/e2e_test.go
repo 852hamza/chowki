@@ -97,7 +97,7 @@ func TestRenameEndToEnd(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		for _, v := range []string{old.Module(), old.Domain} {
+		for _, v := range []string{old.Module(), old.Domain, old.Image(), old.FullName()} {
 			if strings.Contains(string(data), v) {
 				t.Errorf("%s still contains %q after make sync", rel, v)
 			}
