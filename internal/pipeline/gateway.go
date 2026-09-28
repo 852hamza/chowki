@@ -486,7 +486,7 @@ func readRequest(c *call, o *object, r *http.Request) (request, *apiError) {
 	var req request
 	raw, ok := o.raw("model")
 	if !ok || json.Unmarshal(raw, &req.model) != nil || req.model == "" {
-		return bad(`The "model" field must be a model name, such as <provider>/<model>.`)
+		return bad(`The "model" field must name a model, as provider/model or an alias.`)
 	}
 	if ep.kind != kindChat {
 		return req, nil // only chat streams

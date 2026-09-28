@@ -15,6 +15,8 @@ All notable changes to Chowki are recorded in this file. The format is based on
 
 ### Fixed
 
+- The errors for a missing or ambiguous model name no longer contain `<` and `>`, which JSON wrote
+  as `\u003c` and `\u003e`, hard to read in raw answers.
 - GitHub releases take their notes from the version's section of `CHANGELOG.md`, followed by
   instructions to install and verify that version. The notes of v0.1.0 came out empty. A re-run of
   the Release workflow replaces its draft, instead of adding a second one.

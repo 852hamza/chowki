@@ -175,6 +175,7 @@ With `free_tier: true`, the cost is `0.00000000`.
 | `"status":"UNAUTHENTICATED"` with the reason `INVALID_API_KEY` | The client sent your Gemini key instead of a virtual key. | Send the virtual key: Chowki holds the Gemini key. |
 | `"reason":"PROVIDER_KEY_MISSING"` | Chowki can't read `GEMINI_API_KEY`. | Check `.env` in the folder where you run `chowki serve`, then restart the gateway. |
 | `Add ?alt=sse to stream` | A REST client streamed without `alt=sse`. | Add `?alt=sse` to the URL. The SDKs do. |
+| `UNAVAILABLE` with `This model is currently experiencing high demand` | Google has more requests for that model than it can take, for now. | Retry later, or name another model. An alias can fall back to other models on its own; see [Fall back to other models of one provider](routing-and-fallback.md#fall-back-to-other-models-of-one-provider). |
 | `"status":"NOT_FOUND"` | The path isn't a method that Chowki relays, such as the Files API. | Call that API directly. Chowki relays `generateContent`, `streamGenerateContent`, `countTokens`, `embedContent` and `batchEmbedContents`. |
 
 ## Next steps

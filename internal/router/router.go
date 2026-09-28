@@ -147,7 +147,7 @@ func (r *Router) one(accept []string, requested string) (Target, error) {
 	slices.Sort(family)
 	hint := "Add a provider of this API to chowki.yaml."
 	if len(family) > 1 {
-		hint = fmt.Sprintf("Name it as <provider>/<model>, with a provider from: %s.", strings.Join(family, ", "))
+		hint = fmt.Sprintf("Name it as provider/model, with a provider from: %s.", strings.Join(family, ", "))
 	}
 	return Target{}, &Error{CodeUnknownProvider, fmt.Sprintf(
 		"The gateway can't tell which provider serves the model %q. %s", requested, hint)}

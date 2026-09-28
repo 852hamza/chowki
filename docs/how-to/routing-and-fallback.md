@@ -4,7 +4,7 @@ description: Give a list of models one name, and let Chowki fall back to the nex
 type: how-to
 since: v0.1
 edition: community
-last_reviewed: 2026-09-27
+last_reviewed: 2026-09-28
 ---
 
 An alias is a model name, such as `fast`, that stands for a list of provider models. Clients ask
@@ -39,8 +39,23 @@ a provider's outage.
      -d '{"model": "fast", "messages": [{"role": "user", "content": "Say hello"}]}'
    ```
 
-An alias that you call through the OpenAI-format endpoint uses only its targets of type `openai`,
-and one that you call through the Anthropic-format endpoint only those of type `anthropic`.
+Through `/v1/chat/completions`, an alias can list models of any provider, because Chowki
+translates requests for Anthropic and Gemini models. The other endpoints use only the targets of
+their own API: `/anthropic/v1/messages` those of type `anthropic`, for example.
+
+### Fall back to other models of one provider
+
+A provider can be too busy for one model while others answer. Google, for example, answers with
+status 503 and `"This model is currently experiencing high demand"` when a Gemini model has more
+requests than it can take. An alias that lists other models of the same provider keeps your
+requests working:
+
+```yaml
+aliases:
+  flash: ["gemini/gemini-3.6-flash", "gemini/gemini-3.5-flash", "gemini/gemini-2.5-flash"]
+```
+
+Send requests with `"model": "flash"`. The answer's `model` field names the model that answered.
 
 ## How fallback works
 
@@ -86,6 +101,7 @@ is unpriced.
 | `chowki serve` fails with `aliases.<name>[<n>]` | A target doesn't name a provider from `providers`, or has no model. | Write each target as `<provider>/<model>` with a configured provider. |
 | Requests for an alias fail with `wrong_endpoint` | The alias has no target of the endpoint's API type. | Add a target of that type, or call the other endpoint. |
 | The client gets the first target's error | The error is one that doesn't fall back, such as a 400. | Fix the request; see the error message. |
+| `"code":"UNAVAILABLE"` with `This model is currently experiencing high demand` | Google has more requests for that Gemini model than it can take, for now. | Retry later, or name another model. To fall back to other models on their own, use an alias, as in [Fall back to other models of one provider](#fall-back-to-other-models-of-one-provider). |
 
 ## Related
 
