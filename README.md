@@ -40,6 +40,8 @@ make build
 ## Documentation
 
 - [Send your first request](docs/get-started/quickstart.md): set up Chowki in about ten minutes.
+- [Install Chowki](docs/get-started/install.md): run it with Docker Compose or Docker, or build it
+  from source.
 - [Manage virtual keys](docs/how-to/manage-virtual-keys.md): create, list and revoke keys.
 - [Set monthly budgets](docs/how-to/set-budgets.md): limit what a key or a project spends each
   month.

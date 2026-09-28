@@ -19,7 +19,7 @@ You will:
 ## Before you begin
 
 - Go 1.27 or later, Git and GNU Make, to build Chowki from source. Binary releases come with the
-  first release.
+  first release. To run Chowki in a container instead, see [Install Chowki](install.md).
 - An OpenAI API key. The request in this tutorial is billed to your OpenAI account and costs a
   small fraction of a cent.
 - curl.
@@ -60,8 +60,8 @@ a folder of its own.
      3. Start the gateway:    chowki serve
    ```
 
-You now have `chowki.yaml`, which lists the OpenAI and Anthropic providers, a master key that only
-you can read, and an empty database.
+You now have `chowki.yaml`, which lists the OpenAI, Anthropic and Gemini providers, a master key
+that only you can read, and an empty database.
 
 ## Step 2: Add your OpenAI key
 
