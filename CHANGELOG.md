@@ -23,7 +23,8 @@ All notable changes to Chowki are recorded in this file. The format is based on
   `127.0.0.1` and `::1`, instead of on every network interface. `chowki init` writes it, and it's
   the default when `server.listen` isn't set. To serve other machines, set `server.listen`, such as
   to `:8443`, with HTTPS. The container image still listens on `:8080`, which Compose publishes to
-  this machine only.
+  this machine only. A gateway that you upgrade keeps the address in its configuration: v0.1.0's
+  `chowki init` wrote `:8080`.
 - `chowki doctor` finds a running gateway through `/healthz`, which logs nothing, instead of an
   unauthenticated request to `/v1/models`, which the gateway logged as rejected. Its `tls` check
   says that HTTPS isn't needed while only this machine can connect.
