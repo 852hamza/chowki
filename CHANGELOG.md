@@ -6,7 +6,7 @@ All notable changes to Chowki are recorded in this file. The format is based on
 
 ## [Unreleased]
 
-## [0.2.0] - 2026-09-28
+## [0.2.0] - 2026-09-29
 
 ### Added
 
