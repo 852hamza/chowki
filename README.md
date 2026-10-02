@@ -20,7 +20,7 @@ It speaks the OpenAI, Anthropic and Google Gemini APIs, and works with any OpenA
 provider, including local models in Ollama. Clients change only their base URL and key. Chowki is
 one Go binary with a SQLite database.
 
-![The Chowki dashboard: a month of spend, savings, failures and redactions, by day, key and model](website/static/img/dashboard.png)
+![Chowki in action: chowki init and a virtual key, a request whose response reports its cost, secrets masked before the prompt reaches the provider, and the dashboard with a month of demo traffic](website/static/img/demo.gif)
 
 *Chowki* (چوکی) means "checkpoint" in Urdu.
 
