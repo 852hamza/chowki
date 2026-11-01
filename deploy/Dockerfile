@@ -8,7 +8,7 @@
 # Go runs on the build platform and cross-compiles, so images for other
 # platforms build without emulation. Images are pinned by digest; the tag
 # says which version the digest is.
-FROM --platform=$BUILDPLATFORM golang:1.27.1-trixie@sha256:433790e515d27dc6003e847e644cc0af956985cf315c1c58a3b73ee2dd305183 AS build
+FROM --platform=$BUILDPLATFORM golang:1.27.3-trixie@sha256:c65ecfe613b539ac74c62a4c3b2c27e8f8a6076384c8f27e8a3c0f3be17cc385 AS build
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN --mount=type=cache,target=/go/pkg/mod go mod download
@@ -34,7 +34,7 @@ RUN --mount=type=cache,target=/go/pkg/mod \
     go run ./tools/licenses --out /out/usr/share/licenses/chowki/third_party_licenses && \
     install -m 0644 LICENSE NOTICE /out/usr/share/licenses/chowki/
 
-FROM gcr.io/distroless/static-debian13:nonroot@sha256:e2e927ec666bae08560abb3c55d0659eceabb657f56b6782ab500a9fc7f555e3
+FROM gcr.io/distroless/static-debian13:nonroot@sha256:25ac8f0c3b2334a9eb05452266bd4697864a8c8ef0ef71e5e6480d7f92868329
 ARG VERSION=dev
 ARG COMMIT=""
 ARG DATE=""
